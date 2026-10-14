@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Project, ProjectDocumentOptions } from '../types/project';
 import { UserManual } from '../types/manual';
+import { OrganizationBranding } from '../types/branding';
 import {
   FolderKanban,
   Building2,
@@ -23,6 +24,7 @@ import {
   FolderOpen,
   Eye,
   Check,
+  Image,
 } from 'lucide-react';
 
 interface ProjectWorkspaceProps {
@@ -38,6 +40,8 @@ interface ProjectWorkspaceProps {
   onUpdateProject: (updatedProject: Project) => void;
   onLinkManualToProject: (manualId: string, projectId: string) => void;
   onUnlinkManualFromProject: (manualId: string) => void;
+  branding?: OrganizationBranding;
+  onOpenOurLogoModal?: () => void;
 }
 
 export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
@@ -53,6 +57,8 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
   onUpdateProject,
   onLinkManualToProject,
   onUnlinkManualFromProject,
+  branding,
+  onOpenOurLogoModal,
 }) => {
   const [activeTab, setActiveTab] = useState<'manuals' | 'features' | 'info'>('manuals');
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
@@ -90,30 +96,65 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
         />
 
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
-          {/* Client Branding & Project Title */}
-          <div className="flex items-start sm:items-center gap-5">
-            {/* Client Logo Card */}
-            <div className="w-32 sm:w-44 h-20 sm:h-24 bg-slate-50 border border-slate-200 rounded-xl p-2 flex items-center justify-center flex-shrink-0 shadow-xs group relative">
-              {project.clientLogo ? (
-                <img
-                  src={project.clientLogo}
-                  alt={project.clientName}
-                  className="max-w-full max-h-full object-contain"
-                />
-              ) : (
-                <div className="flex flex-col items-center text-slate-400">
-                  <Building2 className="w-8 h-8 text-slate-300" />
-                  <span className="text-[10px] mt-1 font-semibold">Sin logo</span>
-                </div>
-              )}
-              <button
-                onClick={() => onOpenProjectSettings(project)}
-                title="Cambiar logo del cliente"
-                className="absolute inset-0 bg-slate-900/60 text-white text-xs font-semibold rounded-xl opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1 backdrop-blur-xs"
-              >
-                <Settings className="w-3.5 h-3.5" />
-                <span>Cambiar</span>
-              </button>
+          {/* Dual Branding & Project Title */}
+          <div className="flex items-start sm:items-center gap-4 sm:gap-5">
+            {/* Dual Logos Showcase */}
+            <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+              {/* Nuestro Logo Card */}
+              <div className="w-24 sm:w-32 h-20 sm:h-24 bg-slate-50 border border-slate-200 rounded-xl p-2 flex flex-col items-center justify-center flex-shrink-0 shadow-xs group relative">
+                {(project.organizationLogo || branding?.logo) ? (
+                  <img
+                    src={project.organizationLogo || branding?.logo}
+                    alt={project.organizationName || branding?.companyName || 'Nuestro Logo'}
+                    className="max-w-full max-h-full object-contain"
+                  />
+                ) : (
+                  <div className="flex flex-col items-center text-slate-400">
+                    <Building2 className="w-6 h-6 text-slate-300" />
+                    <span className="text-[9px] mt-1 font-semibold">Sin logo</span>
+                  </div>
+                )}
+                <span className="absolute bottom-1 right-1 text-[8px] bg-indigo-700 text-white px-1.5 py-0.2 rounded font-bold uppercase tracking-wider">
+                  Nuestro
+                </span>
+                {onOpenOurLogoModal && (
+                  <button
+                    onClick={onOpenOurLogoModal}
+                    title="Definir Nuestro Logo e Identidad Emisora"
+                    className="absolute inset-0 bg-indigo-950/70 text-white text-[11px] font-semibold rounded-xl opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1 backdrop-blur-xs"
+                  >
+                    <Settings className="w-3.5 h-3.5" />
+                    <span>Definir</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Client Logo Card */}
+              <div className="w-24 sm:w-32 h-20 sm:h-24 bg-slate-50 border border-slate-200 rounded-xl p-2 flex flex-col items-center justify-center flex-shrink-0 shadow-xs group relative">
+                {project.clientLogo ? (
+                  <img
+                    src={project.clientLogo}
+                    alt={project.clientName}
+                    className="max-w-full max-h-full object-contain"
+                  />
+                ) : (
+                  <div className="flex flex-col items-center text-slate-400">
+                    <Building2 className="w-6 h-6 text-slate-300" />
+                    <span className="text-[9px] mt-1 font-semibold">Sin logo</span>
+                  </div>
+                )}
+                <span className="absolute bottom-1 right-1 text-[8px] bg-slate-800 text-white px-1.5 py-0.2 rounded font-bold uppercase tracking-wider">
+                  Cliente
+                </span>
+                <button
+                  onClick={() => onOpenProjectSettings(project)}
+                  title="Cambiar logo del cliente"
+                  className="absolute inset-0 bg-slate-900/60 text-white text-[11px] font-semibold rounded-xl opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1 backdrop-blur-xs"
+                >
+                  <Settings className="w-3.5 h-3.5" />
+                  <span>Cambiar</span>
+                </button>
+              </div>
             </div>
 
             <div className="space-y-1.5">
@@ -444,13 +485,19 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-semibold px-3 py-1 bg-indigo-50 text-indigo-700 rounded-lg border border-indigo-200">
-                {activeFeaturesCount} de 12 activas
+                {activeFeaturesCount} de 13 activas
               </span>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {[
+              {
+                key: 'includeOurLogo' as keyof ProjectDocumentOptions,
+                title: 'Nuestro Logo (Organización Emisora) en Documentos',
+                desc: `Inserta el logotipo oficial de ${project.organizationName || branding?.companyName || 'nuestra empresa'} en la carátula y el membrete de todas las páginas foliadas.`,
+                badge: 'Identidad Emisora',
+              },
               {
                 key: 'includeClientLogo' as keyof ProjectDocumentOptions,
                 title: 'Logo del Cliente en Portada y Encabezados',

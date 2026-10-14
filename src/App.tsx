@@ -6,12 +6,14 @@
 import React, { useState, useEffect } from 'react';
 import { UserManual, ManualStep } from './types/manual';
 import { Project } from './types/project';
+import { OrganizationBranding, DEFAULT_ORGANIZATION_BRANDING } from './types/branding';
 import { SAMPLE_MANUALS } from './data/sampleManuals';
 import { SAMPLE_PROJECTS } from './data/sampleProjects';
 import { Navbar } from './components/Navbar';
 import { ManualView } from './components/ManualView';
 import { ProjectWorkspace } from './components/ProjectWorkspace';
 import { ProjectModal } from './components/ProjectModal';
+import { OrganizationLogoModal } from './components/OrganizationLogoModal';
 import { CreateManualModal } from './components/CreateManualModal';
 import { InteractivePlayer } from './components/InteractivePlayer';
 import { ExportModal } from './components/ExportModal';
@@ -58,6 +60,17 @@ export default function App() {
   // Modals state
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+
+  // Organization Branding & Nuestro Logo state
+  const [branding, setBranding] = useState<OrganizationBranding>(() => {
+    return manualStorage.loadOrganizationBranding();
+  });
+  const [isOurLogoModalOpen, setIsOurLogoModalOpen] = useState(false);
+
+  const handleSaveBranding = (updatedBranding: OrganizationBranding) => {
+    setBranding(updatedBranding);
+    manualStorage.saveOrganizationBranding(updatedBranding);
+  };
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [createManualProjectId, setCreateManualProjectId] = useState<string>('');
@@ -234,6 +247,8 @@ export default function App() {
         }}
         onOpenExportModal={() => setIsExportModalOpen(true)}
         onOpenSimulator={() => setIsSimulatorOpen(true)}
+        branding={branding}
+        onOpenOurLogoModal={() => setIsOurLogoModalOpen(true)}
         viewMode={viewMode}
         onChangeViewMode={setViewMode}
       />
@@ -254,6 +269,8 @@ export default function App() {
             onUpdateProject={handleSaveProject}
             onLinkManualToProject={handleLinkManualToProject}
             onUnlinkManualFromProject={handleUnlinkManualFromProject}
+            branding={branding}
+            onOpenOurLogoModal={() => setIsOurLogoModalOpen(true)}
           />
         ) : activeManual ? (
           <ManualView
@@ -266,6 +283,8 @@ export default function App() {
             onEditStep={(step) => setEditingStep(step)}
             onAnnotateStep={(step) => setAnnotatingStep(step)}
             onAddNewStep={handleAddNewStep}
+            branding={branding}
+            onOpenOurLogoModal={() => setIsOurLogoModalOpen(true)}
           />
         ) : (
           <div className="max-w-md mx-auto text-center py-24 px-4">
@@ -305,6 +324,16 @@ export default function App() {
         </div>
       </footer>
 
+      {/* NUESTRO LOGO & ORGANIZACIÓN MODAL */}
+      <OrganizationLogoModal
+        isOpen={isOurLogoModalOpen}
+        onClose={() => setIsOurLogoModalOpen(false)}
+        branding={branding}
+        onSaveBranding={handleSaveBranding}
+        sampleClientLogo={activeProject?.clientLogo}
+        sampleClientName={activeProject?.clientName}
+      />
+
       {/* PROJECT MODAL (New & Edit Project) */}
       <ProjectModal
         isOpen={isProjectModalOpen}
@@ -314,6 +343,8 @@ export default function App() {
         }}
         onSaveProject={handleSaveProject}
         existingProject={editingProject}
+        branding={branding}
+        onOpenOurLogoModal={() => setIsOurLogoModalOpen(true)}
       />
 
       {/* CREATE MANUAL MODAL */}
@@ -349,6 +380,8 @@ export default function App() {
             onClose={() => setIsExportModalOpen(false)}
             project={activeProject}
             manualsInProject={manualsInActiveProject}
+            branding={branding}
+            onOpenOurLogoModal={() => setIsOurLogoModalOpen(true)}
           />
         </>
       )}

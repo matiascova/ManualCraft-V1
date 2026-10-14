@@ -1,9 +1,11 @@
 import { UserManual } from '../types/manual';
 import { Project } from '../types/project';
+import { OrganizationBranding, DEFAULT_ORGANIZATION_BRANDING } from '../types/branding';
 import { SAMPLE_PROJECTS } from '../data/sampleProjects';
 
 const MANUALS_STORAGE_KEY = 'manualcraft_user_manuals_v1';
 const PROJECTS_STORAGE_KEY = 'manualcraft_user_projects_v1';
+const BRANDING_STORAGE_KEY = 'manualcraft_organization_branding_v1';
 
 /**
  * Resilient storage manager that handles browser storage quota limits,
@@ -51,6 +53,37 @@ class ManualStorageService {
       return true;
     } catch (err) {
       console.warn('[ManualStorageService] Error saving projects to localStorage:', err);
+      return false;
+    }
+  }
+
+  public loadOrganizationBranding(defaultBranding: OrganizationBranding = DEFAULT_ORGANIZATION_BRANDING): OrganizationBranding {
+    try {
+      if (typeof window === 'undefined' || !window.localStorage) {
+        return defaultBranding;
+      }
+      const saved = localStorage.getItem(BRANDING_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object' && parsed.logo) {
+          return { ...defaultBranding, ...parsed };
+        }
+      }
+    } catch (err) {
+      console.warn('[ManualStorageService] Failed to load organization branding:', err);
+    }
+    return defaultBranding;
+  }
+
+  public saveOrganizationBranding(branding: OrganizationBranding): boolean {
+    try {
+      if (typeof window === 'undefined' || !window.localStorage) {
+        return true;
+      }
+      localStorage.setItem(BRANDING_STORAGE_KEY, JSON.stringify(branding));
+      return true;
+    } catch (err) {
+      console.warn('[ManualStorageService] Error saving organization branding:', err);
       return false;
     }
   }

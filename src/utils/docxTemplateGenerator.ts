@@ -18,6 +18,7 @@ import {
 } from 'docx';
 import { UserManual, getActionTypeSpanish } from '../types/manual';
 import { Project } from '../types/project';
+import { OrganizationBranding } from '../types/branding';
 import { renderAnnotatedScreenshotForPdf } from './exportUtils';
 
 /**
@@ -35,15 +36,52 @@ function dataUrlToUint8Array(dataUrl: string): Uint8Array {
   return bytes;
 }
 
+interface BrandHeaderOptions {
+  ourLogoUrl?: string;
+  ourCompanyName?: string;
+  ourSlogan?: string;
+  clientLogoUrl?: string;
+  clientName?: string;
+  secondaryLogoUrl?: string;
+  secondaryName?: string;
+  secondarySlogan?: string;
+}
+
 /**
- * Renders the corporate brand header banner (Weber Saint-Gobain + HSBT / Client)
+ * Loads an image from URL / dataUrl safely
+ */
+function loadImageElement(src: string): Promise<HTMLImageElement | null> {
+  return new Promise((resolve) => {
+    try {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
+      img.src = src;
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+/**
+ * Renders the corporate brand header banner (Nuestro Logo + Logo del Cliente / HSBT)
  * onto an in-memory canvas and converts to PNG Uint8Array for native Word embedding.
  */
 async function generateCorporateBrandHeaderPng(
-  clientLogoUrl?: string,
-  clientName?: string
+  options: BrandHeaderOptions | string | undefined,
+  clientNameLegacy?: string
 ): Promise<Uint8Array | null> {
-  return new Promise((resolve) => {
+  // Normalize parameters for backward compatibility
+  const config: BrandHeaderOptions =
+    typeof options === 'object' && options !== null
+      ? options
+      : {
+          clientLogoUrl: typeof options === 'string' ? options : undefined,
+          clientName: clientNameLegacy,
+        };
+
+  return new Promise(async (resolve) => {
     try {
       const canvas = document.createElement('canvas');
       canvas.width = 1200;
@@ -54,21 +92,92 @@ async function generateCorporateBrandHeaderPng(
         return;
       }
 
-      // Background white
+      // Background pure white
       ctx.fillStyle = '#FFFFFF';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      const drawHsbtAndFinish = () => {
-        // Right side: Navy corporate box for consulting / standard
+      const ourLogoSrc = config.ourLogoUrl;
+      const clientLogoSrc = config.clientLogoUrl;
+
+      // 1. Draw Left Side (Nuestro Logo / Organización Emisora)
+      let ourImgLoaded = false;
+      if (ourLogoSrc) {
+        const ourImg = await loadImageElement(ourLogoSrc);
+        if (ourImg && ourImg.width > 0) {
+          const maxW = 440;
+          const maxH = 120;
+          let drawW = ourImg.width;
+          let drawH = ourImg.height;
+          const ratio = Math.min(maxW / drawW, maxH / drawH, 1);
+          drawW *= ratio;
+          drawH *= ratio;
+          const drawX = 30;
+          const drawY = (canvas.height - drawH) / 2;
+          ctx.drawImage(ourImg, drawX, drawY, drawW, drawH);
+          ourImgLoaded = true;
+        }
+      }
+
+      if (!ourImgLoaded) {
+        // Fallback: draw crisp vector Weber / Company
+        const startX = 30;
+        const startY = 30;
+        ctx.fillStyle = '#FEDB00'; // Yellow
+        ctx.beginPath();
+        ctx.moveTo(startX, startY + 70);
+        ctx.lineTo(startX + 45, startY);
+        ctx.lineTo(startX + 90, startY + 70);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.fillStyle = '#1E293B';
+        ctx.fillRect(startX + 25, startY + 28, 40, 42);
+
+        ctx.fillStyle = '#0F172A';
+        ctx.font = 'bold 50px Arial, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        const brandName = config.ourCompanyName || 'weber';
+        ctx.fillText(brandName.toLowerCase(), startX + 110, startY + 5);
+
+        ctx.fillStyle = '#475569';
+        ctx.font = 'bold 20px Arial, sans-serif';
+        ctx.fillText(
+          (config.ourSlogan || 'SAINT-GOBAIN CHILE').toUpperCase(),
+          startX + 110,
+          startY + 58
+        );
+      }
+
+      // 2. Draw Right Side (Logo del Cliente o Sello HSBT)
+      let rightSideDrawn = false;
+      if (clientLogoSrc) {
+        const clientImg = await loadImageElement(clientLogoSrc);
+        if (clientImg && clientImg.width > 0) {
+          const maxW = 380;
+          const maxH = 110;
+          let drawW = clientImg.width;
+          let drawH = clientImg.height;
+          const ratio = Math.min(maxW / drawW, maxH / drawH, 1);
+          drawW *= ratio;
+          drawH *= ratio;
+          const drawX = canvas.width - drawW - 30;
+          const drawY = (canvas.height - drawH) / 2;
+          ctx.drawImage(clientImg, drawX, drawY, drawW, drawH);
+          rightSideDrawn = true;
+        }
+      }
+
+      if (!rightSideDrawn) {
+        // Draw HSBT / Partner Badge
         const hsbtW = 180;
         const hsbtH = 80;
         const hsbtX = canvas.width - hsbtW - 30;
         const hsbtY = 35;
 
-        ctx.fillStyle = '#183B6C'; // Corporate Navy #183B6C
+        ctx.fillStyle = '#183B6C'; // Corporate Navy
         ctx.fillRect(hsbtX, hsbtY, hsbtW, hsbtH);
 
-        // Blue accent dividers
         ctx.strokeStyle = '#2563EB';
         ctx.lineWidth = 3;
         ctx.beginPath();
@@ -79,79 +188,23 @@ async function generateCorporateBrandHeaderPng(
         ctx.stroke();
 
         ctx.fillStyle = '#FFFFFF';
-        ctx.font = 'bold 32px Arial, sans-serif';
+        ctx.font = 'bold 30px Arial, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText('HSBT', hsbtX + hsbtW / 2, hsbtY + hsbtH / 2);
+        ctx.fillText(config.secondaryName || 'HSBT', hsbtX + hsbtW / 2, hsbtY + hsbtH / 2);
 
         ctx.fillStyle = '#475569';
-        ctx.font = '14px Arial, sans-serif';
+        ctx.font = '13px Arial, sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('COMPROMISO & CALIDAD', hsbtX + hsbtW / 2, hsbtY + hsbtH + 24);
-
-        const dataUrl = canvas.toDataURL('image/png');
-        resolve(dataUrlToUint8Array(dataUrl));
-      };
-
-      const drawFallbackWeber = () => {
-        const startX = 30;
-        const startY = 30;
-        // Weber Yellow Triangle
-        ctx.fillStyle = '#FEDB00';
-        ctx.beginPath();
-        ctx.moveTo(startX, startY + 70);
-        ctx.lineTo(startX + 45, startY);
-        ctx.lineTo(startX + 90, startY + 70);
-        ctx.closePath();
-        ctx.fill();
-
-        // Dark slate cutout
-        ctx.fillStyle = '#1E293B';
-        ctx.fillRect(startX + 25, startY + 28, 40, 42);
-
-        // Text "weber"
-        ctx.fillStyle = '#0F172A';
-        ctx.font = 'bold 54px Arial, sans-serif';
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'top';
-        ctx.fillText('weber', startX + 110, startY + 5);
-
-        // Text "SAINT-GOBAIN"
-        ctx.fillStyle = '#475569';
-        ctx.font = 'bold 22px Arial, sans-serif';
-        ctx.fillText(clientName ? clientName.toUpperCase() : 'SAINT-GOBAIN', startX + 110, startY + 58);
-      };
-
-      if (clientLogoUrl) {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.onload = () => {
-          try {
-            const maxW = 420;
-            const maxH = 120;
-            let drawW = img.width;
-            let drawH = img.height;
-            const ratio = Math.min(maxW / drawW, maxH / drawH, 1);
-            drawW *= ratio;
-            drawH *= ratio;
-            const drawX = 30;
-            const drawY = (canvas.height - drawH) / 2;
-            ctx.drawImage(img, drawX, drawY, drawW, drawH);
-            drawHsbtAndFinish();
-          } catch {
-            drawFallbackWeber();
-            drawHsbtAndFinish();
-          }
-        };
-        img.onerror = () => {
-          drawFallbackWeber();
-          drawHsbtAndFinish();
-        };
-        img.src = clientLogoUrl;
-      } else {
-        drawFallbackWeber();
-        drawHsbtAndFinish();
+        ctx.fillText(
+          config.secondarySlogan || 'COMPROMISO & CALIDAD',
+          hsbtX + hsbtW / 2,
+          hsbtY + hsbtH + 24
+        );
       }
+
+      const dataUrl = canvas.toDataURL('image/png');
+      resolve(dataUrlToUint8Array(dataUrl));
     } catch {
       resolve(null);
     }
@@ -244,7 +297,8 @@ function createDocxCallout(
 export async function exportToDocxWithTemplateStructure(
   manual: UserManual,
   onProgress?: (msg: string) => void,
-  project?: Project
+  project?: Project,
+  branding?: OrganizationBranding
 ): Promise<void> {
   if (onProgress) onProgress('Preparando plantilla oficial corporativa para Word (.docx)...');
 
@@ -264,9 +318,25 @@ export async function exportToDocxWithTemplateStructure(
   // =========================================================================
   if (onProgress) onProgress('Generando Portada Corporativa con Banner y Ficha Técnica...');
 
-  // 1.1 Dual Corporate Logo Bar
+  // 1.1 Dual Corporate Logo Bar (Nuestro Logo + Logo del Cliente / HSBT)
   try {
-    const brandHeaderPng = await generateCorporateBrandHeaderPng(clientLogo, clientName);
+    const ourLogoUrl = project?.organizationLogo || branding?.logo;
+    const ourCompanyName = project?.organizationName || branding?.companyName;
+    const ourSlogan = project?.organizationSlogan || branding?.companySlogan;
+    const secondaryName = branding?.secondaryName;
+    const secondarySlogan = branding?.secondarySlogan;
+    const secondaryLogoUrl = branding?.secondaryLogo;
+
+    const brandHeaderPng = await generateCorporateBrandHeaderPng({
+      ourLogoUrl,
+      ourCompanyName,
+      ourSlogan,
+      clientLogoUrl: clientLogo,
+      clientName,
+      secondaryLogoUrl,
+      secondaryName,
+      secondarySlogan,
+    });
     if (brandHeaderPng) {
       docChildren.push(
         new Paragraph({
@@ -1649,7 +1719,8 @@ export async function exportToDocxWithTemplateStructure(
 export async function exportProjectDossierDocx(
   project: Project,
   manuals: UserManual[],
-  onProgress?: (msg: string) => void
+  onProgress?: (msg: string) => void,
+  branding?: OrganizationBranding
 ): Promise<void> {
   if (onProgress) onProgress(`Iniciando Dossier Word para "${project.name}" (${manuals.length} manuales)...`);
 
@@ -1659,8 +1730,24 @@ export async function exportProjectDossierDocx(
 
   const docChildren: (Paragraph | Table)[] = [];
 
-  // Master Brand Header
-  const brandHeaderPng = await generateCorporateBrandHeaderPng(project.clientLogo, clientName);
+  // Master Brand Header (Nuestro Logo + Logo del Cliente / HSBT)
+  const ourLogoUrl = project.organizationLogo || branding?.logo;
+  const ourCompanyName = project.organizationName || branding?.companyName;
+  const ourSlogan = project.organizationSlogan || branding?.companySlogan;
+  const secondaryName = branding?.secondaryName;
+  const secondarySlogan = branding?.secondarySlogan;
+  const secondaryLogoUrl = branding?.secondaryLogo;
+
+  const brandHeaderPng = await generateCorporateBrandHeaderPng({
+    ourLogoUrl,
+    ourCompanyName,
+    ourSlogan,
+    clientLogoUrl: project.clientLogo,
+    clientName,
+    secondaryLogoUrl,
+    secondaryName,
+    secondarySlogan,
+  });
   if (brandHeaderPng) {
     docChildren.push(
       new Paragraph({

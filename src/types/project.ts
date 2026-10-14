@@ -1,4 +1,5 @@
 export interface ProjectDocumentOptions {
+  includeOurLogo: boolean;
   includeClientLogo: boolean;
   includeCoverPage: boolean;
   includeExecutiveSummary: boolean;
@@ -19,6 +20,9 @@ export interface Project {
   id: string;
   name: string;
   code?: string;
+  organizationName?: string; // Nombre de nuestra empresa u organización emisora
+  organizationLogo?: string; // Logo de nuestra empresa (Data URL o URL)
+  organizationSlogan?: string; // Slogan de nuestra empresa
   clientName: string;
   clientLogo?: string; // Data URL (PNG, JPG, SVG)
   description: string;
@@ -35,6 +39,7 @@ export interface Project {
 }
 
 export const DEFAULT_DOCUMENT_OPTIONS: ProjectDocumentOptions = {
+  includeOurLogo: true,
   includeClientLogo: true,
   includeCoverPage: true,
   includeExecutiveSummary: true,

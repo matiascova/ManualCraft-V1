@@ -1,75 +1,113 @@
 import { jsPDF } from 'jspdf';
 import { UserManual } from '../types/manual';
 import { Project } from '../types/project';
+import { OrganizationBranding } from '../types/branding';
 import { renderAnnotatedScreenshotForPdf } from './exportUtils';
 
 /**
- * Draws high-precision vector logos matching the official corporate template:
- * - Weber Saint-Gobain on the left
- * - HSBT Compromiso & Calidad on the right
+ * Draws high-precision vector or bitmap corporate logos matching the official template:
+ * - Nuestro Logo (Organización Emisora / Weber) on the left
+ * - Logo del Cliente (o Sello HSBT Compromiso & Calidad) on the right
  */
 function drawCorporateLogos(
   doc: jsPDF,
   leftX: number,
   rightX: number,
   y: number,
-  isMini = false
+  isMini = false,
+  branding?: OrganizationBranding,
+  clientLogo?: string,
+  clientName?: string
 ) {
   const scale = isMini ? 0.65 : 1;
+  const ourLogoUrl = branding?.logo;
+  const ourCompanyName = branding?.companyName || 'weber';
+  const ourSlogan = branding?.companySlogan || 'SAINT-GOBAIN';
 
-  // 1. WEBER SAINT-GOBAIN LOGO (Left)
-  doc.setFillColor(254, 219, 0); // Weber Yellow
-  doc.triangle(
-    leftX,
-    y + 6 * scale,
-    leftX + 4.5 * scale,
-    y,
-    leftX + 9 * scale,
-    y + 6 * scale,
-    'F'
-  );
-  doc.setFillColor(30, 41, 59); // Dark slate arc accent
-  doc.rect(leftX + 2.5 * scale, y + 2.5 * scale, 4 * scale, 3.5 * scale, 'F');
+  // 1. LEFT SIDE: NUESTRO LOGO (Organización Emisora)
+  let ourDrawn = false;
+  if (ourLogoUrl && ourLogoUrl.startsWith('data:image')) {
+    try {
+      const imgW = isMini ? 24 : 36;
+      const imgH = isMini ? 8 : 12;
+      doc.addImage(ourLogoUrl, leftX, y - (isMini ? 1.5 : 2.5), imgW, imgH, undefined, 'FAST');
+      ourDrawn = true;
+    } catch {
+      ourDrawn = false;
+    }
+  }
 
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(isMini ? 9 : 13);
-  doc.setTextColor(15, 23, 42);
-  doc.text('weber', leftX + 11 * scale, y + 5 * scale);
+  if (!ourDrawn) {
+    // Crisp Vector Weber / Company fallback
+    doc.setFillColor(254, 219, 0); // Weber Yellow
+    doc.triangle(
+      leftX,
+      y + 6 * scale,
+      leftX + 4.5 * scale,
+      y,
+      leftX + 9 * scale,
+      y + 6 * scale,
+      'F'
+    );
+    doc.setFillColor(30, 41, 59); // Dark slate arc accent
+    doc.rect(leftX + 2.5 * scale, y + 2.5 * scale, 4 * scale, 3.5 * scale, 'F');
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(isMini ? 4.5 : 5.8);
-  doc.setTextColor(71, 85, 105);
-  doc.text('SAINT-GOBAIN', leftX + 11 * scale, y + 8.2 * scale);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(isMini ? 8.5 : 12.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text(ourCompanyName.toLowerCase(), leftX + 11 * scale, y + 5 * scale);
 
-  // 2. HSBT COMPROMISO & CALIDAD LOGO (Right)
-  const hsbtBoxW = isMini ? 12 : 18;
-  const hsbtBoxH = isMini ? 7 : 10.5;
-  const hsbtBoxX = rightX - hsbtBoxW;
-
-  // Navy block
-  doc.setFillColor(24, 59, 108); // #183B6C
-  doc.rect(hsbtBoxX, y, hsbtBoxW, hsbtBoxH, 'F');
-
-  // Vertical brand lines
-  doc.setDrawColor(37, 99, 235);
-  doc.setLineWidth(0.3);
-  doc.line(hsbtBoxX + hsbtBoxW * 0.33, y, hsbtBoxX + hsbtBoxW * 0.33, y + hsbtBoxH);
-  doc.line(hsbtBoxX + hsbtBoxW * 0.66, y, hsbtBoxX + hsbtBoxW * 0.66, y + hsbtBoxH);
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(isMini ? 6.5 : 8.5);
-  doc.setTextColor(255, 255, 255);
-  doc.text('HSBT', hsbtBoxX + hsbtBoxW / 2, y + (isMini ? 4.8 : 6.8), {
-    align: 'center',
-  });
-
-  if (!isMini) {
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(4);
+    doc.setFontSize(isMini ? 4.5 : 5.8);
     doc.setTextColor(71, 85, 105);
-    doc.text('COMPROMISO & CALIDAD', hsbtBoxX + hsbtBoxW / 2, y + hsbtBoxH + 2.5, {
+    const line2 = ourSlogan.length > 25 ? ourSlogan.slice(0, 24) + '...' : ourSlogan;
+    doc.text(line2.toUpperCase(), leftX + 11 * scale, y + 8.2 * scale);
+  }
+
+  // 2. RIGHT SIDE: LOGO DEL CLIENTE / SELLO HSBT
+  let rightDrawn = false;
+  if (clientLogo && clientLogo.startsWith('data:image')) {
+    try {
+      const imgW = isMini ? 22 : 32;
+      const imgH = isMini ? 7.5 : 11;
+      doc.addImage(clientLogo, rightX - imgW, y - (isMini ? 1.5 : 2.5), imgW, imgH, undefined, 'FAST');
+      rightDrawn = true;
+    } catch {
+      rightDrawn = false;
+    }
+  }
+
+  if (!rightDrawn) {
+    // HSBT / Partner block
+    const hsbtBoxW = isMini ? 12 : 18;
+    const hsbtBoxH = isMini ? 7 : 10.5;
+    const hsbtBoxX = rightX - hsbtBoxW;
+
+    // Navy block
+    doc.setFillColor(24, 59, 108); // #183B6C
+    doc.rect(hsbtBoxX, y, hsbtBoxW, hsbtBoxH, 'F');
+
+    // Vertical brand lines
+    doc.setDrawColor(37, 99, 235);
+    doc.setLineWidth(0.3);
+    doc.line(hsbtBoxX + hsbtBoxW * 0.33, y, hsbtBoxX + hsbtBoxW * 0.33, y + hsbtBoxH);
+    doc.line(hsbtBoxX + hsbtBoxW * 0.66, y, hsbtBoxX + hsbtBoxW * 0.66, y + hsbtBoxH);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(isMini ? 6.5 : 8.5);
+    doc.setTextColor(255, 255, 255);
+    doc.text(branding?.secondaryName || 'HSBT', hsbtBoxX + hsbtBoxW / 2, y + (isMini ? 4.8 : 6.8), {
       align: 'center',
     });
+
+    if (!isMini) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(4);
+      doc.setTextColor(71, 85, 105);
+      doc.text(branding?.secondarySlogan || 'COMPROMISO & CALIDAD', hsbtBoxX + hsbtBoxW / 2, y + hsbtBoxH + 2.5, {
+        align: 'center',
+      });
+    }
   }
 }
 
@@ -87,9 +125,15 @@ function drawCorporateLogos(
  */
 export async function exportToPdfWithTemplateStructure(
   manual: UserManual,
-  onProgress?: (msg: string) => void
+  onProgress?: (msg: string) => void,
+  project?: Project,
+  branding?: OrganizationBranding
 ): Promise<void> {
   if (onProgress) onProgress('Iniciando generación con estructura oficial del template...');
+
+  const effectiveBranding = branding;
+  const effectiveClientLogo = project?.clientLogo;
+  const effectiveClientName = project?.clientName;
 
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -113,8 +157,17 @@ export async function exportToPdfWithTemplateStructure(
   // =========================================================================
   if (onProgress) onProgress('Renderizando Portada Ejecutiva con Ficha Técnica...');
 
-  // Top Corporate Logos (Weber + HSBT)
-  drawCorporateLogos(doc, marginX, marginX + contentWidth, 18, false);
+  // Top Corporate Logos (Nuestro Logo + Logo del Cliente / HSBT)
+  drawCorporateLogos(
+    doc,
+    marginX,
+    marginX + contentWidth,
+    18,
+    false,
+    effectiveBranding,
+    effectiveClientLogo,
+    effectiveClientName
+  );
 
   // Large Navy Blue Banner
   const bannerY = 50;
@@ -1004,8 +1057,17 @@ export async function exportToPdfWithTemplateStructure(
   for (let p = 2; p <= totalPages; p++) {
     doc.setPage(p);
 
-    // 1. RUNNING HEADER (Matching Template)
-    drawCorporateLogos(doc, marginX, marginX + contentWidth, 11, true);
+    // 1. RUNNING HEADER (Matching Template with Nuestro Logo & Client Logo)
+    drawCorporateLogos(
+      doc,
+      marginX,
+      marginX + contentWidth,
+      11,
+      true,
+      effectiveBranding,
+      effectiveClientLogo,
+      effectiveClientName
+    );
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8.5);
@@ -1059,9 +1121,27 @@ export async function exportToPdfWithTemplateStructure(
 export async function exportProjectDossierPdf(
   project: Project,
   manuals: UserManual[],
-  onProgress?: (msg: string) => void
+  onProgress?: (msg: string) => void,
+  branding?: OrganizationBranding
 ): Promise<void> {
   if (onProgress) onProgress(`Iniciando generación del Dossier de Solución para ${project.clientName}...`);
+
+  const effectiveBranding: OrganizationBranding | undefined = branding
+    ? {
+        ...branding,
+        companyName: project.organizationName || branding.companyName,
+        logo: project.organizationLogo || branding.logo,
+        companySlogan: project.organizationSlogan || branding.companySlogan,
+      }
+    : project.organizationLogo
+    ? ({
+        companyName: project.organizationName || 'Nuestra Organización',
+        companySlogan: project.organizationSlogan,
+        logo: project.organizationLogo,
+        showOurLogoInCover: true,
+        showOurLogoInHeader: true,
+      } as OrganizationBranding)
+    : undefined;
 
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -1085,8 +1165,17 @@ export async function exportProjectDossierPdf(
     if (onProgress) onProgress('Generando portada institucional del proyecto...');
 
     // Draw logos or client header
-    if (docOpts.includeClientLogo !== false) {
-      drawCorporateLogos(doc, marginX, marginX + contentWidth, 18, false);
+    if (docOpts.includeClientLogo !== false || docOpts.includeOurLogo !== false) {
+      drawCorporateLogos(
+        doc,
+        marginX,
+        marginX + contentWidth,
+        18,
+        false,
+        effectiveBranding,
+        docOpts.includeClientLogo !== false ? project.clientLogo : undefined,
+        project.clientName
+      );
     }
 
     // Title banner
@@ -1394,8 +1483,17 @@ export async function exportProjectDossierPdf(
   for (let p = 2; p <= totalPages; p++) {
     doc.setPage(p);
 
-    if (docOpts.includeClientLogo !== false) {
-      drawCorporateLogos(doc, marginX, marginX + contentWidth, 11, true);
+    if (docOpts.includeClientLogo !== false || docOpts.includeOurLogo !== false) {
+      drawCorporateLogos(
+        doc,
+        marginX,
+        marginX + contentWidth,
+        11,
+        true,
+        effectiveBranding,
+        docOpts.includeClientLogo !== false ? project.clientLogo : undefined,
+        project.clientName
+      );
     }
 
     doc.setFont('helvetica', 'bold');

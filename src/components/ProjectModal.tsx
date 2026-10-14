@@ -20,12 +20,15 @@ import {
   ACME_CORP_LOGO,
   GLOBAL_TECH_LOGO,
 } from '../data/sampleProjects';
+import { OrganizationBranding } from '../types/branding';
 
 interface ProjectModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSaveProject: (project: Project) => void;
   existingProject?: Project | null;
+  branding?: OrganizationBranding;
+  onOpenOurLogoModal?: () => void;
 }
 
 export const ProjectModal: React.FC<ProjectModalProps> = ({
@@ -33,11 +36,16 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
   onClose,
   onSaveProject,
   existingProject = null,
+  branding,
+  onOpenOurLogoModal,
 }) => {
   const isEditing = !!existingProject;
 
   const [name, setName] = useState(existingProject?.name || '');
   const [code, setCode] = useState(existingProject?.code || '');
+  const [organizationName, setOrganizationName] = useState(existingProject?.organizationName || '');
+  const [organizationLogo, setOrganizationLogo] = useState(existingProject?.organizationLogo || '');
+  const [organizationSlogan, setOrganizationSlogan] = useState(existingProject?.organizationSlogan || '');
   const [clientName, setClientName] = useState(existingProject?.clientName || '');
   const [clientLogo, setClientLogo] = useState(existingProject?.clientLogo || SAINT_GOBAIN_WEBER_LOGO);
   const [description, setDescription] = useState(existingProject?.description || '');
@@ -74,6 +82,19 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
     reader.readAsDataURL(file);
   };
 
+  const handleOurLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (loadEvent) => {
+      const result = loadEvent.target?.result as string;
+      if (result) {
+        setOrganizationLogo(result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleToggleDocOption = (key: keyof ProjectDocumentOptions) => {
     setDocOptions((prev) => ({
       ...prev,
@@ -96,6 +117,9 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
       id: existingProject ? existingProject.id : `prj-${Date.now()}`,
       name: name.trim(),
       code: code.trim() || `PRJ-${new Date().getFullYear()}-${Math.floor(Math.random() * 900 + 100)}`,
+      organizationName: organizationName.trim() || undefined,
+      organizationLogo: organizationLogo || undefined,
+      organizationSlogan: organizationSlogan.trim() || undefined,
       clientName: clientName.trim(),
       clientLogo,
       description: description.trim(),
@@ -323,111 +347,194 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
               </div>
             )}
 
-            {/* TAB 2: LOGO & BRANDING */}
+            {/* TAB 2: LOGOS & BRANDING */}
             {activeTab === 'logo' && (
-              <div className="space-y-5">
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col sm:flex-row items-center gap-5">
-                  <div className="w-48 h-24 bg-white rounded-lg border border-slate-200 shadow-xs flex items-center justify-center p-2 overflow-hidden flex-shrink-0">
-                    {clientLogo ? (
-                      <img
-                        src={clientLogo}
-                        alt="Logo del cliente"
-                        className="max-w-full max-h-full object-contain"
-                      />
-                    ) : (
-                      <span className="text-xs text-slate-400">Sin logo asignado</span>
+              <div className="space-y-6">
+                {/* 1. Nuestro Logo (Organización Emisora) */}
+                <div className="border border-indigo-200 bg-indigo-50/40 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded bg-indigo-600 text-white flex items-center justify-center font-bold text-xs">
+                        1
+                      </div>
+                      <h4 className="text-xs font-bold text-slate-900">
+                        Nuestro Logo &amp; Identidad (Organización Emisora)
+                      </h4>
+                    </div>
+                    {onOpenOurLogoModal && (
+                      <button
+                        type="button"
+                        onClick={onOpenOurLogoModal}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold text-indigo-700 bg-white hover:bg-indigo-100/70 border border-indigo-200 rounded-lg shadow-2xs transition-colors"
+                      >
+                        <Settings2 className="w-3 h-3" />
+                        <span>Definir Nuestro Logo Global</span>
+                      </button>
                     )}
                   </div>
-                  <div className="flex-1 text-center sm:text-left">
-                    <h4 className="text-xs font-bold text-slate-800">Logo Oficial del Cliente</h4>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      Este logo se insertará automáticamente en la portada de los manuales, en el membrete superior de las páginas y en el dossier consolidado del proyecto.
-                    </p>
-                    <div className="mt-3 flex flex-wrap gap-2 justify-center sm:justify-start">
-                      <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold cursor-pointer shadow-xs transition-colors">
-                        <Upload className="w-3.5 h-3.5" />
-                        <span>Subir Imagen (PNG/SVG/JPG)</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handleFileUpload}
-                          className="hidden"
+
+                  <div className="flex flex-col sm:flex-row items-center gap-4 bg-white p-3 rounded-lg border border-indigo-100">
+                    <div className="w-36 h-20 bg-slate-50 rounded-lg border border-slate-200 p-1 flex items-center justify-center overflow-hidden flex-shrink-0">
+                      {(organizationLogo || branding?.logo || SAINT_GOBAIN_WEBER_LOGO) ? (
+                        <img
+                          src={organizationLogo || branding?.logo || SAINT_GOBAIN_WEBER_LOGO}
+                          alt="Nuestro Logo"
+                          className="max-w-full max-h-full object-contain"
                         />
-                      </label>
-                      {clientLogo && (
-                        <button
-                          type="button"
-                          onClick={() => setClientLogo('')}
-                          className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 rounded-lg text-xs font-medium"
-                        >
-                          Quitar Logo
-                        </button>
+                      ) : (
+                        <span className="text-[10px] text-slate-400">Sin logo</span>
                       )}
+                    </div>
+                    <div className="flex-1 space-y-1.5 text-center sm:text-left">
+                      <span className="text-xs font-bold text-slate-900 block">
+                        {organizationName || branding?.companyName || 'Saint-Gobain Weber'}
+                      </span>
+                      <p className="text-[11px] text-slate-500">
+                        {organizationLogo
+                          ? 'Personalizado para este proyecto.'
+                          : 'Utilizando la identidad corporativa global predeterminada.'}
+                      </p>
+                      <div className="flex flex-wrap gap-2 justify-center sm:justify-start pt-1">
+                        <label className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-semibold cursor-pointer border border-slate-200 transition-colors">
+                          <Upload className="w-3 h-3 text-slate-500" />
+                          <span>Cambiar para este proyecto</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleOurLogoUpload}
+                            className="hidden"
+                          />
+                        </label>
+                        {organizationLogo && (
+                          <button
+                            type="button"
+                            onClick={() => setOrganizationLogo('')}
+                            className="px-2 py-1 text-[11px] text-slate-500 hover:text-slate-800"
+                          >
+                            Usar Global
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                <div>
-                  <h4 className="text-xs font-bold text-slate-700 mb-2">
-                    O selecciona un logo predeterminado:
-                  </h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setClientLogo(SAINT_GOBAIN_WEBER_LOGO);
-                        if (!clientName) setClientName('Saint-Gobain Weber Chile');
-                      }}
-                      className={`p-3 rounded-xl border text-left transition-all ${
-                        clientLogo === SAINT_GOBAIN_WEBER_LOGO
-                          ? 'border-indigo-600 bg-indigo-50/50 ring-2 ring-indigo-500'
-                          : 'border-slate-200 bg-white hover:border-slate-300'
-                      }`}
-                    >
-                      <div className="h-12 flex items-center justify-center bg-white rounded border border-slate-100 p-1 mb-2">
-                        <img src={SAINT_GOBAIN_WEBER_LOGO} alt="Saint-Gobain Weber" className="max-h-10 object-contain" />
-                      </div>
-                      <div className="text-xs font-bold text-slate-800 truncate">Saint-Gobain Weber</div>
-                      <div className="text-[10px] text-slate-500">Corporativo Oficial</div>
-                    </button>
+                {/* 2. Logo Oficial del Cliente */}
+                <div className="border border-slate-200 bg-slate-50 p-4 rounded-xl space-y-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded bg-slate-700 text-white flex items-center justify-center font-bold text-xs">
+                      2
+                    </div>
+                    <h4 className="text-xs font-bold text-slate-900">
+                      Logo Oficial del Cliente (Receptor del Proyecto)
+                    </h4>
+                  </div>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setClientLogo(ACME_CORP_LOGO);
-                        if (!clientName) setClientName('Grupo Industrial ACME');
-                      }}
-                      className={`p-3 rounded-xl border text-left transition-all ${
-                        clientLogo === ACME_CORP_LOGO
-                          ? 'border-indigo-600 bg-indigo-50/50 ring-2 ring-indigo-500'
-                          : 'border-slate-200 bg-white hover:border-slate-300'
-                      }`}
-                    >
-                      <div className="h-12 flex items-center justify-center bg-white rounded border border-slate-100 p-1 mb-2">
-                        <img src={ACME_CORP_LOGO} alt="ACME Corp" className="max-h-10 object-contain" />
+                  <div className="flex flex-col sm:flex-row items-center gap-4 bg-white p-3 rounded-lg border border-slate-200">
+                    <div className="w-36 h-20 bg-slate-50 rounded-lg border border-slate-200 p-1 flex items-center justify-center overflow-hidden flex-shrink-0">
+                      {clientLogo ? (
+                        <img
+                          src={clientLogo}
+                          alt="Logo del cliente"
+                          className="max-w-full max-h-full object-contain"
+                        />
+                      ) : (
+                        <span className="text-xs text-slate-400">Sin logo</span>
+                      )}
+                    </div>
+                    <div className="flex-1 text-center sm:text-left">
+                      <span className="text-xs font-bold text-slate-800 block">
+                        {clientName || 'Cliente del Proyecto'}
+                      </span>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Aparecerá en la portada, en el membrete superior de cada página y en el dossier consolidado.
+                      </p>
+                      <div className="mt-2.5 flex flex-wrap gap-2 justify-center sm:justify-start">
+                        <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold cursor-pointer shadow-xs transition-colors">
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>Subir Imagen (PNG/SVG/JPG)</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleFileUpload}
+                            className="hidden"
+                          />
+                        </label>
+                        {clientLogo && (
+                          <button
+                            type="button"
+                            onClick={() => setClientLogo('')}
+                            className="px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 rounded-lg text-xs font-medium"
+                          >
+                            Quitar Logo
+                          </button>
+                        )}
                       </div>
-                      <div className="text-xs font-bold text-slate-800 truncate">ACME Corp</div>
-                      <div className="text-[10px] text-slate-500">Industrial &amp; Logística</div>
-                    </button>
+                    </div>
+                  </div>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setClientLogo(GLOBAL_TECH_LOGO);
-                        if (!clientName) setClientName('Nexus Global Systems');
-                      }}
-                      className={`p-3 rounded-xl border text-left transition-all ${
-                        clientLogo === GLOBAL_TECH_LOGO
-                          ? 'border-indigo-600 bg-indigo-50/50 ring-2 ring-indigo-500'
-                          : 'border-slate-200 bg-white hover:border-slate-300'
-                      }`}
-                    >
-                      <div className="h-12 flex items-center justify-center bg-white rounded border border-slate-100 p-1 mb-2">
-                        <img src={GLOBAL_TECH_LOGO} alt="Nexus Global" className="max-h-10 object-contain" />
-                      </div>
-                      <div className="text-xs font-bold text-slate-800 truncate">Nexus Global</div>
-                      <div className="text-[10px] text-slate-500">Tecnología &amp; Cloud</div>
-                    </button>
+                  <div>
+                    <h5 className="text-[11px] font-bold text-slate-700 mb-2">
+                      O selecciona un logo de cliente predeterminado:
+                    </h5>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setClientLogo(SAINT_GOBAIN_WEBER_LOGO);
+                          if (!clientName) setClientName('Saint-Gobain Weber Chile');
+                        }}
+                        className={`p-2.5 rounded-xl border text-left transition-all ${
+                          clientLogo === SAINT_GOBAIN_WEBER_LOGO
+                            ? 'border-indigo-600 bg-indigo-50/50 ring-2 ring-indigo-500'
+                            : 'border-slate-200 bg-white hover:border-slate-300'
+                        }`}
+                      >
+                        <div className="h-10 flex items-center justify-center bg-white rounded border border-slate-100 p-1 mb-1.5">
+                          <img src={SAINT_GOBAIN_WEBER_LOGO} alt="Saint-Gobain Weber" className="max-h-8 object-contain" />
+                        </div>
+                        <div className="text-[11px] font-bold text-slate-800 truncate">Saint-Gobain Weber</div>
+                        <div className="text-[10px] text-slate-500">Corporativo Oficial</div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setClientLogo(ACME_CORP_LOGO);
+                          if (!clientName) setClientName('Grupo Industrial ACME');
+                        }}
+                        className={`p-2.5 rounded-xl border text-left transition-all ${
+                          clientLogo === ACME_CORP_LOGO
+                            ? 'border-indigo-600 bg-indigo-50/50 ring-2 ring-indigo-500'
+                            : 'border-slate-200 bg-white hover:border-slate-300'
+                        }`}
+                      >
+                        <div className="h-10 flex items-center justify-center bg-white rounded border border-slate-100 p-1 mb-1.5">
+                          <img src={ACME_CORP_LOGO} alt="ACME Corp" className="max-h-8 object-contain" />
+                        </div>
+                        <div className="text-[11px] font-bold text-slate-800 truncate">ACME Corp</div>
+                        <div className="text-[10px] text-slate-500">Industrial &amp; Logística</div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setClientLogo(GLOBAL_TECH_LOGO);
+                          if (!clientName) setClientName('Nexus Global Systems');
+                        }}
+                        className={`p-2.5 rounded-xl border text-left transition-all ${
+                          clientLogo === GLOBAL_TECH_LOGO
+                            ? 'border-indigo-600 bg-indigo-50/50 ring-2 ring-indigo-500'
+                            : 'border-slate-200 bg-white hover:border-slate-300'
+                        }`}
+                      >
+                        <div className="h-10 flex items-center justify-center bg-white rounded border border-slate-100 p-1 mb-1.5">
+                          <img src={GLOBAL_TECH_LOGO} alt="Nexus Global" className="max-h-8 object-contain" />
+                        </div>
+                        <div className="text-[11px] font-bold text-slate-800 truncate">Nexus Global</div>
+                        <div className="text-[10px] text-slate-500">Tecnología &amp; Cloud</div>
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -465,6 +572,12 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {[
+                    {
+                      key: 'includeOurLogo' as keyof ProjectDocumentOptions,
+                      title: 'Nuestro Logo (Organización Emisora) en Documentos',
+                      desc: 'Muestra el logotipo de nuestra organización en cada página y en la carátula.',
+                      badge: 'Identidad Emisora',
+                    },
                     {
                       key: 'includeClientLogo' as keyof ProjectDocumentOptions,
                       title: 'Logo del Cliente en Portada y Encabezados',

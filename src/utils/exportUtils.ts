@@ -1,5 +1,6 @@
 import { UserManual, VisualAnnotation, getActionTypeSpanish } from '../types/manual';
 import { Project } from '../types/project';
+import { OrganizationBranding } from '../types/branding';
 import { jsPDF } from 'jspdf';
 import { exportToPdfWithTemplateStructure, exportProjectDossierPdf } from './pdfTemplateGenerator';
 export { exportToPdfWithTemplateStructure, exportProjectDossierPdf };
@@ -1054,9 +1055,10 @@ export async function exportToPdf(manual: UserManual, onProgress?: (msg: string)
 export async function exportToDocx(
   manual: UserManual,
   onProgress?: (msg: string) => void,
-  project?: Project
+  project?: Project,
+  branding?: OrganizationBranding
 ): Promise<void> {
-  return exportToDocxWithTemplateStructure(manual, onProgress, project);
+  return exportToDocxWithTemplateStructure(manual, onProgress, project, branding);
 }
 
 /**

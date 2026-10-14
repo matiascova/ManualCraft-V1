@@ -18,6 +18,7 @@ import {
   Check,
   Building2,
   FolderKanban,
+  Settings,
 } from 'lucide-react';
 import {
   exportToInteractiveHtml,
@@ -29,6 +30,7 @@ import {
   exportToDocx,
   exportProjectDossierDocx,
 } from '../utils/exportUtils';
+import { OrganizationBranding } from '../types/branding';
 
 interface ExportModalProps {
   manual: UserManual;
@@ -36,6 +38,8 @@ interface ExportModalProps {
   onClose: () => void;
   project?: Project;
   manualsInProject?: UserManual[];
+  branding?: OrganizationBranding;
+  onOpenOurLogoModal?: () => void;
 }
 
 export const ExportModal: React.FC<ExportModalProps> = ({
@@ -44,6 +48,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   onClose,
   project,
   manualsInProject = [],
+  branding,
+  onOpenOurLogoModal,
 }) => {
   const [isGeneratingTemplatePdf, setIsGeneratingTemplatePdf] = useState(false);
   const [templatePdfStatus, setTemplatePdfStatus] = useState<string>('');
@@ -85,9 +91,14 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     setTemplatePdfSuccess(false);
 
     try {
-      await exportToPdfWithTemplateStructure(manual, (msg) => {
-        setTemplatePdfStatus(msg);
-      });
+      await exportToPdfWithTemplateStructure(
+        manual,
+        (msg) => {
+          setTemplatePdfStatus(msg);
+        },
+        project,
+        branding
+      );
       setTemplatePdfSuccess(true);
       setTemplatePdfStatus('¡PDF con estructura de plantilla generado y descargado!');
       setTimeout(() => {
@@ -142,9 +153,14 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
     try {
       const listToExport = manualsInProject.length > 0 ? manualsInProject : [manual];
-      await exportProjectDossierPdf(project, listToExport, (msg) => {
-        setDossierPdfStatus(msg);
-      });
+      await exportProjectDossierPdf(
+        project,
+        listToExport,
+        (msg) => {
+          setDossierPdfStatus(msg);
+        },
+        branding
+      );
       setDossierPdfSuccess(true);
       setDossierPdfStatus('¡Dossier integral del proyecto generado y descargado!');
       setTimeout(() => {
@@ -175,7 +191,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         (msg) => {
           setDocxStatus(msg);
         },
-        project
+        project,
+        branding
       );
       setDocxSuccess(true);
       setDocxStatus('¡Documento Word (.docx) corporativo generado y descargado con éxito!');
@@ -204,9 +221,14 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
     try {
       const listToExport = manualsInProject.length > 0 ? manualsInProject : [manual];
-      await exportProjectDossierDocx(project, listToExport, (msg) => {
-        setDossierDocxStatus(msg);
-      });
+      await exportProjectDossierDocx(
+        project,
+        listToExport,
+        (msg) => {
+          setDossierDocxStatus(msg);
+        },
+        branding
+      );
       setDossierDocxSuccess(true);
       setDossierDocxStatus('¡Dossier Word (.docx) consolidado generado con éxito!');
       setTimeout(() => {
@@ -265,6 +287,65 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             <span className="flex-1">{errorMessage}</span>
           </div>
         )}
+
+        {/* Brand & Logos Identity Header */}
+        <div className="mx-6 mt-4 p-3.5 bg-gradient-to-r from-slate-50 via-indigo-50/30 to-slate-50 border border-slate-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="flex flex-wrap items-center gap-4">
+            {/* Nuestro Logo */}
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
+                🏢 Nuestro Logo:
+              </span>
+              <div className="w-16 h-8 bg-white border border-slate-200 rounded-lg p-1 flex items-center justify-center overflow-hidden shadow-2xs">
+                {branding?.logo ? (
+                  <img
+                    src={branding.logo}
+                    alt={branding.companyName || 'Nuestro Logo'}
+                    className="max-w-full max-h-full object-contain"
+                  />
+                ) : (
+                  <span className="text-[9px] text-slate-400">Sin logo</span>
+                )}
+              </div>
+              <span className="font-bold text-slate-800">
+                {branding?.companyName || 'Saint-Gobain Weber'}
+              </span>
+            </div>
+
+            {/* Logo Cliente */}
+            {project?.clientName && (
+              <div className="flex items-center gap-2 sm:pl-3 sm:border-l border-slate-200">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
+                  👥 Cliente:
+                </span>
+                <div className="w-16 h-8 bg-white border border-slate-200 rounded-lg p-1 flex items-center justify-center overflow-hidden shadow-2xs">
+                  {project.clientLogo ? (
+                    <img
+                      src={project.clientLogo}
+                      alt={project.clientName}
+                      className="max-w-full max-h-full object-contain"
+                    />
+                  ) : (
+                    <span className="text-[9px] text-slate-400">Sin logo</span>
+                  )}
+                </div>
+                <span className="font-bold text-slate-800">{project.clientName}</span>
+              </div>
+            )}
+          </div>
+
+          {onOpenOurLogoModal && (
+            <button
+              type="button"
+              onClick={onOpenOurLogoModal}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-indigo-50/80 text-indigo-700 hover:text-indigo-800 font-bold border border-slate-200 hover:border-indigo-300 rounded-lg text-xs shadow-2xs transition-colors self-start sm:self-auto"
+              title="Cambiar o definir el logotipo de nuestra empresa"
+            >
+              <Settings className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Configurar Nuestro Logo</span>
+            </button>
+          )}
+        </div>
 
         {/* Options Grid */}
         <div className="p-6 overflow-y-auto space-y-4 flex-1">

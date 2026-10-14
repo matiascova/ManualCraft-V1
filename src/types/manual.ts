@@ -98,6 +98,7 @@ export interface UserManual {
   updatedAt: string;
   author?: string;
   version?: string;
+  code?: string;
   category?: string;
 }
 

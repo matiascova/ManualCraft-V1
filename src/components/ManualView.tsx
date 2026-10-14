@@ -32,8 +32,10 @@ import {
   ArrowLeft,
   Building2,
   FolderKanban,
+  Settings,
 } from 'lucide-react';
 import { Project } from '../types/project';
+import { OrganizationBranding } from '../types/branding';
 
 interface ManualViewProps {
   manual: UserManual;
@@ -46,6 +48,8 @@ interface ManualViewProps {
   onAnnotateStep: (step: ManualStep) => void;
   onAddNewStep: () => void;
   onRegenerateRecording?: (manual: UserManual) => void;
+  branding?: OrganizationBranding;
+  onOpenOurLogoModal?: () => void;
 }
 
 export const ManualView: React.FC<ManualViewProps> = ({
@@ -59,6 +63,8 @@ export const ManualView: React.FC<ManualViewProps> = ({
   onAnnotateStep,
   onAddNewStep,
   onRegenerateRecording,
+  branding,
+  onOpenOurLogoModal,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeStepAnchor, setActiveStepAnchor] = useState<string | null>(null);
@@ -147,20 +153,45 @@ export const ManualView: React.FC<ManualViewProps> = ({
               </button>
             )}
             <div className="h-4 w-px bg-slate-200 hidden sm:block" />
-            <div className="flex items-center gap-2 text-xs text-slate-600">
-              {project.clientLogo && (
-                <div className="w-6 h-6 rounded bg-slate-50 border border-slate-200 p-0.5 flex items-center justify-center overflow-hidden flex-shrink-0">
-                  <img
-                    src={project.clientLogo}
-                    alt={project.clientName}
-                    className="max-w-full max-h-full object-contain"
-                  />
-                </div>
-              )}
-              <span className="font-semibold text-slate-400">Cliente:</span>
-              <span className="font-bold text-slate-900">{project.clientName}</span>
+            <div className="flex flex-wrap items-center gap-2.5 text-xs text-slate-600">
+              {/* Nuestro Logo */}
+              <div
+                onClick={onOpenOurLogoModal}
+                className="flex items-center gap-1.5 cursor-pointer hover:opacity-80 transition-opacity"
+                title="Definir o cambiar Nuestro Logo"
+              >
+                {(project.organizationLogo || branding?.logo) && (
+                  <div className="w-6 h-6 rounded bg-slate-50 border border-slate-200 p-0.5 flex items-center justify-center overflow-hidden flex-shrink-0">
+                    <img
+                      src={project.organizationLogo || branding?.logo}
+                      alt="Nuestro Logo"
+                      className="max-w-full max-h-full object-contain"
+                    />
+                  </div>
+                )}
+                <span className="font-bold text-slate-800">
+                  {project.organizationName || branding?.companyName || 'Saint-Gobain Weber'}
+                </span>
+              </div>
+
               <span className="text-slate-300">/</span>
-              <span className="font-semibold text-indigo-700">{project.name}</span>
+
+              {/* Cliente */}
+              <div className="flex items-center gap-1.5">
+                {project.clientLogo && (
+                  <div className="w-6 h-6 rounded bg-slate-50 border border-slate-200 p-0.5 flex items-center justify-center overflow-hidden flex-shrink-0">
+                    <img
+                      src={project.clientLogo}
+                      alt={project.clientName}
+                      className="max-w-full max-h-full object-contain"
+                    />
+                  </div>
+                )}
+                <span className="font-semibold text-slate-400">Cliente:</span>
+                <span className="font-bold text-slate-900">{project.clientName}</span>
+                <span className="text-slate-300">/</span>
+                <span className="font-semibold text-indigo-700">{project.name}</span>
+              </div>
             </div>
           </div>
           <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
@@ -300,6 +331,122 @@ export const ManualView: React.FC<ManualViewProps> = ({
 
         {/* Center / Right: Main Document Stream */}
         <main className="lg:col-span-9 flex flex-col gap-8">
+          {/* Official Corporate Template Header Showcase (Matching Word & PDF) */}
+          <div className="bg-white rounded-2xl border-2 border-slate-200 overflow-hidden shadow-sm">
+            {/* Top Logo Bar */}
+            <div className="p-4 sm:p-5 bg-slate-50/70 border-b border-slate-200 flex items-center justify-between gap-4">
+              {/* Left: Nuestro Logo */}
+              <div className="flex items-center gap-3">
+                <div className="w-36 h-14 bg-white border border-slate-200 rounded-lg p-1.5 flex items-center justify-center overflow-hidden shadow-2xs group relative">
+                  {(project?.organizationLogo || branding?.logo) ? (
+                    <img
+                      src={project?.organizationLogo || branding?.logo}
+                      alt={project?.organizationName || branding?.companyName || 'Nuestro Logo'}
+                      className="max-w-full max-h-full object-contain"
+                    />
+                  ) : (
+                    <span className="text-xs text-slate-400 font-semibold">weber Saint-Gobain</span>
+                  )}
+                  {onOpenOurLogoModal && (
+                    <button
+                      type="button"
+                      onClick={onOpenOurLogoModal}
+                      title="Definir Nuestro Logo"
+                      className="absolute inset-0 bg-indigo-950/75 text-white text-[10px] font-bold opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1 backdrop-blur-2xs"
+                    >
+                      <Settings className="w-3 h-3" />
+                      <span>Cambiar</span>
+                    </button>
+                  )}
+                </div>
+                <div className="hidden sm:block">
+                  <span className="text-xs font-bold text-slate-900 block leading-tight">
+                    {project?.organizationName || branding?.companyName || 'Saint-Gobain Weber'}
+                  </span>
+                  <span className="text-[10px] text-slate-500 block max-w-xs truncate">
+                    {project?.organizationSlogan || branding?.companySlogan || 'Identidad Corporativa Oficial'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Right: Client Logo / HSBT */}
+              <div className="flex items-center gap-3">
+                <div className="text-right hidden sm:block">
+                  <span className="text-xs font-bold text-slate-900 block leading-tight">
+                    {project?.clientName || 'Cliente SAP'}
+                  </span>
+                  <span className="text-[10px] text-slate-500 block">
+                    {branding?.secondarySlogan || 'COMPROMISO & CALIDAD'}
+                  </span>
+                </div>
+                <div className="w-32 h-14 bg-white border border-slate-200 rounded-lg p-1.5 flex items-center justify-center overflow-hidden shadow-2xs">
+                  {project?.clientLogo ? (
+                    <img
+                      src={project.clientLogo}
+                      alt={project.clientName}
+                      className="max-w-full max-h-full object-contain"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-[#183B6C] rounded flex flex-col items-center justify-center text-white">
+                      <span className="text-xs font-bold leading-tight">
+                        {branding?.secondaryName || 'HSBT'}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Navy Blue Banner matching Word & PDF Cover */}
+            <div className="bg-[#183B6C] text-white p-5 sm:p-7">
+              <span className="text-[10px] uppercase font-bold tracking-widest text-indigo-200 bg-white/10 px-2.5 py-0.5 rounded-full inline-block mb-2">
+                MANUAL DE USUARIO SAP · PROCEDIMIENTO OFICIAL
+              </span>
+              <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                {manual.title}
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-200 mt-1 max-w-3xl leading-relaxed">
+                {manual.subtitle || manual.overview}
+              </p>
+            </div>
+
+            {/* 4-column Ficha Técnica */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-y sm:divide-y-0 divide-slate-200 bg-slate-50 text-xs border-t border-slate-200">
+              <div className="p-3">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                  Cliente Destinatario
+                </span>
+                <span className="font-bold text-slate-800 truncate block mt-0.5">
+                  {project?.clientName || 'Saint-Gobain Weber'}
+                </span>
+              </div>
+              <div className="p-3">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                  Código de Documento
+                </span>
+                <span className="font-bold text-slate-800 font-mono block mt-0.5">
+                  {manual.code || project?.code || 'MAN-SAP-2026'}
+                </span>
+              </div>
+              <div className="p-3">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                  Versión / Estado
+                </span>
+                <span className="font-bold text-slate-800 block mt-0.5">
+                  v{manual.version || '1.0'} · {project?.status || 'Aprobado'}
+                </span>
+              </div>
+              <div className="p-3">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                  Autor Emisor
+                </span>
+                <span className="font-bold text-slate-800 truncate block mt-0.5">
+                  {manual.author || project?.author || branding?.companyName || 'Consultoría de Procesos'}
+                </span>
+              </div>
+            </div>
+          </div>
+
           {/* Overview Hero Card */}
           <section id="resumen-general" className="bg-white rounded-2xl p-6 sm:p-8 border border-slate-200 shadow-xs">
             <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500 mb-4 pb-4 border-b border-slate-100">
