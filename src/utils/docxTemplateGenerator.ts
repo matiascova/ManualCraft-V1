@@ -84,13 +84,15 @@ async function generateCorporateBrandHeaderPng(
   return new Promise(async (resolve) => {
     try {
       const canvas = document.createElement('canvas');
-      canvas.width = 1200;
-      canvas.height = 160;
+      canvas.width = 1600;
+      canvas.height = 420;
       const ctx = canvas.getContext('2d');
       if (!ctx) {
         resolve(null);
         return;
       }
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
 
       // Background pure white
       ctx.fillStyle = '#FFFFFF';
@@ -103,15 +105,13 @@ async function generateCorporateBrandHeaderPng(
       let ourImgLoaded = false;
       if (ourLogoSrc) {
         const ourImg = await loadImageElement(ourLogoSrc);
-        if (ourImg && ourImg.width > 0) {
-          const maxW = 440;
-          const maxH = 120;
-          let drawW = ourImg.width;
-          let drawH = ourImg.height;
-          const ratio = Math.min(maxW / drawW, maxH / drawH, 1);
-          drawW *= ratio;
-          drawH *= ratio;
-          const drawX = 30;
+        if (ourImg && ourImg.width > 0 && ourImg.height > 0) {
+          const maxW = 640;
+          const maxH = 360;
+          const ratio = Math.min(maxW / ourImg.width, maxH / ourImg.height);
+          const drawW = ourImg.width * ratio;
+          const drawH = ourImg.height * ratio;
+          const drawX = 40;
           const drawY = (canvas.height - drawH) / 2;
           ctx.drawImage(ourImg, drawX, drawY, drawW, drawH);
           ourImgLoaded = true;
@@ -119,33 +119,33 @@ async function generateCorporateBrandHeaderPng(
       }
 
       if (!ourImgLoaded) {
-        // Fallback: draw crisp vector Weber / Company
-        const startX = 30;
-        const startY = 30;
+        // Fallback: draw crisp vector Weber / Company scaled up
+        const startX = 40;
+        const startY = (canvas.height - 180) / 2;
         ctx.fillStyle = '#FEDB00'; // Yellow
         ctx.beginPath();
-        ctx.moveTo(startX, startY + 70);
-        ctx.lineTo(startX + 45, startY);
-        ctx.lineTo(startX + 90, startY + 70);
+        ctx.moveTo(startX, startY + 140);
+        ctx.lineTo(startX + 90, startY);
+        ctx.lineTo(startX + 180, startY + 140);
         ctx.closePath();
         ctx.fill();
 
         ctx.fillStyle = '#1E293B';
-        ctx.fillRect(startX + 25, startY + 28, 40, 42);
+        ctx.fillRect(startX + 50, startY + 56, 80, 84);
 
         ctx.fillStyle = '#0F172A';
-        ctx.font = 'bold 50px Arial, sans-serif';
+        ctx.font = 'bold 96px Arial, sans-serif';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'top';
         const brandName = config.ourCompanyName || 'weber';
-        ctx.fillText(brandName.toLowerCase(), startX + 110, startY + 5);
+        ctx.fillText(brandName.toLowerCase(), startX + 210, startY + 10);
 
         ctx.fillStyle = '#475569';
-        ctx.font = 'bold 20px Arial, sans-serif';
+        ctx.font = 'bold 38px Arial, sans-serif';
         ctx.fillText(
           (config.ourSlogan || 'SAINT-GOBAIN CHILE').toUpperCase(),
-          startX + 110,
-          startY + 58
+          startX + 210,
+          startY + 115
         );
       }
 
@@ -153,15 +153,13 @@ async function generateCorporateBrandHeaderPng(
       let rightSideDrawn = false;
       if (clientLogoSrc) {
         const clientImg = await loadImageElement(clientLogoSrc);
-        if (clientImg && clientImg.width > 0) {
-          const maxW = 380;
-          const maxH = 110;
-          let drawW = clientImg.width;
-          let drawH = clientImg.height;
-          const ratio = Math.min(maxW / drawW, maxH / drawH, 1);
-          drawW *= ratio;
-          drawH *= ratio;
-          const drawX = canvas.width - drawW - 30;
+        if (clientImg && clientImg.width > 0 && clientImg.height > 0) {
+          const maxW = 640;
+          const maxH = 360;
+          const ratio = Math.min(maxW / clientImg.width, maxH / clientImg.height);
+          const drawW = clientImg.width * ratio;
+          const drawH = clientImg.height * ratio;
+          const drawX = canvas.width - drawW - 40;
           const drawY = (canvas.height - drawH) / 2;
           ctx.drawImage(clientImg, drawX, drawY, drawW, drawH);
           rightSideDrawn = true;
@@ -169,17 +167,17 @@ async function generateCorporateBrandHeaderPng(
       }
 
       if (!rightSideDrawn) {
-        // Draw HSBT / Partner Badge
-        const hsbtW = 180;
-        const hsbtH = 80;
-        const hsbtX = canvas.width - hsbtW - 30;
-        const hsbtY = 35;
+        // Draw HSBT / Partner Badge scaled up proportionally
+        const hsbtW = 360;
+        const hsbtH = 160;
+        const hsbtX = canvas.width - hsbtW - 40;
+        const hsbtY = (canvas.height - hsbtH - 30) / 2;
 
         ctx.fillStyle = '#183B6C'; // Corporate Navy
         ctx.fillRect(hsbtX, hsbtY, hsbtW, hsbtH);
 
         ctx.strokeStyle = '#2563EB';
-        ctx.lineWidth = 3;
+        ctx.lineWidth = 5;
         ctx.beginPath();
         ctx.moveTo(hsbtX + hsbtW * 0.33, hsbtY);
         ctx.lineTo(hsbtX + hsbtW * 0.33, hsbtY + hsbtH);
@@ -188,18 +186,18 @@ async function generateCorporateBrandHeaderPng(
         ctx.stroke();
 
         ctx.fillStyle = '#FFFFFF';
-        ctx.font = 'bold 30px Arial, sans-serif';
+        ctx.font = 'bold 58px Arial, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(config.secondaryName || 'HSBT', hsbtX + hsbtW / 2, hsbtY + hsbtH / 2);
 
         ctx.fillStyle = '#475569';
-        ctx.font = '13px Arial, sans-serif';
+        ctx.font = 'bold 24px Arial, sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText(
           config.secondarySlogan || 'COMPROMISO & CALIDAD',
           hsbtX + hsbtW / 2,
-          hsbtY + hsbtH + 24
+          hsbtY + hsbtH + 34
         );
       }
 
@@ -348,7 +346,7 @@ export async function exportToDocxWithTemplateStructure(
               data: brandHeaderPng,
               transformation: {
                 width: 580,
-                height: 77,
+                height: 155,
               },
             }),
           ],
@@ -1757,7 +1755,7 @@ export async function exportProjectDossierDocx(
           new ImageRun({
             type: 'png',
             data: brandHeaderPng,
-            transformation: { width: 580, height: 77 },
+            transformation: { width: 580, height: 155 },
           }),
         ],
       })

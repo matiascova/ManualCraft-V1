@@ -4,9 +4,72 @@ import { Project } from '../types/project';
 import { OrganizationBranding } from '../types/branding';
 import { renderAnnotatedScreenshotForPdf } from './exportUtils';
 
+export interface LogoDim {
+  width: number;
+  height: number;
+  aspect: number;
+}
+
+/**
+ * Accurately measures natural image dimensions in browser to preserve aspect ratio
+ */
+export function getImageDimensions(src?: string): Promise<LogoDim | null> {
+  if (!src || typeof src !== 'string' || src.length < 10) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    try {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+          resolve({
+            width: img.naturalWidth,
+            height: img.naturalHeight,
+            aspect: img.naturalWidth / img.naturalHeight,
+          });
+        } else {
+          resolve(null);
+        }
+      };
+      img.onerror = () => resolve(null);
+      img.src = src;
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+/**
+ * Synchronous fallback: parses PNG header to get natural aspect ratio
+ */
+function getAspectFromBase64Sync(dataUrl?: string): number | null {
+  if (!dataUrl || typeof dataUrl !== 'string') return null;
+  const commaIdx = dataUrl.indexOf(',');
+  const base64 = commaIdx >= 0 ? dataUrl.slice(commaIdx + 1) : dataUrl;
+  if (base64.length < 40) return null;
+  try {
+    const bin = atob(base64.slice(0, 100));
+    // PNG check: 0x89 0x50 0x4E 0x47
+    if (bin.charCodeAt(0) === 0x89 && bin.charCodeAt(1) === 0x50) {
+      const w =
+        (bin.charCodeAt(16) << 24) |
+        (bin.charCodeAt(17) << 16) |
+        (bin.charCodeAt(18) << 8) |
+        bin.charCodeAt(19);
+      const h =
+        (bin.charCodeAt(20) << 24) |
+        (bin.charCodeAt(21) << 16) |
+        (bin.charCodeAt(22) << 8) |
+        bin.charCodeAt(23);
+      if (w > 0 && h > 0) return w / h;
+    }
+  } catch {}
+  return null;
+}
+
 /**
  * Draws high-precision vector or bitmap corporate logos matching the official template:
- * - Nuestro Logo (Organización Emisora / Weber) on the left
+ * - Preserves exact aspect ratio for bitmap logos (no squashing or distortion)
+ * - Nuestro Logo (Organización Emisora / Weber / HSBT) on the left
  * - Logo del Cliente (o Sello HSBT Compromiso & Calidad) on the right
  */
 function drawCorporateLogos(
@@ -17,7 +80,9 @@ function drawCorporateLogos(
   isMini = false,
   branding?: OrganizationBranding,
   clientLogo?: string,
-  clientName?: string
+  clientName?: string,
+  ourLogoDim?: LogoDim | null,
+  clientLogoDim?: LogoDim | null
 ) {
   const scale = isMini ? 0.65 : 1;
   const ourLogoUrl = branding?.logo;
@@ -26,11 +91,36 @@ function drawCorporateLogos(
 
   // 1. LEFT SIDE: NUESTRO LOGO (Organización Emisora)
   let ourDrawn = false;
-  if (ourLogoUrl && ourLogoUrl.startsWith('data:image')) {
+  if (ourLogoUrl && typeof ourLogoUrl === 'string' && ourLogoUrl.length > 10) {
     try {
-      const imgW = isMini ? 24 : 36;
-      const imgH = isMini ? 8 : 12;
-      doc.addImage(ourLogoUrl, leftX, y - (isMini ? 1.5 : 2.5), imgW, imgH, undefined, 'FAST');
+      const maxW = isMini ? 26 : 52;
+      const maxH = isMini ? 8 : 22;
+
+      let aspect = ourLogoDim?.aspect;
+      if (!aspect || isNaN(aspect) || aspect <= 0) {
+        try {
+          const props = (doc as any).getImageProperties?.(ourLogoUrl);
+          if (props && props.width > 0 && props.height > 0) {
+            aspect = props.width / props.height;
+          }
+        } catch {}
+      }
+      if (!aspect || isNaN(aspect) || aspect <= 0) {
+        aspect = getAspectFromBase64Sync(ourLogoUrl) || 2.5;
+      }
+
+      let renderW: number;
+      let renderH: number;
+      if (aspect >= maxW / maxH) {
+        renderW = maxW;
+        renderH = maxW / aspect;
+      } else {
+        renderH = maxH;
+        renderW = maxH * aspect;
+      }
+
+      const drawY = y + (maxH - renderH) / 2;
+      doc.addImage(ourLogoUrl, leftX, drawY, renderW, renderH, undefined, 'FAST');
       ourDrawn = true;
     } catch {
       ourDrawn = false;
@@ -66,11 +156,37 @@ function drawCorporateLogos(
 
   // 2. RIGHT SIDE: LOGO DEL CLIENTE / SELLO HSBT
   let rightDrawn = false;
-  if (clientLogo && clientLogo.startsWith('data:image')) {
+  if (clientLogo && typeof clientLogo === 'string' && clientLogo.length > 10) {
     try {
-      const imgW = isMini ? 22 : 32;
-      const imgH = isMini ? 7.5 : 11;
-      doc.addImage(clientLogo, rightX - imgW, y - (isMini ? 1.5 : 2.5), imgW, imgH, undefined, 'FAST');
+      const maxW = isMini ? 26 : 52;
+      const maxH = isMini ? 8 : 22;
+
+      let aspect = clientLogoDim?.aspect;
+      if (!aspect || isNaN(aspect) || aspect <= 0) {
+        try {
+          const props = (doc as any).getImageProperties?.(clientLogo);
+          if (props && props.width > 0 && props.height > 0) {
+            aspect = props.width / props.height;
+          }
+        } catch {}
+      }
+      if (!aspect || isNaN(aspect) || aspect <= 0) {
+        aspect = getAspectFromBase64Sync(clientLogo) || 2.5;
+      }
+
+      let renderW: number;
+      let renderH: number;
+      if (aspect >= maxW / maxH) {
+        renderW = maxW;
+        renderH = maxW / aspect;
+      } else {
+        renderH = maxH;
+        renderW = maxH * aspect;
+      }
+
+      const drawX = rightX - renderW;
+      const drawY = y + (maxH - renderH) / 2;
+      doc.addImage(clientLogo, drawX, drawY, renderW, renderH, undefined, 'FAST');
       rightDrawn = true;
     } catch {
       rightDrawn = false;
@@ -135,6 +251,12 @@ export async function exportToPdfWithTemplateStructure(
   const effectiveClientLogo = project?.clientLogo;
   const effectiveClientName = project?.clientName;
 
+  // Measure natural dimensions of logos to eliminate any stretching or distortion
+  const [ourLogoDim, clientLogoDim] = await Promise.all([
+    getImageDimensions(effectiveBranding?.logo),
+    getImageDimensions(effectiveClientLogo),
+  ]);
+
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -162,11 +284,13 @@ export async function exportToPdfWithTemplateStructure(
     doc,
     marginX,
     marginX + contentWidth,
-    18,
+    16,
     false,
     effectiveBranding,
     effectiveClientLogo,
-    effectiveClientName
+    effectiveClientName,
+    ourLogoDim,
+    clientLogoDim
   );
 
   // Large Navy Blue Banner
@@ -1062,11 +1186,13 @@ export async function exportToPdfWithTemplateStructure(
       doc,
       marginX,
       marginX + contentWidth,
-      11,
+      10,
       true,
       effectiveBranding,
       effectiveClientLogo,
-      effectiveClientName
+      effectiveClientName,
+      ourLogoDim,
+      clientLogoDim
     );
 
     doc.setFont('helvetica', 'bold');
@@ -1143,6 +1269,15 @@ export async function exportProjectDossierPdf(
       } as OrganizationBranding)
     : undefined;
 
+  const docOpts = project.documentOptions || {};
+  const effectiveClientLogo = docOpts.includeClientLogo !== false ? project.clientLogo : undefined;
+
+  // Measure natural dimensions of logos to eliminate any stretching or distortion
+  const [ourLogoDim, clientLogoDim] = await Promise.all([
+    getImageDimensions(effectiveBranding?.logo),
+    getImageDimensions(effectiveClientLogo),
+  ]);
+
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -1156,7 +1291,6 @@ export async function exportProjectDossierPdf(
   const maxY = pageHeight - 20;
 
   const navyColor: [number, number, number] = [24, 59, 108]; // #183B6C
-  const docOpts = project.documentOptions || {};
 
   // =========================================================================
   // --- PÁGINA 1: PORTADA OFICIAL DEL PROYECTO ---
@@ -1170,11 +1304,13 @@ export async function exportProjectDossierPdf(
         doc,
         marginX,
         marginX + contentWidth,
-        18,
+        16,
         false,
         effectiveBranding,
-        docOpts.includeClientLogo !== false ? project.clientLogo : undefined,
-        project.clientName
+        effectiveClientLogo,
+        project.clientName,
+        ourLogoDim,
+        clientLogoDim
       );
     }
 
@@ -1488,11 +1624,13 @@ export async function exportProjectDossierPdf(
         doc,
         marginX,
         marginX + contentWidth,
-        11,
+        10,
         true,
         effectiveBranding,
-        docOpts.includeClientLogo !== false ? project.clientLogo : undefined,
-        project.clientName
+        effectiveClientLogo,
+        project.clientName,
+        ourLogoDim,
+        clientLogoDim
       );
     }
 

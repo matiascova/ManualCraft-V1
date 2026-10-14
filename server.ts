@@ -1,7 +1,9 @@
-import express, { Request, Response } from 'express';
+import express from 'express';
+import type { Request, Response } from 'express';
 import compression from 'compression';
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type } from '@google/genai';
 
@@ -24,7 +26,7 @@ app.use(
       }
       return compression.filter(req, res);
     },
-  })
+  }) as any
 );
 
 // Performance & Security headers
@@ -489,18 +491,14 @@ Responde en formato JSON con la versión mejorada del paso.`;
 
 // Serve frontend with Vite in development or static in production
 async function startServer() {
-  if (process.env.NODE_ENV !== 'production') {
-    const { createServer: createViteServer } = await import('vite');
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
-  } else {
+  const distDir = path.join(__dirname, 'dist');
+  const hasDist = fs.existsSync(distDir);
+
+  if (process.env.NODE_ENV === 'production' || (hasDist && process.env.NODE_ENV !== 'development')) {
     // Highly optimized static asset serving for production
     app.use(
       '/assets',
-      express.static(path.join(__dirname, 'dist', 'assets'), {
+      express.static(path.join(distDir, 'assets'), {
         maxAge: '1y',
         immutable: true,
         etag: true,
@@ -508,7 +506,7 @@ async function startServer() {
     );
 
     app.use(
-      express.static(path.join(__dirname, 'dist'), {
+      express.static(distDir, {
         maxAge: '1h',
         etag: true,
         setHeaders: (res, filePath) => {
@@ -522,8 +520,15 @@ async function startServer() {
 
     app.get('*', (req: Request, res: Response) => {
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-      res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+      res.sendFile(path.join(distDir, 'index.html'));
     });
+  } else {
+    const { createServer: createViteServer } = await import('vite');
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: 'spa',
+    });
+    app.use(vite.middlewares);
   }
 
   const server = app.listen(Number(PORT), '0.0.0.0', () => {
