@@ -1,4 +1,5 @@
 import express, { Request, Response } from 'express';
+import compression from 'compression';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -12,7 +13,28 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// High limit for base64 images extracted from screenshots/videos
+// High performance Gzip/Deflate compression for all responses
+app.use(
+  compression({
+    level: 6,
+    threshold: 1024,
+    filter: (req, res) => {
+      if (req.headers['x-no-compression']) {
+        return false;
+      }
+      return compression.filter(req, res);
+    },
+  })
+);
+
+// Performance & Security headers
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-DNS-Prefetch-Control', 'on');
+  next();
+});
+
+// Limit body parsing to prevent memory exhaustion from oversized requests
 app.use(express.json({ limit: '60mb' }));
 app.use(express.urlencoded({ extended: true, limit: '60mb' }));
 
@@ -475,15 +497,50 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    app.use(express.static(path.join(__dirname, 'dist')));
+    // Highly optimized static asset serving for production
+    app.use(
+      '/assets',
+      express.static(path.join(__dirname, 'dist', 'assets'), {
+        maxAge: '1y',
+        immutable: true,
+        etag: true,
+      })
+    );
+
+    app.use(
+      express.static(path.join(__dirname, 'dist'), {
+        maxAge: '1h',
+        etag: true,
+        setHeaders: (res, filePath) => {
+          if (filePath.endsWith('.html')) {
+            // Never cache index.html long-term to ensure immediate version rollouts
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+          }
+        },
+      })
+    );
+
     app.get('*', (req: Request, res: Response) => {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       res.sendFile(path.join(__dirname, 'dist', 'index.html'));
     });
   }
 
-  app.listen(Number(PORT), '0.0.0.0', () => {
+  const server = app.listen(Number(PORT), '0.0.0.0', () => {
     console.log(`ManualCraft AI server running on http://0.0.0.0:${PORT}`);
   });
+
+  // Graceful shutdown handling for container orchestrators (Cloud Run, Kubernetes)
+  const shutdown = () => {
+    console.log('Received termination signal. Closing HTTP server gracefully...');
+    server.close(() => {
+      console.log('HTTP server closed. Exiting process.');
+      process.exit(0);
+    });
+  };
+
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
 }
 
 startServer();

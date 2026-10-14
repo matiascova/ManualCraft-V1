@@ -14,6 +14,8 @@ const BRANDING_STORAGE_KEY = 'manualcraft_organization_branding_v1';
 class ManualStorageService {
   private inMemoryManualsFallback: UserManual[] | null = null;
   private inMemoryProjectsFallback: Project[] | null = null;
+  private manualsSaveTimer: any = null;
+  private projectsSaveTimer: any = null;
 
   public loadProjects(defaultProjects: Project[] = SAMPLE_PROJECTS): Project[] {
     try {
@@ -45,16 +47,24 @@ class ManualStorageService {
 
   public saveProjects(projects: Project[]): boolean {
     this.inMemoryProjectsFallback = projects;
-    try {
-      if (typeof window === 'undefined' || !window.localStorage) {
-        return true;
-      }
-      localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(projects));
+    if (typeof window === 'undefined' || !window.localStorage) {
       return true;
-    } catch (err) {
-      console.warn('[ManualStorageService] Error saving projects to localStorage:', err);
-      return false;
     }
+
+    if (this.projectsSaveTimer) {
+      clearTimeout(this.projectsSaveTimer);
+    }
+
+    // Schedule write on idle/next tick to avoid blocking main thread frames
+    this.projectsSaveTimer = setTimeout(() => {
+      try {
+        localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(projects));
+      } catch (err) {
+        console.warn('[ManualStorageService] Error saving projects to localStorage:', err);
+      }
+    }, 150);
+
+    return true;
   }
 
   public loadOrganizationBranding(defaultBranding: OrganizationBranding = DEFAULT_ORGANIZATION_BRANDING): OrganizationBranding {
@@ -127,32 +137,39 @@ class ManualStorageService {
   }
 
   public saveManuals(manuals: UserManual[]): boolean {
+    // Update memory reference immediately for instantaneous synchronous reads
     this.inMemoryManualsFallback = manuals;
-    try {
-      if (typeof window === 'undefined' || !window.localStorage) {
-        return true;
-      }
-      localStorage.setItem(MANUALS_STORAGE_KEY, JSON.stringify(manuals));
+    if (typeof window === 'undefined' || !window.localStorage) {
       return true;
-    } catch (err: any) {
-      console.warn('[ManualStorageService] Quota exceeded or error saving to localStorage:', err);
-      // Try to save without high-res images if storage quota is exceeded
-      try {
-        const lightweight = manuals.map((m) => ({
-          ...m,
-          steps: m.steps.map((s) => ({
-            ...s,
-            // Keep preview but strip huge blobs if necessary
-            image: s.image && s.image.length > 500000 ? s.image.slice(0, 1000) : s.image,
-          })),
-        }));
-        localStorage.setItem(MANUALS_STORAGE_KEY, JSON.stringify(lightweight));
-        return true;
-      } catch (innerErr) {
-        console.error('[ManualStorageService] Fallback save failed, persisting in memory:', innerErr);
-        return false;
-      }
     }
+
+    if (this.manualsSaveTimer) {
+      clearTimeout(this.manualsSaveTimer);
+    }
+
+    // Debounce localStorage serialization to prevent main-thread jank during typing/editing
+    this.manualsSaveTimer = setTimeout(() => {
+      try {
+        localStorage.setItem(MANUALS_STORAGE_KEY, JSON.stringify(manuals));
+      } catch (err: any) {
+        console.warn('[ManualStorageService] Quota exceeded or error saving to localStorage:', err);
+        // Fallback: save without oversized images if storage quota is reached
+        try {
+          const lightweight = manuals.map((m) => ({
+            ...m,
+            steps: m.steps.map((s) => ({
+              ...s,
+              image: s.image && s.image.length > 500000 ? s.image.slice(0, 1000) : s.image,
+            })),
+          }));
+          localStorage.setItem(MANUALS_STORAGE_KEY, JSON.stringify(lightweight));
+        } catch (innerErr) {
+          console.error('[ManualStorageService] Fallback save failed, persisting in memory:', innerErr);
+        }
+      }
+    }, 250);
+
+    return true;
   }
 }
 

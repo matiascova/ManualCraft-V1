@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useCallback, memo } from 'react';
 import { Project, ProjectDocumentOptions } from '../types/project';
 import { UserManual } from '../types/manual';
 import { OrganizationBranding } from '../types/branding';
@@ -44,7 +44,7 @@ interface ProjectWorkspaceProps {
   onOpenOurLogoModal?: () => void;
 }
 
-export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
+const ProjectWorkspaceComponent: React.FC<ProjectWorkspaceProps> = ({
   project,
   allProjects,
   manualsInProject,
@@ -63,17 +63,25 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
   const [activeTab, setActiveTab] = useState<'manuals' | 'features' | 'info'>('manuals');
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
 
-  // Unlinked manuals or manuals from other projects
-  const availableManualsToLink = allManuals.filter(
-    (m) => m.projectId !== project.id
-  );
+  // Unlinked manuals or manuals from other projects (memoized)
+  const availableManualsToLink = useMemo(() => {
+    return allManuals.filter((m) => m.projectId !== project.id);
+  }, [allManuals, project.id]);
 
-  // Statistics
-  const totalSteps = manualsInProject.reduce((acc, m) => acc + (m.steps?.length || 0), 0);
-  const totalMinutes = manualsInProject.reduce((acc, m) => acc + (m.estimatedMinutes || 3), 0);
-  const activeFeaturesCount = Object.values(project.documentOptions || {}).filter(Boolean).length;
+  // Statistics (memoized)
+  const totalSteps = useMemo(() => {
+    return manualsInProject.reduce((acc, m) => acc + (m.steps?.length || 0), 0);
+  }, [manualsInProject]);
 
-  const handleToggleDocOption = (key: keyof ProjectDocumentOptions) => {
+  const totalMinutes = useMemo(() => {
+    return manualsInProject.reduce((acc, m) => acc + (m.estimatedMinutes || 3), 0);
+  }, [manualsInProject]);
+
+  const activeFeaturesCount = useMemo(() => {
+    return Object.values(project.documentOptions || {}).filter(Boolean).length;
+  }, [project.documentOptions]);
+
+  const handleToggleDocOption = useCallback((key: keyof ProjectDocumentOptions) => {
     const updatedOptions = {
       ...project.documentOptions,
       [key]: !project.documentOptions[key],
@@ -83,7 +91,7 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
       documentOptions: updatedOptions,
       updatedAt: new Date().toISOString(),
     });
-  };
+  }, [project, onUpdateProject]);
 
   return (
     <div className="w-[98%] max-w-[98vw] mx-auto px-2 sm:px-4 py-6 space-y-6">
@@ -768,3 +776,5 @@ export const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({
     </div>
   );
 };
+
+export const ProjectWorkspace = memo(ProjectWorkspaceComponent);

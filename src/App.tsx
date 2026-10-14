@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, Suspense, lazy } from 'react';
 import { UserManual, ManualStep } from './types/manual';
 import { Project } from './types/project';
 import { OrganizationBranding, DEFAULT_ORGANIZATION_BRANDING } from './types/branding';
@@ -12,14 +12,6 @@ import { SAMPLE_PROJECTS } from './data/sampleProjects';
 import { Navbar } from './components/Navbar';
 import { ManualView } from './components/ManualView';
 import { ProjectWorkspace } from './components/ProjectWorkspace';
-import { ProjectModal } from './components/ProjectModal';
-import { OrganizationLogoModal } from './components/OrganizationLogoModal';
-import { CreateManualModal } from './components/CreateManualModal';
-import { InteractivePlayer } from './components/InteractivePlayer';
-import { ExportModal } from './components/ExportModal';
-import { StepEditorModal } from './components/StepEditorModal';
-import { AnnotationEditor } from './components/AnnotationEditor';
-import { InteractiveWorkflowSimulator } from './components/InteractiveWorkflowSimulator';
 import {
   Sparkles,
   BookOpen,
@@ -34,6 +26,16 @@ import {
 } from 'lucide-react';
 
 import { manualStorage } from './utils/storage';
+
+// Dynamic code-splitting for heavy modals to reduce initial bundle and memory footprint
+const ProjectModal = lazy(() => import('./components/ProjectModal').then((m) => ({ default: m.ProjectModal })));
+const OrganizationLogoModal = lazy(() => import('./components/OrganizationLogoModal').then((m) => ({ default: m.OrganizationLogoModal })));
+const CreateManualModal = lazy(() => import('./components/CreateManualModal').then((m) => ({ default: m.CreateManualModal })));
+const InteractivePlayer = lazy(() => import('./components/InteractivePlayer').then((m) => ({ default: m.InteractivePlayer })));
+const ExportModal = lazy(() => import('./components/ExportModal').then((m) => ({ default: m.ExportModal })));
+const StepEditorModal = lazy(() => import('./components/StepEditorModal').then((m) => ({ default: m.StepEditorModal })));
+const AnnotationEditor = lazy(() => import('./components/AnnotationEditor').then((m) => ({ default: m.AnnotationEditor })));
+const InteractiveWorkflowSimulator = lazy(() => import('./components/InteractiveWorkflowSimulator').then((m) => ({ default: m.InteractiveWorkflowSimulator })));
 
 export default function App() {
   // Projects state
@@ -93,23 +95,27 @@ export default function App() {
     manualStorage.saveManuals(manuals);
   }, [manuals]);
 
-  // Active Project and its associated manuals
-  const activeProject =
-    projects.find((p) => p.id === activeProjectId) || projects[0] || SAMPLE_PROJECTS[0];
+  // Active Project and its associated manuals (memoized for high-scale performance)
+  const activeProject = useMemo(() => {
+    return projects.find((p) => p.id === activeProjectId) || projects[0] || SAMPLE_PROJECTS[0];
+  }, [projects, activeProjectId]);
 
-  const manualsInActiveProject = manuals.filter(
-    (m) => m.projectId === activeProject?.id
-  );
+  const manualsInActiveProject = useMemo(() => {
+    return manuals.filter((m) => m.projectId === activeProject?.id);
+  }, [manuals, activeProject?.id]);
 
-  // Active Manual
-  const activeManual =
-    manuals.find((m) => m.id === activeManualId) ||
-    manualsInActiveProject[0] ||
-    manuals[0] ||
-    SAMPLE_MANUALS[0];
+  // Active Manual (memoized)
+  const activeManual = useMemo(() => {
+    return (
+      manuals.find((m) => m.id === activeManualId) ||
+      manualsInActiveProject[0] ||
+      manuals[0] ||
+      SAMPLE_MANUALS[0]
+    );
+  }, [manuals, activeManualId, manualsInActiveProject]);
 
   // Handler: Save Project (create or edit)
-  const handleSaveProject = (savedProject: Project) => {
+  const handleSaveProject = useCallback((savedProject: Project) => {
     setProjects((prev) => {
       const exists = prev.some((p) => p.id === savedProject.id);
       if (exists) {
@@ -119,93 +125,99 @@ export default function App() {
     });
     setActiveProjectId(savedProject.id);
     setViewMode('project');
-  };
+  }, []);
 
   // Handler: Select a Project
-  const handleSelectProject = (projectId: string) => {
+  const handleSelectProject = useCallback((projectId: string) => {
     setActiveProjectId(projectId);
-    const relatedManuals = manuals.filter((m) => m.projectId === projectId);
-    if (relatedManuals.length > 0) {
-      setActiveManualId(relatedManuals[0].id);
-    }
-  };
+    setManuals((currentManuals) => {
+      const relatedManuals = currentManuals.filter((m) => m.projectId === projectId);
+      if (relatedManuals.length > 0) {
+        setActiveManualId(relatedManuals[0].id);
+      }
+      return currentManuals;
+    });
+  }, []);
 
   // Handler: Open Manual from Project Workspace
-  const handleOpenManual = (manualId: string) => {
+  const handleOpenManual = useCallback((manualId: string) => {
     setActiveManualId(manualId);
     setViewMode('manual');
-  };
+  }, []);
 
   // Handler: Open Project Settings modal
-  const handleOpenProjectSettings = (projectToEdit: Project) => {
+  const handleOpenProjectSettings = useCallback((projectToEdit: Project) => {
     setEditingProject(projectToEdit);
     setIsProjectModalOpen(true);
-  };
+  }, []);
 
   // Handler: Open Create Manual Modal bound to a specific project
-  const handleOpenCreateManualForProject = (projectId: string) => {
+  const handleOpenCreateManualForProject = useCallback((projectId: string) => {
     setCreateManualProjectId(projectId);
     setIsCreateModalOpen(true);
-  };
+  }, []);
 
   // Handler: Link an existing manual to a project
-  const handleLinkManualToProject = (manualId: string, projectId: string) => {
+  const handleLinkManualToProject = useCallback((manualId: string, projectId: string) => {
     setManuals((prev) =>
       prev.map((m) => (m.id === manualId ? { ...m, projectId, updatedAt: new Date().toISOString() } : m))
     );
-  };
+  }, []);
 
   // Handler: Unlink manual from project
-  const handleUnlinkManualFromProject = (manualId: string) => {
+  const handleUnlinkManualFromProject = useCallback((manualId: string) => {
     if (window.confirm('¿Deseas desvincular este manual de este proyecto? Seguirá existiendo en tu biblioteca.')) {
       setManuals((prev) =>
         prev.map((m) => (m.id === manualId ? { ...m, projectId: undefined, updatedAt: new Date().toISOString() } : m))
       );
     }
-  };
+  }, []);
 
   // Handler: New Manual Created
-  const handleManualCreated = (newManual: UserManual) => {
-    const targetProjectId = newManual.projectId || activeProjectId;
-    const manualWithProject = {
-      ...newManual,
-      projectId: targetProjectId,
-    };
-    setManuals((prev) => [manualWithProject, ...prev]);
-    setActiveManualId(manualWithProject.id);
-    setActiveProjectId(targetProjectId);
-    setViewMode('manual');
-  };
+  const handleManualCreated = useCallback((newManual: UserManual) => {
+    setActiveProjectId((currentProjectId) => {
+      const targetProjectId = newManual.projectId || currentProjectId;
+      const manualWithProject = {
+        ...newManual,
+        projectId: targetProjectId,
+      };
+      setManuals((prev) => [manualWithProject, ...prev]);
+      setActiveManualId(manualWithProject.id);
+      setViewMode('manual');
+      return targetProjectId;
+    });
+  }, []);
 
-  const handleUpdateManual = (updated: UserManual) => {
+  const handleUpdateManual = useCallback((updated: UserManual) => {
     setManuals((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
-  };
+  }, []);
 
-  const handleStartInteractivePlayer = (stepIndex = 0) => {
+  const handleStartInteractivePlayer = useCallback((stepIndex = 0) => {
     setPlayerInitialStepIndex(stepIndex);
     setIsPlayerOpen(true);
-  };
+  }, []);
 
-  const handleSaveStep = (updatedStep: ManualStep) => {
-    if (!activeManual) return;
-    const updatedSteps = activeManual.steps.map((s) =>
-      s.id === updatedStep.id ? updatedStep : s
+  const handleSaveStep = useCallback((updatedStep: ManualStep) => {
+    setManuals((prev) =>
+      prev.map((m) => {
+        if (!m.steps.some((s) => s.id === updatedStep.id)) return m;
+        return {
+          ...m,
+          steps: m.steps.map((s) => (s.id === updatedStep.id ? updatedStep : s)),
+          updatedAt: new Date().toISOString(),
+        };
+      })
     );
-    handleUpdateManual({
-      ...activeManual,
-      steps: updatedSteps,
-      updatedAt: new Date().toISOString(),
-    });
-  };
+  }, []);
 
-  const handleSaveAnnotations = (annotations: any[]) => {
-    if (!annotatingStep || !activeManual) return;
+  const handleSaveAnnotations = useCallback((annotations: any[]) => {
+    if (!annotatingStep) return;
     const updatedStep = { ...annotatingStep, annotations };
     handleSaveStep(updatedStep);
     setAnnotatingStep(updatedStep);
-  };
+  }, [annotatingStep, handleSaveStep]);
 
-  const handleAddNewStep = () => {
+  const handleAddNewStep = useCallback(() => {
     if (!activeManual) return;
     const newStepNumber = activeManual.steps.length + 1;
     const newStep: ManualStep = {
@@ -224,7 +236,7 @@ export default function App() {
       updatedAt: new Date().toISOString(),
     });
     setEditingStep(newStep);
-  };
+  }, [activeManual, handleUpdateManual]);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans">
@@ -324,56 +336,61 @@ export default function App() {
         </div>
       </footer>
 
-      {/* NUESTRO LOGO & ORGANIZACIÓN MODAL */}
-      <OrganizationLogoModal
-        isOpen={isOurLogoModalOpen}
-        onClose={() => setIsOurLogoModalOpen(false)}
-        branding={branding}
-        onSaveBranding={handleSaveBranding}
-        sampleClientLogo={activeProject?.clientLogo}
-        sampleClientName={activeProject?.clientName}
-      />
+      {/* LAZY LOADED MODALS WITH SUSPENSE */}
+      <Suspense fallback={null}>
+        {isOurLogoModalOpen && (
+          <OrganizationLogoModal
+            isOpen={isOurLogoModalOpen}
+            onClose={() => setIsOurLogoModalOpen(false)}
+            branding={branding}
+            onSaveBranding={handleSaveBranding}
+            sampleClientLogo={activeProject?.clientLogo}
+            sampleClientName={activeProject?.clientName}
+          />
+        )}
 
-      {/* PROJECT MODAL (New & Edit Project) */}
-      <ProjectModal
-        isOpen={isProjectModalOpen}
-        onClose={() => {
-          setIsProjectModalOpen(false);
-          setEditingProject(null);
-        }}
-        onSaveProject={handleSaveProject}
-        existingProject={editingProject}
-        branding={branding}
-        onOpenOurLogoModal={() => setIsOurLogoModalOpen(true)}
-      />
+        {isProjectModalOpen && (
+          <ProjectModal
+            isOpen={isProjectModalOpen}
+            onClose={() => {
+              setIsProjectModalOpen(false);
+              setEditingProject(null);
+            }}
+            onSaveProject={handleSaveProject}
+            existingProject={editingProject}
+            branding={branding}
+            onOpenOurLogoModal={() => setIsOurLogoModalOpen(true)}
+          />
+        )}
 
-      {/* CREATE MANUAL MODAL */}
-      <CreateManualModal
-        isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
-        onManualCreated={handleManualCreated}
-        onOpenSimulator={() => setIsSimulatorOpen(true)}
-        projects={projects}
-        activeProjectId={createManualProjectId || activeProjectId}
-      />
+        {isCreateModalOpen && (
+          <CreateManualModal
+            isOpen={isCreateModalOpen}
+            onClose={() => setIsCreateModalOpen(false)}
+            onManualCreated={handleManualCreated}
+            onOpenSimulator={() => setIsSimulatorOpen(true)}
+            projects={projects}
+            activeProjectId={createManualProjectId || activeProjectId}
+          />
+        )}
 
-      {isSimulatorOpen && (
-        <InteractiveWorkflowSimulator
-          onManualGeneratedFromActions={handleManualCreated}
-          onClose={() => setIsSimulatorOpen(false)}
-        />
-      )}
+        {isSimulatorOpen && (
+          <InteractiveWorkflowSimulator
+            onManualGeneratedFromActions={handleManualCreated}
+            onClose={() => setIsSimulatorOpen(false)}
+          />
+        )}
 
-      {/* INTERACTIVE PLAYER & EXPORT MODAL */}
-      {activeManual && (
-        <>
+        {activeManual && isPlayerOpen && (
           <InteractivePlayer
             manual={activeManual}
             initialStepIndex={playerInitialStepIndex}
             isOpen={isPlayerOpen}
             onClose={() => setIsPlayerOpen(false)}
           />
+        )}
 
+        {activeManual && isExportModalOpen && (
           <ExportModal
             manual={activeManual}
             isOpen={isExportModalOpen}
@@ -383,33 +400,31 @@ export default function App() {
             branding={branding}
             onOpenOurLogoModal={() => setIsOurLogoModalOpen(true)}
           />
-        </>
-      )}
+        )}
 
-      {/* STEP EDITOR MODAL */}
-      {editingStep && (
-        <StepEditorModal
-          step={editingStep}
-          manualContext={activeManual?.title}
-          isOpen={true}
-          onClose={() => setEditingStep(null)}
-          onSave={handleSaveStep}
-          onOpenAnnotationEditor={() => {
-            setAnnotatingStep(editingStep);
-            setEditingStep(null);
-          }}
-        />
-      )}
+        {editingStep && (
+          <StepEditorModal
+            step={editingStep}
+            manualContext={activeManual?.title}
+            isOpen={true}
+            onClose={() => setEditingStep(null)}
+            onSave={handleSaveStep}
+            onOpenAnnotationEditor={() => {
+              setAnnotatingStep(editingStep);
+              setEditingStep(null);
+            }}
+          />
+        )}
 
-      {/* ANNOTATION EDITOR */}
-      {annotatingStep && annotatingStep.image && (
-        <AnnotationEditor
-          imageSrc={annotatingStep.image}
-          annotations={annotatingStep.annotations || []}
-          onChange={handleSaveAnnotations}
-          onClose={() => setAnnotatingStep(null)}
-        />
-      )}
+        {annotatingStep && annotatingStep.image && (
+          <AnnotationEditor
+            imageSrc={annotatingStep.image}
+            annotations={annotatingStep.annotations || []}
+            onChange={handleSaveAnnotations}
+            onClose={() => setAnnotatingStep(null)}
+          />
+        )}
+      </Suspense>
     </div>
   );
 }

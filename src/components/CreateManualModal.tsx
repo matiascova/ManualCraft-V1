@@ -115,6 +115,15 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
     }
   }, [instructorTranscripts, interimSpeech]);
 
+  // Clean up recorded video blob URLs to prevent massive memory leaks
+  useEffect(() => {
+    return () => {
+      if (recordedVideoUrl && recordedVideoUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(recordedVideoUrl);
+      }
+    };
+  }, [recordedVideoUrl]);
+
   // Load existing manual data or saved draft when modal opens
   useEffect(() => {
     if (!isOpen) return;

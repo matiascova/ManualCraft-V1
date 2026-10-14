@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useCallback, memo } from 'react';
 import { UserManual, ManualStep, getActionTypeSpanish } from '../types/manual';
 import {
   Sparkles,
@@ -52,7 +52,7 @@ interface ManualViewProps {
   onOpenOurLogoModal?: () => void;
 }
 
-export const ManualView: React.FC<ManualViewProps> = ({
+const ManualViewComponent: React.FC<ManualViewProps> = ({
   manual,
   project,
   onBackToProject,
@@ -72,17 +72,19 @@ export const ManualView: React.FC<ManualViewProps> = ({
   const [showTranscriptModal, setShowTranscriptModal] = useState(false);
   const [copiedTranscript, setCopiedTranscript] = useState(false);
 
-  const filteredSteps = manual.steps.filter((s) => {
-    if (!searchQuery.trim()) return true;
+  const filteredSteps = useMemo(() => {
+    if (!searchQuery.trim()) return manual.steps;
     const q = searchQuery.toLowerCase();
-    return (
-      s.title.toLowerCase().includes(q) ||
-      s.description.toLowerCase().includes(q) ||
-      (s.targetElement && s.targetElement.toLowerCase().includes(q))
-    );
-  });
+    return manual.steps.filter((s) => {
+      return (
+        s.title.toLowerCase().includes(q) ||
+        s.description.toLowerCase().includes(q) ||
+        (s.targetElement && s.targetElement.toLowerCase().includes(q))
+      );
+    });
+  }, [manual.steps, searchQuery]);
 
-  const moveStep = (index: number, direction: 'up' | 'down') => {
+  const moveStep = useCallback((index: number, direction: 'up' | 'down') => {
     const newSteps = [...manual.steps];
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
     if (targetIndex < 0 || targetIndex >= newSteps.length) return;
@@ -101,9 +103,9 @@ export const ManualView: React.FC<ManualViewProps> = ({
       steps: newSteps,
       updatedAt: new Date().toISOString(),
     });
-  };
+  }, [manual, onUpdateManual]);
 
-  const deleteStep = (stepId: string) => {
+  const deleteStep = useCallback((stepId: string) => {
     if (manual.steps.length <= 1) {
       alert('El manual debe contener al menos un paso.');
       return;
@@ -117,14 +119,14 @@ export const ManualView: React.FC<ManualViewProps> = ({
       steps: newSteps,
       updatedAt: new Date().toISOString(),
     });
-  };
+  }, [manual, onUpdateManual]);
 
-  const toggleChecklistItem = (idx: number) => {
+  const toggleChecklistItem = useCallback((idx: number) => {
     setCheckedChecklist((prev) => ({
       ...prev,
       [idx]: !prev[idx],
     }));
-  };
+  }, []);
 
   const handleCopyTranscript = () => {
     const textToCopy =
@@ -681,6 +683,7 @@ export const ManualView: React.FC<ManualViewProps> = ({
                           alt={step.title}
                           className="max-h-[540px] max-w-full w-auto h-auto block rounded select-none shadow-md"
                           loading="lazy"
+                          decoding="async"
                         />
 
                         {/* Visual Hotspots */}
@@ -988,3 +991,5 @@ export const ManualView: React.FC<ManualViewProps> = ({
     </div>
   );
 };
+
+export const ManualView = memo(ManualViewComponent);

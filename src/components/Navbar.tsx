@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, memo } from 'react';
 import { UserManual } from '../types/manual';
 import { Project } from '../types/project';
 import { OrganizationBranding } from '../types/branding';
@@ -35,7 +35,7 @@ interface NavbarProps {
   onChangeViewMode: (mode: 'project' | 'manual') => void;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({
+const NavbarComponent: React.FC<NavbarProps> = ({
   projects,
   activeProjectId,
   onSelectProject,
@@ -52,8 +52,13 @@ export const Navbar: React.FC<NavbarProps> = ({
   viewMode,
   onChangeViewMode,
 }) => {
-  const activeProject = projects.find((p) => p.id === activeProjectId) || projects[0];
-  const projectManuals = manuals.filter((m) => m.projectId === activeProject?.id);
+  const activeProject = useMemo(() => {
+    return projects.find((p) => p.id === activeProjectId) || projects[0];
+  }, [projects, activeProjectId]);
+
+  const projectManuals = useMemo(() => {
+    return manuals.filter((m) => m.projectId === activeProject?.id);
+  }, [manuals, activeProject?.id]);
 
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200">
@@ -224,3 +229,5 @@ export const Navbar: React.FC<NavbarProps> = ({
     </header>
   );
 };
+
+export const Navbar = memo(NavbarComponent);
