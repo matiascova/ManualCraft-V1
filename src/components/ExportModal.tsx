@@ -27,6 +27,7 @@ import {
   exportToPdfWithTemplateStructure,
   exportProjectDossierPdf,
   exportToDocx,
+  exportProjectDossierDocx,
 } from '../utils/exportUtils';
 
 interface ExportModalProps {
@@ -60,6 +61,10 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const [dossierPdfStatus, setDossierPdfStatus] = useState<string>('');
   const [dossierPdfSuccess, setDossierPdfSuccess] = useState(false);
 
+  const [isGeneratingDossierDocx, setIsGeneratingDossierDocx] = useState(false);
+  const [dossierDocxStatus, setDossierDocxStatus] = useState<string>('');
+  const [dossierDocxSuccess, setDossierDocxSuccess] = useState(false);
+
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   if (!isOpen) return null;
@@ -68,7 +73,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     isGeneratingTemplatePdf ||
     isGeneratingCompactPdf ||
     isGeneratingDocx ||
-    isGeneratingDossierPdf;
+    isGeneratingDossierPdf ||
+    isGeneratingDossierDocx;
 
   // 1. Export using Official Corporate Template Structure
   const handleDownloadTemplatePdf = async () => {
@@ -159,16 +165,20 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const handleDownloadDocx = async () => {
     if (isBusy) return;
     setIsGeneratingDocx(true);
-    setDocxStatus('Iniciando generador de Word (.docx)...');
+    setDocxStatus('Iniciando generador de Word (.docx) con plantilla corporativa...');
     setErrorMessage(null);
     setDocxSuccess(false);
 
     try {
-      await exportToDocx(manual, (msg) => {
-        setDocxStatus(msg);
-      });
+      await exportToDocx(
+        manual,
+        (msg) => {
+          setDocxStatus(msg);
+        },
+        project
+      );
       setDocxSuccess(true);
-      setDocxStatus('¡Documento Word (.docx) generado y descargado con éxito!');
+      setDocxStatus('¡Documento Word (.docx) corporativo generado y descargado con éxito!');
       setTimeout(() => {
         onClose();
         setDocxSuccess(false);
@@ -180,6 +190,36 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         err.message || 'Ocurrió un error al generar el documento Word (.docx).'
       );
       setIsGeneratingDocx(false);
+    }
+  };
+
+  // 4. Export Project Solution Dossier in Word DOCX
+  const handleDownloadDossierDocx = async (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (isBusy || !project) return;
+    setIsGeneratingDossierDocx(true);
+    setDossierDocxStatus(`Iniciando Dossier Word para "${project.name}"...`);
+    setErrorMessage(null);
+    setDossierDocxSuccess(false);
+
+    try {
+      const listToExport = manualsInProject.length > 0 ? manualsInProject : [manual];
+      await exportProjectDossierDocx(project, listToExport, (msg) => {
+        setDossierDocxStatus(msg);
+      });
+      setDossierDocxSuccess(true);
+      setDossierDocxStatus('¡Dossier Word (.docx) consolidado generado con éxito!');
+      setTimeout(() => {
+        onClose();
+        setDossierDocxSuccess(false);
+        setIsGeneratingDossierDocx(false);
+      }, 1500);
+    } catch (err: any) {
+      console.error('Error generating project dossier Word:', err);
+      setErrorMessage(
+        err.message || 'Ocurrió un error al generar el Dossier consolidado en Word.'
+      );
+      setIsGeneratingDossierDocx(false);
     }
   };
 
@@ -289,6 +329,42 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                     </div>
                   </div>
 
+                  <div className="mt-3.5 pt-3 border-t border-amber-200/80 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDownloadDossierPdf();
+                      }}
+                      disabled={isBusy}
+                      className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold shadow-xs flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+                    >
+                      {isGeneratingDossierPdf ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <FileDown className="w-3.5 h-3.5" />
+                      )}
+                      <span>Descargar Dossier en PDF</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDownloadDossierDocx(e);
+                      }}
+                      disabled={isBusy}
+                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-xs flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+                    >
+                      {isGeneratingDossierDocx ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <FileText className="w-3.5 h-3.5" />
+                      )}
+                      <span>Descargar Dossier en Word (.docx)</span>
+                    </button>
+                  </div>
+
                   {isGeneratingDossierPdf && (
                     <div className="mt-3 p-2.5 bg-white/95 border border-amber-300 rounded-xl flex items-center gap-2.5 text-xs text-amber-900 font-semibold animate-pulse">
                       <Loader2 className="w-4 h-4 animate-spin text-amber-600 flex-shrink-0" />
@@ -300,6 +376,20 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                     <div className="mt-3 p-2.5 bg-emerald-50 border border-emerald-300 rounded-xl flex items-center gap-2 text-xs text-emerald-800 font-semibold">
                       <CheckCircle className="w-4 h-4 text-emerald-600" />
                       <span>{dossierPdfStatus}</span>
+                    </div>
+                  )}
+
+                  {isGeneratingDossierDocx && (
+                    <div className="mt-3 p-2.5 bg-white/95 border border-blue-300 rounded-xl flex items-center gap-2.5 text-xs text-blue-900 font-semibold animate-pulse">
+                      <Loader2 className="w-4 h-4 animate-spin text-blue-600 flex-shrink-0" />
+                      <span>{dossierDocxStatus}</span>
+                    </div>
+                  )}
+
+                  {dossierDocxSuccess && (
+                    <div className="mt-3 p-2.5 bg-emerald-50 border border-emerald-300 rounded-xl flex items-center gap-2 text-xs text-emerald-800 font-semibold">
+                      <CheckCircle className="w-4 h-4 text-emerald-600" />
+                      <span>{dossierDocxStatus}</span>
                     </div>
                   )}
                 </div>
@@ -470,14 +560,14 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               <div className="flex-1">
                 <div className="flex items-center justify-between">
                   <h4 className="text-sm font-bold text-slate-900">
-                    Documento Word (.docx)
+                    Documento Word (.docx) · Estructura Oficial
                   </h4>
                   <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 bg-blue-100 px-2 py-0.5 rounded">
                     100% Editable
                   </span>
                 </div>
                 <p className="text-xs text-slate-600 mt-1">
-                  Genera un archivo Word corporativo nativo con portadas, tablas de control, cuadros de llamado y capturas anotadas incrustadas.
+                  Genera el manual idéntico al template corporativo: portada institucional con doble logo, banner azul marino (#183B6C), ficha técnica de control de 4 columnas, índice formal, matriz de proceso y pasos con franjas de transacción SAP.
                 </p>
 
                 {isGeneratingDocx && (

@@ -59,6 +59,8 @@ export interface ManualStep {
   warning?: string;
   instructorNotes?: string; // Transcripción o explicación verbal clave que el instructor indicó durante la grabación
   instructorAudioQuote?: string; // Cita textual destacada de la voz del instructor
+  sapTransaction?: string; // p.ej: ME22N, VA01, MIRO, etc.
+  sapModule?: string; // p.ej: SD, MM, FI, etc.
   image?: string; // base64 or URL
   imageName?: string;
   timestamp?: number; // if from video in seconds
