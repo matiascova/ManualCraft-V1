@@ -1,0 +1,6 @@
+{
+  "name": "ManualCraft AI - Generador de Manuales de Usuario",
+  "description": "Crea manuales de usuario interactivos y profesionales automáticamente a partir de capturas o videos con descripciones generadas por IA, exportables a PDF o web interactiva.",
+  "requestFramePermissions": ["display-capture"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

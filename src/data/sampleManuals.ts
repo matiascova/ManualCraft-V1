@@ -1,0 +1,327 @@
+import { UserManual } from '../types/manual';
+
+// Helper to create realistic SVG mock screenshots for samples
+function createMockScreenshot(title: string, subtitle: string, highlightText: string, themeColor = '#3b82f6'): string {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" width="960" height="540">
+    <defs>
+      <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#0f172a"/>
+        <stop offset="100%" stop-color="#1e293b"/>
+      </linearGradient>
+      <linearGradient id="headerGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="#1e293b"/>
+        <stop offset="100%" stop-color="#334155"/>
+      </linearGradient>
+    </defs>
+    <!-- Window Frame -->
+    <rect width="960" height="540" rx="12" fill="url(#bg)"/>
+    <!-- Top Window Bar -->
+    <rect width="960" height="42" fill="url(#headerGrad)"/>
+    <circle cx="24" cy="21" r="6" fill="#ef4444"/>
+    <circle cx="44" cy="21" r="6" fill="#f59e0b"/>
+    <circle cx="64" cy="21" r="6" fill="#10b981"/>
+    <!-- Search / URL bar -->
+    <rect x="180" y="8" width="600" height="26" rx="6" fill="#0f172a" stroke="#475569" stroke-width="1"/>
+    <text x="320" y="25" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="12">https://app.sistemaempresarial.com/dashboard</text>
+    
+    <!-- Sidebar -->
+    <rect x="0" y="42" width="220" height="498" fill="#1e293b" opacity="0.95"/>
+    <rect x="20" y="65" width="180" height="34" rx="6" fill="${themeColor}" opacity="0.15"/>
+    <rect x="20" y="65" width="4" height="34" rx="2" fill="${themeColor}"/>
+    <text x="38" y="87" fill="#ffffff" font-family="system-ui, sans-serif" font-weight="600" font-size="13">✦ Panel de Control</text>
+    
+    <text x="38" y="135" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="13">📄 Documentos &amp; Ventas</text>
+    <text x="38" y="175" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="13">👥 Clientes &amp; Contactos</text>
+    <text x="38" y="215" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="13">💳 Pagos &amp; Facturación</text>
+    <text x="38" y="255" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="13">⚙️ Configuración</text>
+    
+    <!-- Main Content Area -->
+    <rect x="250" y="70" width="680" height="440" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+    
+    <!-- Header of Main Content -->
+    <text x="280" y="115" fill="#ffffff" font-family="system-ui, sans-serif" font-weight="700" font-size="20">${title}</text>
+    <text x="280" y="140" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="13">${subtitle}</text>
+    
+    <!-- Mock UI Elements -->
+    <rect x="280" y="170" width="310" height="60" rx="6" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+    <text x="295" y="195" fill="#64748b" font-family="system-ui, sans-serif" font-size="11">CLIENTE / RFC</text>
+    <text x="295" y="218" fill="#f8fafc" font-family="system-ui, sans-serif" font-size="13">ACME Corp - RFC: ACM920101XYZ</text>
+
+    <rect x="610" y="170" width="310" height="60" rx="6" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+    <text x="625" y="195" fill="#64748b" font-family="system-ui, sans-serif" font-size="11">FECHA DE EMISIÓN</text>
+    <text x="625" y="218" fill="#f8fafc" font-family="system-ui, sans-serif" font-size="13">13 de Octubre de 2026</text>
+
+    <!-- Table mock -->
+    <rect x="280" y="250" width="640" height="150" rx="6" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+    <rect x="280" y="250" width="640" height="34" fill="#334155" opacity="0.6"/>
+    <text x="295" y="272" fill="#cbd5e1" font-family="system-ui, sans-serif" font-size="12" font-weight="600">Concepto / Servicio</text>
+    <text x="650" y="272" fill="#cbd5e1" font-family="system-ui, sans-serif" font-size="12" font-weight="600">Cant.</text>
+    <text x="820" y="272" fill="#cbd5e1" font-family="system-ui, sans-serif" font-size="12" font-weight="600">Total</text>
+    
+    <text x="295" y="310" fill="#f8fafc" font-family="system-ui, sans-serif" font-size="13">Suscripción Anual Plataforma Pro</text>
+    <text x="660" y="310" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="13">1</text>
+    <text x="820" y="310" fill="#38bdf8" font-family="system-ui, sans-serif" font-size="13" font-weight="600">$1,450.00 USD</text>
+
+    <line x1="280" y1="330" x2="920" y2="330" stroke="#334155" stroke-width="1"/>
+    <text x="295" y="360" fill="#f8fafc" font-family="system-ui, sans-serif" font-size="13">Módulo Adicional Reportes Avanzados</text>
+    <text x="660" y="360" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="13">1</text>
+    <text x="820" y="360" fill="#38bdf8" font-family="system-ui, sans-serif" font-size="13" font-weight="600">$290.00 USD</text>
+
+    <!-- Main action button with highlight -->
+    <rect x="730" y="425" width="190" height="42" rx="8" fill="${themeColor}"/>
+    <text x="760" y="451" fill="#ffffff" font-family="system-ui, sans-serif" font-weight="600" font-size="14">${highlightText}</text>
+  </svg>`;
+
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
+export const SAMPLE_MANUALS: UserManual[] = [
+  {
+    id: 'manual-facturacion',
+    title: 'Guía de Emisión y Timbrado de Facturas Electrónicas',
+    subtitle: 'Procedimiento paso a paso para generar y certificar comprobantes fiscales en la plataforma web',
+    overview: 'Este manual describe el flujo estándar para emitir una nueva factura electrónica con desglose de impuestos, adjuntar notas de crédito y enviar el comprobante automáticamente por correo al cliente.',
+    targetAudience: 'Personal administrativo, contabilidad y gerencia de facturación',
+    estimatedMinutes: 5,
+    difficulty: 'Principiante',
+    prerequisites: [
+      'Credenciales de acceso con rol de Emisor o Administrador',
+      'Certificados de Sello Digital (CSD) vigentes cargados en la empresa',
+      'Cliente registrado con RFC o ID fiscal válido',
+    ],
+    createdAt: '2026-10-10T14:30:00.000Z',
+    updatedAt: '2026-10-12T09:15:00.000Z',
+    version: '2.1',
+    category: 'Finanzas & Facturación',
+    steps: [
+      {
+        id: 'step-f1',
+        stepNumber: 1,
+        title: 'Accede al módulo de Pagos & Facturación',
+        actionType: 'navigate',
+        description: 'Desde la barra de navegación lateral izquierda del panel principal, haz clic en la sección "Pagos & Facturación" para desplegar las opciones contables.',
+        targetElement: 'Menú lateral: Pagos & Facturación',
+        expectedResult: 'Se cargará la vista general del tablero con el listado de facturas recientes y el botón para nueva emisión.',
+        tip: 'Puedes utilizar el atajo de teclado Ctrl+Shift+F para abrir directamente el listado de comprobantes.',
+        instructorNotes: 'El instructor explicó: "Siempre ingresamos por el panel lateral en Pagos & Facturación; eviten usar los accesos directos viejos para que se cargue la versión 4.0 del SAT".',
+        instructorAudioQuote: 'Siempre ingresamos por el panel lateral en Pagos & Facturación para cargar la versión actualizada.',
+        image: createMockScreenshot('Panel de Facturación', 'Vista consolidada de comprobantes fiscales emitidos', 'Nueva Factura', '#6366f1'),
+        annotations: [
+          {
+            id: 'ann-1',
+            x: 12,
+            y: 40,
+            shape: 'circle',
+            color: '#ef4444',
+            label: '1. Clic en Facturación',
+          },
+        ],
+      },
+      {
+        id: 'step-f2',
+        stepNumber: 2,
+        title: 'Haz clic en el botón "Nueva Factura"',
+        actionType: 'click',
+        description: 'Ubica el botón principal de acción situado en la esquina inferior derecha del panel y presiona para abrir el asistente de creación.',
+        targetElement: 'Botón primario "Nueva Factura"',
+        expectedResult: 'Se abrirá el formulario modular para capturar los datos del receptor y las partidas.',
+        warning: 'Verifica tener conexión estable a internet para asegurar la validación en tiempo real con el proveedor de certificación (PAC).',
+        instructorNotes: 'El instructor enfatizó: "Fíjense que el botón azul está abajo a la derecha; si no les aparece activo es porque les falta el permiso de timbrado en su perfil".',
+        instructorAudioQuote: 'Fíjense que el botón azul está abajo a la derecha; requiere permiso de timbrado activo.',
+        image: createMockScreenshot('Nueva Factura Electrónica', 'Ingreso de partida y selección de cliente', 'Timbrar Factura', '#6366f1'),
+        annotations: [
+          {
+            id: 'ann-2',
+            x: 85,
+            y: 83,
+            shape: 'circle',
+            color: '#ef4444',
+            label: '2. Clic en Nueva Factura',
+          },
+        ],
+      },
+      {
+        id: 'step-f3',
+        stepNumber: 3,
+        title: 'Selecciona el Cliente y verifica el Régimen Fiscal',
+        actionType: 'select',
+        description: 'Escribe el nombre o RFC de la empresa en el campo "Cliente / RFC". El autocompletado desplegará las opciones coincidentes registradas en tu catálogo.',
+        targetElement: 'Campo de búsqueda de Cliente',
+        expectedResult: 'Los datos de domicilio fiscal, correo electrónico y método de pago se rellenarán automáticamente.',
+        tip: 'Si el cliente es nuevo, puedes presionar el icono "+" dentro del campo para darlo de alta sin salir del formulario.',
+        instructorNotes: 'El instructor indicó: "Aquí mucho cuidado con el código postal y el régimen 601 General de Ley; si no coinciden exactamente con la Constancia de Situación Fiscal del cliente, el PAC rechazará el timbrado".',
+        instructorAudioQuote: 'Mucho cuidado con el código postal y el régimen; deben coincidir exactamente con la Constancia Fiscal.',
+        image: createMockScreenshot('Detalle del Cliente', 'Validación de razón social y código postal fiscal', 'Continuar a Conceptos', '#6366f1'),
+        annotations: [
+          {
+            id: 'ann-3',
+            x: 45,
+            y: 38,
+            shape: 'rect',
+            color: '#10b981',
+            label: '3. Seleccionar Cliente',
+          },
+        ],
+      },
+      {
+        id: 'step-f4',
+        stepNumber: 4,
+        title: 'Revisa las partidas y presiona "Timbrar Factura"',
+        actionType: 'verify',
+        description: 'Inspecciona que las cantidades, precios unitarios e IVA desglosado concuerden con la orden de compra. Luego, haz clic en el botón azul "Timbrar Factura".',
+        targetElement: 'Botón final "Timbrar Factura"',
+        expectedResult: 'El sistema enviará el XML al SAT/PAC y devolverá el folio fiscal UUID con su código QR certificado.',
+        warning: 'Una vez timbrada la factura, cualquier modificación requerirá emitir una nota de crédito o cancelación formal.',
+        instructorNotes: 'El instructor concluyó: "Una vez presionado Timbrar Factura, esperen tres segundos a que aparezca el folio fiscal UUID verde antes de cerrar la pestaña del navegador".',
+        instructorAudioQuote: 'Esperen tres segundos a que aparezca el folio fiscal UUID verde antes de cerrar la pestaña.',
+        image: createMockScreenshot('Confirmación de Timbrado', 'Generación de XML y PDF oficial', 'Descargar PDF / XML', '#10b981'),
+        annotations: [
+          {
+            id: 'ann-4',
+            x: 82,
+            y: 83,
+            shape: 'circle',
+            color: '#ef4444',
+            label: '4. Clic en Timbrar Factura',
+          },
+        ],
+      },
+    ],
+    troubleshooting: [
+      {
+        problem: 'Error "CSD caducado o inválido" al intentar timbrar',
+        solution: 'Ve a Configuración > Certificados y carga el archivo .cer y .key actualizado con su contraseña correspondiente.',
+      },
+      {
+        problem: 'El cliente no recibe el correo electrónico con el PDF',
+        solution: 'Comprueba en el historial de envíos si el correo fue rebotado o activa el reenvío manual desde el menú de opciones de la factura.',
+      },
+    ],
+    summaryChecklist: [
+      'Cliente seleccionado con RFC y código postal vigentes',
+      'Líneas de productos con clave de producto/servicio correcta',
+      'Desglose de impuestos revisado',
+      'Folio fiscal UUID generado con éxito',
+    ],
+    instructorTranscript: [
+      {
+        id: 't-1',
+        timestamp: 4,
+        text: 'Hola a todos, en esta sesión grabada vamos a ver el proceso para timbrar facturas electrónicas en la plataforma.',
+      },
+      {
+        id: 't-2',
+        timestamp: 10,
+        text: 'Siempre ingresamos por el panel lateral en Pagos & Facturación para cargar la versión actualizada.',
+      },
+      {
+        id: 't-3',
+        timestamp: 22,
+        text: 'Fíjense que el botón azul está abajo a la derecha; requiere permiso de timbrado activo para emitir comprobantes.',
+      },
+      {
+        id: 't-4',
+        timestamp: 38,
+        text: 'Mucho cuidado con el código postal y el régimen; deben coincidir exactamente con la Constancia Fiscal del cliente.',
+      },
+      {
+        id: 't-5',
+        timestamp: 55,
+        text: 'Esperen tres segundos a que aparezca el folio fiscal UUID verde antes de cerrar la pestaña del navegador.',
+      },
+    ],
+    fullTranscriptionText: '[00:04] Hola a todos, en esta sesión grabada vamos a ver el proceso para timbrar facturas electrónicas en la plataforma.\n[00:10] Siempre ingresamos por el panel lateral en Pagos & Facturación para cargar la versión actualizada.\n[00:22] Fíjense que el botón azul está abajo a la derecha; requiere permiso de timbrado activo para emitir comprobantes.\n[00:38] Mucho cuidado con el código postal y el régimen; deben coincidir exactamente con la Constancia Fiscal del cliente.\n[00:55] Esperen tres segundos a que aparezca el folio fiscal UUID verde antes de cerrar la pestaña del navegador.',
+  },
+  {
+    id: 'manual-2fa-seguridad',
+    title: 'Activación de Autenticación en Dos Pasos (2FA)',
+    subtitle: 'Protege tu cuenta corporativa mediante códigos temporales TOTP en Google Authenticator',
+    overview: 'Instrucciones obligatorias para que los colaboradores activen el segundo factor de seguridad en sus dispositivos móviles y protejan la información confidencial de la organización.',
+    targetAudience: 'Todos los colaboradores y usuarios de la plataforma',
+    estimatedMinutes: 3,
+    difficulty: 'Principiante',
+    prerequisites: [
+      'Teléfono móvil con cámara funcional',
+      'Aplicación Google Authenticator, Authy o 1Password instalada',
+    ],
+    createdAt: '2026-10-08T11:00:00.000Z',
+    updatedAt: '2026-10-09T18:00:00.000Z',
+    version: '1.2',
+    category: 'Seguridad & Cuenta',
+    steps: [
+      {
+        id: 'step-2fa-1',
+        stepNumber: 1,
+        title: 'Ingresa a Ajustes de Seguridad',
+        actionType: 'navigate',
+        description: 'Haz clic sobre tu avatar en la esquina superior derecha y selecciona la opción "Seguridad & Contraseña".',
+        targetElement: 'Menú de Perfil > Seguridad',
+        expectedResult: 'Aparecerá la ventana de configuración de credenciales y dispositivos autorizados.',
+        image: createMockScreenshot('Seguridad de la Cuenta', 'Gestión de contraseñas y accesos protegidos', 'Activar 2FA', '#0ea5e9'),
+        annotations: [
+          {
+            id: 'ann-2fa-1',
+            x: 80,
+            y: 82,
+            shape: 'circle',
+            color: '#ef4444',
+            label: '1. Activar 2FA',
+          },
+        ],
+      },
+      {
+        id: 'step-2fa-2',
+        stepNumber: 2,
+        title: 'Escanea el Código QR con tu App Móvil',
+        actionType: 'info',
+        description: 'Abre Google Authenticator o Authy en tu celular, pulsa en "+" y enfoca la cámara sobre el código QR que se muestra en pantalla.',
+        targetElement: 'Código QR de vinculación TOTP',
+        expectedResult: 'Tu aplicación móvil mostrará una nueva cuenta llamada "Plataforma Pro" con un código de 6 dígitos que cambia cada 30 segundos.',
+        tip: 'Guarda también la clave de texto alternativa en tu gestor de contraseñas seguro por si cambias de celular.',
+        image: createMockScreenshot('Vincular Dispositivo', 'Escaneo de código QR mediante app TOTP', 'Verificar Código', '#0ea5e9'),
+        annotations: [
+          {
+            id: 'ann-2fa-2',
+            x: 50,
+            y: 50,
+            shape: 'rect',
+            color: '#3b82f6',
+            label: '2. Escanear Código QR',
+          },
+        ],
+      },
+      {
+        id: 'step-2fa-3',
+        stepNumber: 3,
+        title: 'Introduce el código de 6 dígitos y confirma',
+        actionType: 'type',
+        description: 'Ingresa el código temporal actual mostrado en tu teléfono móvil y presiona el botón "Confirmar y Activar".',
+        targetElement: 'Campo de código numérico de 6 dígitos',
+        expectedResult: 'El sistema marcará la autenticación en dos pasos como ACTIVA y generará 5 códigos de recuperación de emergencia.',
+        warning: 'Descarga e imprime los códigos de emergencia de un solo uso; serán tu único salvavidas si pierdes el móvil.',
+        image: createMockScreenshot('2FA Activado Exitosamente', 'Códigos de recuperación y estado seguro', 'Descargar Códigos', '#10b981'),
+        annotations: [
+          {
+            id: 'ann-2fa-3',
+            x: 80,
+            y: 82,
+            shape: 'circle',
+            color: '#10b981',
+            label: '3. Descargar Códigos',
+          },
+        ],
+      },
+    ],
+    troubleshooting: [
+      {
+        problem: 'El código de 6 dígitos es rechazado repetidamente',
+        solution: 'Comprueba que la hora de tu teléfono esté sincronizada automáticamente por red (Ajustes > Fecha y Hora > Automática).',
+      },
+    ],
+    summaryChecklist: [
+      'App de autenticación configurada',
+      'Código de prueba verificado',
+      'Códigos de recuperación guardados en lugar seguro',
+    ],
+  },
+];
