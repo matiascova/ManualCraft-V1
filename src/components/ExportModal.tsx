@@ -11,12 +11,17 @@ import {
   Loader2,
   AlertCircle,
   FileText,
+  Award,
+  Sparkles,
+  Layers,
+  Check,
 } from 'lucide-react';
 import {
   exportToInteractiveHtml,
   exportToMarkdown,
   exportToJson,
   exportToPdf,
+  exportToPdfWithTemplateStructure,
   exportToDocx,
 } from '../utils/exportUtils';
 
@@ -31,9 +36,13 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   isOpen,
   onClose,
 }) => {
-  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
-  const [pdfStatus, setPdfStatus] = useState<string>('');
-  const [pdfSuccess, setPdfSuccess] = useState(false);
+  const [isGeneratingTemplatePdf, setIsGeneratingTemplatePdf] = useState(false);
+  const [templatePdfStatus, setTemplatePdfStatus] = useState<string>('');
+  const [templatePdfSuccess, setTemplatePdfSuccess] = useState(false);
+
+  const [isGeneratingCompactPdf, setIsGeneratingCompactPdf] = useState(false);
+  const [compactPdfStatus, setCompactPdfStatus] = useState<string>('');
+  const [compactPdfSuccess, setCompactPdfSuccess] = useState(false);
 
   const [isGeneratingDocx, setIsGeneratingDocx] = useState(false);
   const [docxStatus, setDocxStatus] = useState<string>('');
@@ -43,35 +52,65 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
   if (!isOpen) return null;
 
-  const isBusy = isGeneratingPdf || isGeneratingDocx;
+  const isBusy = isGeneratingTemplatePdf || isGeneratingCompactPdf || isGeneratingDocx;
 
-  const handleDownloadPdf = async () => {
+  // 1. Export using Official Corporate Template Structure
+  const handleDownloadTemplatePdf = async () => {
     if (isBusy) return;
-    setIsGeneratingPdf(true);
-    setPdfStatus('Iniciando generador de PDF...');
+    setIsGeneratingTemplatePdf(true);
+    setTemplatePdfStatus('Iniciando generador de plantilla corporativa oficial...');
     setErrorMessage(null);
-    setPdfSuccess(false);
+    setTemplatePdfSuccess(false);
 
     try {
-      await exportToPdf(manual, (msg) => {
-        setPdfStatus(msg);
+      await exportToPdfWithTemplateStructure(manual, (msg) => {
+        setTemplatePdfStatus(msg);
       });
-      setPdfSuccess(true);
-      setPdfStatus('¡PDF generado y descargado con éxito!');
+      setTemplatePdfSuccess(true);
+      setTemplatePdfStatus('¡PDF con estructura de plantilla generado y descargado!');
       setTimeout(() => {
         onClose();
-        setPdfSuccess(false);
-        setIsGeneratingPdf(false);
+        setTemplatePdfSuccess(false);
+        setIsGeneratingTemplatePdf(false);
       }, 1500);
     } catch (err: any) {
-      console.error('Error generating PDF:', err);
+      console.error('Error generating Template PDF:', err);
       setErrorMessage(
-        err.message || 'Ocurrió un error al generar el PDF. Puedes intentar imprimir directamente.'
+        err.message || 'Ocurrió un error al generar el PDF con estructura oficial.'
       );
-      setIsGeneratingPdf(false);
+      setIsGeneratingTemplatePdf(false);
     }
   };
 
+  // 2. Export using Compact Procedural Format
+  const handleDownloadCompactPdf = async () => {
+    if (isBusy) return;
+    setIsGeneratingCompactPdf(true);
+    setCompactPdfStatus('Iniciando generador de PDF compacto...');
+    setErrorMessage(null);
+    setCompactPdfSuccess(false);
+
+    try {
+      await exportToPdf(manual, (msg) => {
+        setCompactPdfStatus(msg);
+      });
+      setCompactPdfSuccess(true);
+      setCompactPdfStatus('¡PDF compacto generado y descargado con éxito!');
+      setTimeout(() => {
+        onClose();
+        setCompactPdfSuccess(false);
+        setIsGeneratingCompactPdf(false);
+      }, 1500);
+    } catch (err: any) {
+      console.error('Error generating compact PDF:', err);
+      setErrorMessage(
+        err.message || 'Ocurrió un error al generar el PDF. Puedes intentar imprimir directamente.'
+      );
+      setIsGeneratingCompactPdf(false);
+    }
+  };
+
+  // 3. Export to Word DOCX
   const handleDownloadDocx = async () => {
     if (isBusy) return;
     setIsGeneratingDocx(true);
@@ -117,11 +156,12 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
           <div>
-            <h3 className="text-lg font-bold text-slate-900">
-              Exportar Manual de Usuario
+            <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+              <FileDown className="w-5 h-5 text-indigo-600" />
+              <span>Exportar Manual de Usuario</span>
             </h3>
             <p className="text-xs text-slate-500">
-              Elige el formato de publicación oficial para tu equipo, clientes o auditoría.
+              Elige el formato de publicación oficial para tu equipo, clientes, auditoría o repositorio institucional.
             </p>
           </div>
           <button
@@ -142,193 +182,262 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         )}
 
         {/* Options Grid */}
-        <div className="p-6 overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-4 flex-1">
-          {/* Option A: Real Native PDF Download */}
+        <div className="p-6 overflow-y-auto space-y-4 flex-1">
+          {/* FEATURED OPTION: Official Corporate Template Structure */}
           <div
-            onClick={handleDownloadPdf}
-            className={`group p-4 rounded-xl border transition-all flex items-start gap-4 shadow-xs cursor-pointer ${
-              isGeneratingPdf
-                ? 'border-rose-400 bg-rose-50/70'
-                : pdfSuccess
-                ? 'border-emerald-400 bg-emerald-50/70'
-                : 'border-slate-200 bg-white hover:bg-rose-50/30 hover:border-rose-400'
+            onClick={handleDownloadTemplatePdf}
+            className={`group p-5 rounded-2xl border-2 transition-all cursor-pointer shadow-sm relative ${
+              isGeneratingTemplatePdf
+                ? 'border-indigo-500 bg-indigo-50/70'
+                : templatePdfSuccess
+                ? 'border-emerald-500 bg-emerald-50/70'
+                : 'border-indigo-600 bg-gradient-to-br from-indigo-50/40 via-white to-blue-50/30 hover:border-indigo-700 hover:shadow-md'
             }`}
           >
-            <div className="w-10 h-10 rounded-xl bg-rose-600 text-white flex items-center justify-center flex-shrink-0 shadow-sm group-hover:scale-105 transition-transform">
-              {isGeneratingPdf ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : pdfSuccess ? (
-                <CheckCircle className="w-5 h-5 text-white" />
-              ) : (
-                <FileDown className="w-5 h-5" />
-              )}
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center justify-between">
-                <h4 className="text-sm font-bold text-slate-900">
-                  Documento PDF Oficial (.pdf)
-                </h4>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-rose-700 bg-rose-100 px-2 py-0.5 rounded">
-                  Páginas Atómicas
-                </span>
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-xl bg-indigo-700 text-white flex items-center justify-center flex-shrink-0 shadow-sm group-hover:scale-105 transition-transform">
+                {isGeneratingTemplatePdf ? (
+                  <Loader2 className="w-6 h-6 animate-spin" />
+                ) : templatePdfSuccess ? (
+                  <CheckCircle className="w-6 h-6 text-white" />
+                ) : (
+                  <Award className="w-6 h-6" />
+                )}
               </div>
-              <p className="text-xs text-slate-600 mt-1">
-                Descarga directa en PDF de alta fidelidad con regla de bloque atómico: cada instrucción y su captura anotada permanecen siempre unidas en la misma hoja.
-              </p>
-
-              {/* Progress feedback */}
-              {isGeneratingPdf && (
-                <div className="mt-2.5 p-2 bg-white/95 border border-rose-200 rounded-lg flex items-center gap-2 text-xs text-rose-800 font-medium animate-pulse">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-600 flex-shrink-0" />
-                  <span>{pdfStatus}</span>
+              <div className="flex-1">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-base font-bold text-slate-900">
+                      PDF Oficial con Estructura del Template Corporativo
+                    </h4>
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-700 bg-indigo-100 border border-indigo-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                      <Sparkles className="w-3 h-3 text-indigo-600" />
+                      Estructura Oficial
+                    </span>
+                  </div>
+                  <span className="text-xs font-semibold text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-100">
+                    Formato Institucional
+                  </span>
                 </div>
-              )}
+                <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                  Reproduce con precisión milimétrica la estructura del manual modelo entregado: portada con logos institucionales (Weber Saint-Gobain + HSBT), ficha técnica de control documental de 4 columnas, índice formal con guías de puntos tabuladas y páginas exactas, Sección 1 (Introducción y Parámetros), Sección 2 (Matriz completa del Flujo de Proceso), y páginas procedimentales con franja de transacción, capturas enmarcadas y cajas de llamado.
+                </p>
 
-              {pdfSuccess && (
-                <div className="mt-2.5 p-2 bg-emerald-100/90 border border-emerald-300 rounded-lg flex items-center gap-2 text-xs text-emerald-800 font-bold">
-                  <CheckCircle className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
-                  <span>{pdfStatus}</span>
+                {/* Highlights pill tags */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 pt-3 border-t border-indigo-100/70 text-[11px] text-slate-700 font-medium">
+                  <div className="flex items-center gap-1.5">
+                    <Check className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />
+                    <span>Portada + Ficha Técnica</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Check className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />
+                    <span>Índice Formal Dinámico</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Check className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />
+                    <span>Matriz de Flujo (#/Tx/Mod)</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Check className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />
+                    <span>Encabezados & Pág. X de Y</span>
+                  </div>
                 </div>
-              )}
 
-              {/* Alternative Print link */}
-              <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between">
-                <span className="text-[11px] text-slate-400">¿Deseas enviar a impresora física?</span>
-                <button
-                  type="button"
-                  onClick={handleNativePrint}
-                  className="text-[11px] text-slate-600 hover:text-slate-900 font-semibold underline flex items-center gap-1"
-                >
-                  <Printer className="w-3 h-3" />
-                  <span>Imprimir con el navegador</span>
-                </button>
+                {/* Progress feedback */}
+                {isGeneratingTemplatePdf && (
+                  <div className="mt-3 p-2.5 bg-white/95 border border-indigo-200 rounded-xl flex items-center gap-2.5 text-xs text-indigo-900 font-semibold animate-pulse">
+                    <Loader2 className="w-4 h-4 animate-spin text-indigo-600 flex-shrink-0" />
+                    <span>{templatePdfStatus}</span>
+                  </div>
+                )}
+
+                {templatePdfSuccess && (
+                  <div className="mt-3 p-2.5 bg-emerald-100/90 border border-emerald-300 rounded-xl flex items-center gap-2.5 text-xs text-emerald-800 font-bold">
+                    <CheckCircle className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                    <span>{templatePdfStatus}</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
 
-          {/* Option B: Microsoft Word (.docx) */}
-          <div
-            onClick={handleDownloadDocx}
-            className={`group p-4 rounded-xl border transition-all flex items-start gap-4 shadow-xs cursor-pointer ${
-              isGeneratingDocx
-                ? 'border-blue-400 bg-blue-50/70'
-                : docxSuccess
-                ? 'border-emerald-400 bg-emerald-50/70'
-                : 'border-slate-200 bg-white hover:bg-blue-50/30 hover:border-blue-500'
-            }`}
-          >
-            <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center flex-shrink-0 shadow-sm group-hover:scale-105 transition-transform">
-              {isGeneratingDocx ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : docxSuccess ? (
-                <CheckCircle className="w-5 h-5 text-white" />
-              ) : (
-                <FileText className="w-5 h-5" />
-              )}
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center justify-between">
-                <h4 className="text-sm font-bold text-slate-900">
-                  Documento Microsoft Word (.docx)
-                </h4>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 bg-blue-100 px-2 py-0.5 rounded">
-                  100% Editable
-                </span>
+          {/* Secondary Options Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Option B: Compact Procedural PDF */}
+            <div
+              onClick={handleDownloadCompactPdf}
+              className={`group p-4 rounded-xl border transition-all flex items-start gap-3.5 shadow-xs cursor-pointer ${
+                isGeneratingCompactPdf
+                  ? 'border-rose-400 bg-rose-50/70'
+                  : compactPdfSuccess
+                  ? 'border-emerald-400 bg-emerald-50/70'
+                  : 'border-slate-200 bg-white hover:bg-rose-50/30 hover:border-rose-400'
+              }`}
+            >
+              <div className="w-10 h-10 rounded-xl bg-rose-600 text-white flex items-center justify-center flex-shrink-0 shadow-sm group-hover:scale-105 transition-transform">
+                {isGeneratingCompactPdf ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : compactPdfSuccess ? (
+                  <CheckCircle className="w-5 h-5 text-white" />
+                ) : (
+                  <FileDown className="w-5 h-5" />
+                )}
               </div>
-              <p className="text-xs text-slate-600 mt-1">
-                Genera un documento Word corporativo nativo editable con portadas ejecutivas, tablas de metadatos, cajas destacadas de resultados y capturas anotadas incrustadas.
-              </p>
-
-              {/* Progress feedback */}
-              {isGeneratingDocx && (
-                <div className="mt-2.5 p-2 bg-white/95 border border-blue-200 rounded-lg flex items-center gap-2 text-xs text-blue-800 font-medium animate-pulse">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600 flex-shrink-0" />
-                  <span>{docxStatus}</span>
+              <div className="flex-1">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-bold text-slate-900">
+                    PDF Compacto (Páginas Atómicas)
+                  </h4>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-rose-700 bg-rose-100 px-2 py-0.5 rounded">
+                    Ágil
+                  </span>
                 </div>
-              )}
+                <p className="text-xs text-slate-600 mt-1">
+                  Versión directa sin portada extendida. Cada instrucción y su captura anotada se consolidan en una misma hoja sin cortes.
+                </p>
 
-              {docxSuccess && (
-                <div className="mt-2.5 p-2 bg-emerald-100/90 border border-emerald-300 rounded-lg flex items-center gap-2 text-xs text-emerald-800 font-bold">
-                  <CheckCircle className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
-                  <span>{docxStatus}</span>
+                {isGeneratingCompactPdf && (
+                  <div className="mt-2.5 p-2 bg-white/95 border border-rose-200 rounded-lg flex items-center gap-2 text-xs text-rose-800 font-medium animate-pulse">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-600 flex-shrink-0" />
+                    <span>{compactPdfStatus}</span>
+                  </div>
+                )}
+
+                {compactPdfSuccess && (
+                  <div className="mt-2.5 p-2 bg-emerald-100/90 border border-emerald-300 rounded-lg flex items-center gap-2 text-xs text-emerald-800 font-bold">
+                    <CheckCircle className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                    <span>{compactPdfStatus}</span>
+                  </div>
+                )}
+
+                <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={handleNativePrint}
+                    className="text-[11px] text-slate-500 hover:text-slate-900 font-medium underline flex items-center gap-1"
+                  >
+                    <Printer className="w-3 h-3" />
+                    <span>Imprimir con el navegador</span>
+                  </button>
                 </div>
-              )}
-            </div>
-          </div>
-
-          {/* Option C: Standalone Interactive HTML */}
-          <div
-            onClick={() => {
-              if (isBusy) return;
-              exportToInteractiveHtml(manual);
-              onClose();
-            }}
-            className="group p-4 rounded-xl border border-indigo-200 bg-indigo-50/40 hover:bg-indigo-50 hover:border-indigo-500 cursor-pointer transition-all flex items-start gap-4 shadow-xs"
-          >
-            <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center flex-shrink-0 shadow-sm group-hover:scale-105 transition-transform">
-              <Globe className="w-5 h-5" />
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center justify-between">
-                <h4 className="text-sm font-bold text-indigo-950">
-                  Página Web Interactiva Autónoma (.html)
-                </h4>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded">
-                  Interactivo Offline
-                </span>
               </div>
-              <p className="text-xs text-slate-600 mt-1">
-                Descarga un archivo HTML 100% autónomo con buscador en vivo, modo de simulación interactiva paso a paso y capturas incrustadas sin depender de internet.
-              </p>
             </div>
-          </div>
 
-          {/* Option D: Markdown */}
-          <div
-            onClick={() => {
-              if (isBusy) return;
-              exportToMarkdown(manual);
-              onClose();
-            }}
-            className="group p-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-400 cursor-pointer transition-all flex items-start gap-4 shadow-xs"
-          >
-            <div className="w-10 h-10 rounded-xl bg-slate-800 text-white flex items-center justify-center flex-shrink-0 shadow-sm group-hover:scale-105 transition-transform">
-              <FileCode className="w-5 h-5" />
-            </div>
-            <div className="flex-1">
-              <h4 className="text-sm font-bold text-slate-900">
-                Markdown Estructurado (.md)
-              </h4>
-              <p className="text-xs text-slate-600 mt-1">
-                Formato ligero optimizado para importar directamente en Notion, Confluence, Obsidian, GitHub Wiki o intranets corporativas.
-              </p>
-            </div>
-          </div>
-
-          {/* Option E: JSON Data */}
-          <div
-            onClick={() => {
-              if (isBusy) return;
-              exportToJson(manual);
-              onClose();
-            }}
-            className="group p-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-400 cursor-pointer transition-all flex items-start gap-4 shadow-xs md:col-span-2"
-          >
-            <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center flex-shrink-0 shadow-sm group-hover:scale-105 transition-transform">
-              <FileJson className="w-5 h-5" />
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center justify-between">
-                <h4 className="text-sm font-bold text-slate-900">
-                  Copia de Seguridad de Datos JSON (.json)
-                </h4>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
-                  Backup Completo
-                </span>
+            {/* Option C: Microsoft Word (.docx) */}
+            <div
+              onClick={handleDownloadDocx}
+              className={`group p-4 rounded-xl border transition-all flex items-start gap-3.5 shadow-xs cursor-pointer ${
+                isGeneratingDocx
+                  ? 'border-blue-400 bg-blue-50/70'
+                  : docxSuccess
+                  ? 'border-emerald-400 bg-emerald-50/70'
+                  : 'border-slate-200 bg-white hover:bg-blue-50/30 hover:border-blue-500'
+              }`}
+            >
+              <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center flex-shrink-0 shadow-sm group-hover:scale-105 transition-transform">
+                {isGeneratingDocx ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : docxSuccess ? (
+                  <CheckCircle className="w-5 h-5 text-white" />
+                ) : (
+                  <FileText className="w-5 h-5" />
+                )}
               </div>
-              <p className="text-xs text-slate-600 mt-0.5">
-                Estructura íntegra de datos para respaldar, versionar en Git o sincronizar con otras instancias de la plataforma.
-              </p>
+              <div className="flex-1">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-bold text-slate-900">
+                    Documento Word (.docx)
+                  </h4>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 bg-blue-100 px-2 py-0.5 rounded">
+                    100% Editable
+                  </span>
+                </div>
+                <p className="text-xs text-slate-600 mt-1">
+                  Genera un archivo Word corporativo nativo con portadas, tablas de control, cuadros de llamado y capturas anotadas incrustadas.
+                </p>
+
+                {isGeneratingDocx && (
+                  <div className="mt-2.5 p-2 bg-white/95 border border-blue-200 rounded-lg flex items-center gap-2 text-xs text-blue-800 font-medium animate-pulse">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600 flex-shrink-0" />
+                    <span>{docxStatus}</span>
+                  </div>
+                )}
+
+                {docxSuccess && (
+                  <div className="mt-2.5 p-2 bg-emerald-100/90 border border-emerald-300 rounded-lg flex items-center gap-2 text-xs text-emerald-800 font-bold">
+                    <CheckCircle className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                    <span>{docxStatus}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Option D: Standalone Interactive HTML */}
+            <div
+              onClick={() => {
+                if (isBusy) return;
+                exportToInteractiveHtml(manual);
+                onClose();
+              }}
+              className="group p-4 rounded-xl border border-indigo-200 bg-indigo-50/30 hover:bg-indigo-50 hover:border-indigo-400 cursor-pointer transition-all flex items-start gap-3.5 shadow-xs"
+            >
+              <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center flex-shrink-0 shadow-sm group-hover:scale-105 transition-transform">
+                <Globe className="w-5 h-5" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-bold text-indigo-950">
+                    Web Interactiva Autónoma (.html)
+                  </h4>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded">
+                    Offline
+                  </span>
+                </div>
+                <p className="text-xs text-slate-600 mt-1">
+                  Archivo HTML único con buscador en tiempo real, reproductor paso a paso interactivo y capturas incrustadas para uso sin internet.
+                </p>
+              </div>
+            </div>
+
+            {/* Option E: Markdown & JSON row */}
+            <div className="grid grid-cols-2 gap-3">
+              <div
+                onClick={() => {
+                  if (isBusy) return;
+                  exportToMarkdown(manual);
+                  onClose();
+                }}
+                className="group p-3.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-400 cursor-pointer transition-all flex flex-col justify-between shadow-xs"
+              >
+                <div className="flex items-center gap-2.5 mb-1.5">
+                  <div className="w-7 h-7 rounded-lg bg-slate-800 text-white flex items-center justify-center flex-shrink-0">
+                    <FileCode className="w-4 h-4" />
+                  </div>
+                  <h5 className="text-xs font-bold text-slate-900">Markdown (.md)</h5>
+                </div>
+                <p className="text-[11px] text-slate-500 leading-snug">
+                  Para Notion, Confluence, Obsidian o repositorios Wiki.
+                </p>
+              </div>
+
+              <div
+                onClick={() => {
+                  if (isBusy) return;
+                  exportToJson(manual);
+                  onClose();
+                }}
+                className="group p-3.5 rounded-xl border border-slate-200 bg-white hover:bg-emerald-50/40 hover:border-emerald-400 cursor-pointer transition-all flex flex-col justify-between shadow-xs"
+              >
+                <div className="flex items-center gap-2.5 mb-1.5">
+                  <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center flex-shrink-0">
+                    <FileJson className="w-4 h-4" />
+                  </div>
+                  <h5 className="text-xs font-bold text-slate-900">Datos (.json)</h5>
+                </div>
+                <p className="text-[11px] text-slate-500 leading-snug">
+                  Backup íntegro para versionar o importar.
+                </p>
+              </div>
             </div>
           </div>
         </div>

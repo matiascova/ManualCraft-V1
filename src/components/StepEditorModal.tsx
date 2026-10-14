@@ -378,27 +378,29 @@ export const StepEditorModal: React.FC<StepEditorModalProps> = ({
                   onSave(formData);
                   onOpenAnnotationEditor();
                 }}
-                className="relative flex-1 bg-slate-950 rounded-xl overflow-hidden border border-slate-300 group cursor-pointer shadow-inner flex items-center justify-center min-h-0"
+                className="relative flex-1 bg-slate-950 rounded-xl overflow-hidden border border-slate-300 group cursor-pointer shadow-inner flex items-center justify-center p-1 min-h-0"
                 title="Haz clic para abrir el editor de enfoque visual sin scroll"
               >
-                <img
-                  src={formData.image}
-                  alt="Captura del paso"
-                  className="max-h-full max-w-full object-contain"
-                />
-
-                {/* Hotspots mini-preview */}
-                {formData.annotations?.map((ann) => (
-                  <div
-                    key={ann.id}
-                    style={{
-                      left: `${ann.x}%`,
-                      top: `${ann.y}%`,
-                      borderColor: ann.color || '#ef4444',
-                    }}
-                    className="absolute -translate-x-1/2 -translate-y-1/2 w-6 h-6 rounded-full border-2 bg-red-500/20 pointer-events-none"
+                <div className="relative inline-block max-w-full max-h-full">
+                  <img
+                    src={formData.image}
+                    alt="Captura del paso"
+                    className="max-h-full max-w-full w-auto h-auto block rounded"
                   />
-                ))}
+
+                  {/* Hotspots mini-preview */}
+                  {formData.annotations?.map((ann) => (
+                    <div
+                      key={ann.id}
+                      style={{
+                        left: `${ann.x}%`,
+                        top: `${ann.y}%`,
+                        borderColor: ann.color || '#ef4444',
+                      }}
+                      className="absolute -translate-x-1/2 -translate-y-1/2 w-6 h-6 rounded-full border-2 bg-red-500/20 pointer-events-none"
+                    />
+                  ))}
+                </div>
 
                 <div className="absolute inset-0 bg-slate-950/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white font-semibold text-xs backdrop-blur-2xs">
                   <Crosshair className="w-4 h-4 text-red-400" />

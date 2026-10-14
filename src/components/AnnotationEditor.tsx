@@ -450,7 +450,7 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
               ref={imgRef}
               src={imageSrc}
               alt="Captura a anotar"
-              className="max-h-[calc(100vh-80px)] max-w-full block object-contain pointer-events-none rounded select-none shadow-2xl"
+              className="max-h-[calc(100vh-80px)] max-w-full w-auto h-auto block pointer-events-none rounded select-none shadow-2xl"
             />
 
             {/* Render Annotations Overlay */}

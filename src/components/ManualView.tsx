@@ -482,73 +482,121 @@ export const ManualView: React.FC<ManualViewProps> = ({
 
                   {/* Step Annotated Screenshot */}
                   {step.image && (
-                    <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-950 shadow-xs group">
-                      <img
-                        src={step.image}
-                        alt={step.title}
-                        className="w-full h-auto block object-contain max-h-[500px]"
-                        loading="lazy"
-                      />
+                    <div className="rounded-xl overflow-hidden border border-slate-200 bg-slate-950 shadow-xs group flex items-center justify-center p-1 sm:p-2">
+                      <div className="relative inline-block max-w-full">
+                        <img
+                          src={step.image}
+                          alt={step.title}
+                          className="max-h-[540px] max-w-full w-auto h-auto block rounded select-none shadow-md"
+                          loading="lazy"
+                        />
 
-                      {/* Visual Hotspots */}
-                      {step.annotations?.map((ann) => {
-                        if (ann.shape === 'blur') {
+                        {/* Visual Hotspots */}
+                        {step.annotations?.map((ann) => {
+                          if (ann.shape === 'blur') {
+                            const width = ann.width || 22;
+                            const height = ann.height || 12;
+                            return (
+                              <div
+                                key={ann.id}
+                                style={{
+                                  left: `${ann.x}%`,
+                                  top: `${ann.y}%`,
+                                  width: `${width}%`,
+                                  height: `${height}%`,
+                                  transform: 'translate(-50%, -50%)',
+                                }}
+                                className="absolute backdrop-blur-md bg-slate-800/60 border border-slate-400 rounded pointer-events-none"
+                              />
+                            );
+                          }
+                          if (ann.shape === 'rect') {
+                            const width = ann.width || 22;
+                            const height = ann.height || 14;
+                            return (
+                              <div
+                                key={ann.id}
+                                style={{
+                                  left: `${ann.x}%`,
+                                  top: `${ann.y}%`,
+                                  width: `${width}%`,
+                                  height: `${height}%`,
+                                  borderColor: ann.color || '#ef4444',
+                                  transform: 'translate(-50%, -50%)',
+                                }}
+                                className="absolute border-2 bg-red-500/10 rounded pointer-events-none"
+                              >
+                                {ann.label && (() => {
+                                  const isNearTop = (ann.y || 0) < 14;
+                                  const pos = ann.labelPosition || (isNearTop ? 'bottom' : 'top');
+                                  let style: React.CSSProperties = {
+                                    backgroundColor: ann.color || '#ef4444',
+                                  };
+                                  if (ann.labelPosition === 'custom' && (ann.labelOffsetX !== undefined || ann.labelOffsetY !== undefined)) {
+                                    style.top = '0px';
+                                    style.left = '0px';
+                                    style.transform = `translate(${ann.labelOffsetX || 0}px, ${ann.labelOffsetY || 0}px)`;
+                                  } else if (pos === 'bottom') {
+                                    style.bottom = '-24px';
+                                    style.left = '0';
+                                  } else if (pos === 'inside') {
+                                    style.top = '4px';
+                                    style.left = '4px';
+                                  } else if (pos === 'right') {
+                                    style.top = '0';
+                                    style.right = '-90px';
+                                  } else {
+                                    style.top = '-24px';
+                                    style.left = '0';
+                                  }
+
+                                  return (
+                                    <span
+                                      style={style}
+                                      className="absolute text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow whitespace-nowrap z-20"
+                                    >
+                                      {ann.label}
+                                    </span>
+                                  );
+                                })()}
+                              </div>
+                            );
+                          }
                           return (
                             <div
                               key={ann.id}
                               style={{
                                 left: `${ann.x}%`,
                                 top: `${ann.y}%`,
-                                width: `${ann.width || 20}%`,
-                                height: `${ann.height || 10}%`,
-                                transform: 'translate(-50%, -50%)',
-                              }}
-                              className="absolute backdrop-blur-md bg-slate-800/60 border border-slate-400 rounded pointer-events-none"
-                            />
-                          );
-                        }
-                        if (ann.shape === 'rect') {
-                          return (
-                            <div
-                              key={ann.id}
-                              style={{
-                                left: `${ann.x}%`,
-                                top: `${ann.y}%`,
-                                width: `${ann.width || 18}%`,
-                                height: `${ann.height || 12}%`,
                                 borderColor: ann.color || '#ef4444',
-                                transform: 'translate(-50%, -50%)',
                               }}
-                              className="absolute border-2 bg-red-500/10 rounded pointer-events-none"
+                              className="absolute -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full border-3 flex items-center justify-center pointer-events-none shadow-lg"
                             >
+                              <div
+                                style={{ backgroundColor: ann.color || '#ef4444' }}
+                                className="w-4 h-4 rounded-full animate-ping opacity-80"
+                              />
+                              <div
+                                style={{ backgroundColor: ann.color || '#ef4444' }}
+                                className="w-3 h-3 rounded-full absolute"
+                              />
                               {ann.label && (() => {
-                                const isNearTop = (ann.y || 0) < 14;
-                                const pos = ann.labelPosition || (isNearTop ? 'bottom' : 'top');
                                 let style: React.CSSProperties = {
-                                  backgroundColor: ann.color || '#ef4444',
+                                  backgroundColor: ann.color || '#0f172a',
                                 };
                                 if (ann.labelPosition === 'custom' && (ann.labelOffsetX !== undefined || ann.labelOffsetY !== undefined)) {
                                   style.top = '0px';
                                   style.left = '0px';
                                   style.transform = `translate(${ann.labelOffsetX || 0}px, ${ann.labelOffsetY || 0}px)`;
-                                } else if (pos === 'bottom') {
-                                  style.bottom = '-24px';
-                                  style.left = '0';
-                                } else if (pos === 'inside') {
-                                  style.top = '4px';
-                                  style.left = '4px';
-                                } else if (pos === 'right') {
-                                  style.top = '0';
-                                  style.right = '-90px';
                                 } else {
-                                  style.top = '-24px';
-                                  style.left = '0';
+                                  style.bottom = '-24px';
+                                  style.left = '50%';
+                                  style.transform = 'translateX(-50%)';
                                 }
-
                                 return (
                                   <span
                                     style={style}
-                                    className="absolute text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow whitespace-nowrap z-20"
+                                    className="absolute text-white text-[10px] font-semibold px-2 py-0.5 rounded shadow whitespace-nowrap"
                                   >
                                     {ann.label}
                                   </span>
@@ -556,59 +604,17 @@ export const ManualView: React.FC<ManualViewProps> = ({
                               })()}
                             </div>
                           );
-                        }
-                        return (
-                          <div
-                            key={ann.id}
-                            style={{
-                              left: `${ann.x}%`,
-                              top: `${ann.y}%`,
-                              borderColor: ann.color || '#ef4444',
-                            }}
-                            className="absolute -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full border-3 flex items-center justify-center pointer-events-none shadow-lg"
-                          >
-                            <div
-                              style={{ backgroundColor: ann.color || '#ef4444' }}
-                              className="w-4 h-4 rounded-full animate-ping opacity-80"
-                            />
-                            <div
-                              style={{ backgroundColor: ann.color || '#ef4444' }}
-                              className="w-3 h-3 rounded-full absolute"
-                            />
-                            {ann.label && (() => {
-                              let style: React.CSSProperties = {
-                                backgroundColor: ann.color || '#0f172a',
-                              };
-                              if (ann.labelPosition === 'custom' && (ann.labelOffsetX !== undefined || ann.labelOffsetY !== undefined)) {
-                                style.top = '0px';
-                                style.left = '0px';
-                                style.transform = `translate(${ann.labelOffsetX || 0}px, ${ann.labelOffsetY || 0}px)`;
-                              } else {
-                                style.bottom = '-24px';
-                                style.left = '50%';
-                                style.transform = 'translateX(-50%)';
-                              }
-                              return (
-                                <span
-                                  style={style}
-                                  className="absolute text-white text-[10px] font-semibold px-2 py-0.5 rounded shadow whitespace-nowrap"
-                                >
-                                  {ann.label}
-                                </span>
-                              );
-                            })()}
-                          </div>
-                        );
-                      })}
+                        })}
 
-                      {/* Quick Edit Overlay Button */}
-                      <button
-                        onClick={() => onAnnotateStep(step)}
-                        className="absolute bottom-3 right-3 bg-white/95 hover:bg-white text-slate-800 px-3 py-1.5 rounded-lg text-xs font-semibold shadow-md backdrop-blur opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1.5"
-                      >
-                        <Crosshair className="w-3.5 h-3.5 text-red-500" />
-                        <span>Ajustar enfoque visual</span>
-                      </button>
+                        {/* Quick Edit Overlay Button */}
+                        <button
+                          onClick={() => onAnnotateStep(step)}
+                          className="absolute bottom-3 right-3 bg-white/95 hover:bg-white text-slate-800 px-3 py-1.5 rounded-lg text-xs font-semibold shadow-md backdrop-blur opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1.5"
+                        >
+                          <Crosshair className="w-3.5 h-3.5 text-red-500" />
+                          <span>Ajustar enfoque visual</span>
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>

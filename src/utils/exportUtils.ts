@@ -1,5 +1,7 @@
 import { UserManual, VisualAnnotation, getActionTypeSpanish } from '../types/manual';
 import { jsPDF } from 'jspdf';
+import { exportToPdfWithTemplateStructure } from './pdfTemplateGenerator';
+export { exportToPdfWithTemplateStructure };
 import {
   Document,
   Packer,
@@ -134,7 +136,7 @@ export function exportToJson(manual: UserManual) {
  * Renders an image with visual annotations directly onto an HTML Canvas
  * and returns a high-fidelity PNG DataURL ready for jsPDF
  */
-async function renderAnnotatedScreenshotForPdf(
+export async function renderAnnotatedScreenshotForPdf(
   imageSrc: string,
   annotations: VisualAnnotation[] = []
 ): Promise<{ dataUrl: string; width: number; height: number }> {

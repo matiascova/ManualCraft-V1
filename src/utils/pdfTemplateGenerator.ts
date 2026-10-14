@@ -1,0 +1,1051 @@
+import { jsPDF } from 'jspdf';
+import { UserManual } from '../types/manual';
+import { renderAnnotatedScreenshotForPdf } from './exportUtils';
+
+/**
+ * Draws high-precision vector logos matching the official corporate template:
+ * - Weber Saint-Gobain on the left
+ * - HSBT Compromiso & Calidad on the right
+ */
+function drawCorporateLogos(
+  doc: jsPDF,
+  leftX: number,
+  rightX: number,
+  y: number,
+  isMini = false
+) {
+  const scale = isMini ? 0.65 : 1;
+
+  // 1. WEBER SAINT-GOBAIN LOGO (Left)
+  doc.setFillColor(254, 219, 0); // Weber Yellow
+  doc.triangle(
+    leftX,
+    y + 6 * scale,
+    leftX + 4.5 * scale,
+    y,
+    leftX + 9 * scale,
+    y + 6 * scale,
+    'F'
+  );
+  doc.setFillColor(30, 41, 59); // Dark slate arc accent
+  doc.rect(leftX + 2.5 * scale, y + 2.5 * scale, 4 * scale, 3.5 * scale, 'F');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(isMini ? 9 : 13);
+  doc.setTextColor(15, 23, 42);
+  doc.text('weber', leftX + 11 * scale, y + 5 * scale);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(isMini ? 4.5 : 5.8);
+  doc.setTextColor(71, 85, 105);
+  doc.text('SAINT-GOBAIN', leftX + 11 * scale, y + 8.2 * scale);
+
+  // 2. HSBT COMPROMISO & CALIDAD LOGO (Right)
+  const hsbtBoxW = isMini ? 12 : 18;
+  const hsbtBoxH = isMini ? 7 : 10.5;
+  const hsbtBoxX = rightX - hsbtBoxW;
+
+  // Navy block
+  doc.setFillColor(24, 59, 108); // #183B6C
+  doc.rect(hsbtBoxX, y, hsbtBoxW, hsbtBoxH, 'F');
+
+  // Vertical brand lines
+  doc.setDrawColor(37, 99, 235);
+  doc.setLineWidth(0.3);
+  doc.line(hsbtBoxX + hsbtBoxW * 0.33, y, hsbtBoxX + hsbtBoxW * 0.33, y + hsbtBoxH);
+  doc.line(hsbtBoxX + hsbtBoxW * 0.66, y, hsbtBoxX + hsbtBoxW * 0.66, y + hsbtBoxH);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(isMini ? 6.5 : 8.5);
+  doc.setTextColor(255, 255, 255);
+  doc.text('HSBT', hsbtBoxX + hsbtBoxW / 2, y + (isMini ? 4.8 : 6.8), {
+    align: 'center',
+  });
+
+  if (!isMini) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(4);
+    doc.setTextColor(71, 85, 105);
+    doc.text('COMPROMISO & CALIDAD', hsbtBoxX + hsbtBoxW / 2, y + hsbtBoxH + 2.5, {
+      align: 'center',
+    });
+  }
+}
+
+/**
+ * Generates an executive corporate SAP User Manual PDF matching the exact structure
+ * of the 18-page reference template:
+ *
+ * 1. Portada Dedicada con Logotipos Duales, Gran Banner Azul Marino y Ficha Técnica de Control Documental.
+ * 2. Índice Formal con Guías de Puntos y Numeración Dinámica Exacta.
+ * 3. Sección 1: Introducción, Objetivo, Matriz de Escenarios y Datos de Referencia SAP.
+ * 4. Sección 2: Flujo del Proceso en Tabla Matriz Completa (#, Paso, Transacción, Módulo, Observación).
+ * 5. Secciones Procedurales Detalladas con Franja de Transacción, Pasos Numerados, Captura Enmarcada y Cajas de Llamado (Importante, Escenario, Consejo).
+ * 6. Resolución de Problemas y Lista de Verificación.
+ * 7. Encabezado y Pie de Página Corporativo con "Página X de Y" en todas las hojas.
+ */
+export async function exportToPdfWithTemplateStructure(
+  manual: UserManual,
+  onProgress?: (msg: string) => void
+): Promise<void> {
+  if (onProgress) onProgress('Iniciando generación con estructura oficial del template...');
+
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+  });
+
+  const pageWidth = 210;
+  const pageHeight = 297;
+  const marginX = 16;
+  const contentWidth = pageWidth - marginX * 2; // 178mm
+  const maxY = pageHeight - 20; // 277mm max Y before running footer
+
+  const navyColor: [number, number, number] = [24, 59, 108]; // #183B6C
+  const blueRuleColor: [number, number, number] = [37, 99, 235];
+
+  const stepStartPages: Record<number, number> = {};
+
+  // =========================================================================
+  // --- PÁGINA 1: PORTADA EJECUTIVA CORPORATIVA (TEMPLATE PÁGINA 1) ---
+  // =========================================================================
+  if (onProgress) onProgress('Renderizando Portada Ejecutiva con Ficha Técnica...');
+
+  // Top Corporate Logos (Weber + HSBT)
+  drawCorporateLogos(doc, marginX, marginX + contentWidth, 18, false);
+
+  // Large Navy Blue Banner
+  const bannerY = 50;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(22);
+  const titleLines = doc.splitTextToSize(manual.title, contentWidth - 16);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9.5);
+  const subtitleText =
+    manual.subtitle ||
+    manual.overview ||
+    'Procedimiento técnico y operativo paso a paso · Documentación estándar de procesos';
+  const subLines = doc.splitTextToSize(subtitleText, contentWidth - 16);
+
+  const bannerHeight = Math.max(
+    48,
+    14 + titleLines.length * 8.5 + subLines.length * 4.8 + 8
+  );
+
+  // Navy banner rectangle
+  doc.setFillColor(navyColor[0], navyColor[1], navyColor[2]);
+  doc.rect(marginX, bannerY, contentWidth, bannerHeight, 'F');
+
+  // Kicker inside banner
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(255, 255, 255);
+  doc.text('MANUAL DE USUARIO SAP', marginX + 8, bannerY + 11);
+
+  // Main Title
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(22);
+  doc.setTextColor(255, 255, 255);
+  let titleY = bannerY + 20;
+  titleLines.forEach((tLine: string) => {
+    doc.text(tLine, marginX + 8, titleY);
+    titleY += 8.2;
+  });
+
+  // Subtitle / Scope
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(147, 197, 253); // Light cyan #93C5FD
+  let subY = titleY + 1;
+  subLines.forEach((sLine: string) => {
+    doc.text(sLine, marginX + 8, subY);
+    subY += 4.6;
+  });
+
+  // Technical Control Table (Ficha Técnica de Control Documental)
+  const tableY = bannerY + bannerHeight + 22;
+  const col1W = 28;
+  const col2W = 61;
+  const col3W = 28;
+  const col4W = 61;
+  const rowH = 8.2;
+
+  const dateStr = new Date(manual.updatedAt || manual.createdAt || Date.now()).toLocaleDateString('es-ES', {
+    month: 'long',
+    year: 'numeric',
+  });
+  const formattedDate = dateStr.charAt(0).toUpperCase() + dateStr.slice(1);
+
+  const metaRows: Array<[string, string, string, string]> = [
+    [
+      'Cliente',
+      'Weber Chile (Saint-Gobain)',
+      'Documento',
+      'Manual de usuario',
+    ],
+    [
+      'Proceso',
+      manual.title.length > 32 ? `${manual.title.substring(0, 30)}...` : manual.title,
+      'Módulos',
+      'SD · MM',
+    ],
+    [
+      'Org. ventas',
+      '6100 – Solcrom',
+      'Sociedad',
+      'SGCL',
+    ],
+    [
+      'Versión',
+      manual.version || '1.0',
+      'Fecha',
+      formattedDate,
+    ],
+    [
+      'Elaborado por',
+      manual.author || 'HSBT',
+      'Estado',
+      'Productivo',
+    ],
+  ];
+
+  doc.setDrawColor(209, 213, 219); // #D1D5DB
+  doc.setLineWidth(0.25);
+
+  metaRows.forEach((row, rIdx) => {
+    const curRowY = tableY + rIdx * rowH;
+
+    // Col 1
+    doc.setFillColor(241, 245, 249);
+    doc.rect(marginX, curRowY, col1W, rowH, 'FD');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(51, 65, 85);
+    doc.text(row[0], marginX + 3.5, curRowY + 5.2);
+
+    // Col 2
+    doc.setFillColor(255, 255, 255);
+    doc.rect(marginX + col1W, curRowY, col2W, rowH, 'FD');
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(15, 23, 42);
+    doc.text(row[1], marginX + col1W + 3.5, curRowY + 5.2);
+
+    // Col 3
+    doc.setFillColor(241, 245, 249);
+    doc.rect(marginX + col1W + col2W, curRowY, col3W, rowH, 'FD');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(51, 65, 85);
+    doc.text(row[2], marginX + col1W + col2W + 3.5, curRowY + 5.2);
+
+    // Col 4
+    doc.setFillColor(255, 255, 255);
+    doc.rect(marginX + col1W + col2W + col3W, curRowY, col4W, rowH, 'FD');
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(15, 23, 42);
+    doc.text(row[3], marginX + col1W + col2W + col3W + 3.5, curRowY + 5.2);
+  });
+
+  // Page 1 End -> Add Page 2
+  doc.addPage();
+  const tocPage = 2;
+
+  // =========================================================================
+  // --- PÁGINA 2: ÍNDICE FORMAL (TEMPLATE PÁGINA 2) ---
+  // =========================================================================
+  if (onProgress) onProgress('Preparando Índice con estructura jerárquica...');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.setTextColor(navyColor[0], navyColor[1], navyColor[2]);
+  doc.text('ÍNDICE', marginX, 26);
+
+  doc.setDrawColor(blueRuleColor[0], blueRuleColor[1], blueRuleColor[2]);
+  doc.setLineWidth(0.8);
+  doc.line(marginX, 29, marginX + contentWidth, 29);
+
+  const tocStartY = 38;
+
+  // Page 2 End -> Add Page 3
+  doc.addPage();
+
+  // =========================================================================
+  // --- PÁGINA 3: 1. INTRODUCCIÓN & PARÁMETROS (TEMPLATE PÁGINA 3) ---
+  // =========================================================================
+  if (onProgress) onProgress('Generando Sección 1: Introducción, Escenarios y Referencias...');
+  const introPage = 3;
+
+  let currentY = 25;
+
+  // Section Heading: 1. INTRODUCCIÓN
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(14);
+  doc.setTextColor(navyColor[0], navyColor[1], navyColor[2]);
+  doc.text('1. INTRODUCCIÓN', marginX, currentY);
+
+  doc.setDrawColor(blueRuleColor[0], blueRuleColor[1], blueRuleColor[2]);
+  doc.setLineWidth(0.6);
+  doc.line(marginX, currentY + 2.5, marginX + contentWidth, currentY + 2.5);
+  currentY += 10;
+
+  // 1.1 Objetivo
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10.5);
+  doc.setTextColor(navyColor[0], navyColor[1], navyColor[2]);
+  doc.text('1.1 Objetivo', marginX, currentY);
+  currentY += 5.5;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(51, 65, 85);
+  const overviewText =
+    manual.overview ||
+    `El presente manual describe el procedimiento en SAP para procesar ${manual.title} en Weber Chile: una operativa que enlaza las transacciones comerciales, compras y almacenes garantizando total trazabilidad.`;
+  const introLines = doc.splitTextToSize(overviewText, contentWidth);
+  doc.text(introLines, marginX, currentY);
+  currentY += introLines.length * 4.4 + 6;
+
+  // 1.2 Escenarios cubiertos
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10.5);
+  doc.setTextColor(navyColor[0], navyColor[1], navyColor[2]);
+  doc.text('1.2 Escenarios cubiertos', marginX, currentY);
+  currentY += 5.5;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(51, 65, 85);
+  doc.text(
+    'El proceso distingue los escenarios operativos según la modalidad de despacho y recepción en el sistema:',
+    marginX,
+    currentY
+  );
+  currentY += 5;
+
+  // Scenarios Comparison Table
+  const scenHeaders = [
+    'Atributo',
+    'Escenario A · Entrega directa al cliente',
+    'Escenario B · Entrega en instalaciones Weber',
+  ];
+  const scenColW = [46, 66, 66];
+  const scenRowH = 7.5;
+
+  doc.setFillColor(navyColor[0], navyColor[1], navyColor[2]);
+  doc.rect(marginX, currentY, contentWidth, scenRowH, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.5);
+  doc.setTextColor(255, 255, 255);
+  let curX = marginX;
+  scenHeaders.forEach((h, hIdx) => {
+    doc.text(h, curX + 2.5, currentY + 4.8);
+    curX += scenColW[hIdx];
+  });
+  currentY += scenRowH;
+
+  const scenData: Array<[string, string, string]> = [
+    [
+      'Flujo físico',
+      'El proveedor despacha directamente al cliente final.',
+      'El proveedor entrega en Weber; luego Weber despacha al cliente.',
+    ],
+    [
+      'Grupo tipos posición',
+      'BANS – Posición terceros',
+      'BANC – Pedido individual',
+    ],
+    [
+      'Tipo de imputación',
+      'Según SolPed generada desde el pedido',
+      'M – IndivClte s/CO PdClt',
+    ],
+    [
+      'Inventario en Weber',
+      'No hay movimiento físico de stock en Weber.',
+      'Stock especial asignado al pedido de venta.',
+    ],
+    [
+      'Contabilización entrega',
+      'Confirmación de lo enviado por el proveedor.',
+      'Descuento real de inventario en almacén.',
+    ],
+  ];
+
+  doc.setDrawColor(209, 213, 219);
+  doc.setLineWidth(0.2);
+
+  scenData.forEach((row, rIdx) => {
+    const isEven = rIdx % 2 === 0;
+    doc.setFillColor(isEven ? 248 : 255, isEven ? 250 : 255, isEven ? 252 : 255);
+    doc.rect(marginX, currentY, contentWidth, scenRowH, 'FD');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(51, 65, 85);
+    doc.text(row[0], marginX + 2.5, currentY + 4.8);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(71, 85, 105);
+    doc.text(row[1], marginX + scenColW[0] + 2.5, currentY + 4.8);
+    doc.text(row[2], marginX + scenColW[0] + scenColW[1] + 2.5, currentY + 4.8);
+
+    currentY += scenRowH;
+  });
+  currentY += 6;
+
+  // 1.3 Datos de referencia
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10.5);
+  doc.setTextColor(navyColor[0], navyColor[1], navyColor[2]);
+  doc.text('1.3 Datos de referencia', marginX, currentY);
+  currentY += 5.5;
+
+  const refData: Array<[string, string]> = [
+    ['Clase de pedido de venta', 'ZSVC – Ped. Venta calzada'],
+    ['Organización de ventas', '6100 – Solcrom'],
+    ['Sociedad', 'SGCL – Saint-Gobain Weber Chile'],
+    ['Organización de compras / Centro', '6100 / 6100'],
+    ['Clase de solicitud de pedido', 'ZTNB'],
+    ['Clase de pedido de compra', 'NB – Pedido estándar'],
+    ['Reporte de seguimiento', 'ZSD_T0001_CL'],
+  ];
+
+  const refCol1W = 60;
+  const refRowH = 6.8;
+
+  // Ref Table Header
+  doc.setFillColor(navyColor[0], navyColor[1], navyColor[2]);
+  doc.rect(marginX, currentY, contentWidth, refRowH, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.5);
+  doc.setTextColor(255, 255, 255);
+  doc.text('Elemento', marginX + 3, currentY + 4.5);
+  doc.text('Valor utilizado en el proceso', marginX + refCol1W + 3, currentY + 4.5);
+  currentY += refRowH;
+
+  refData.forEach((r, rIdx) => {
+    const isEven = rIdx % 2 === 0;
+    doc.setFillColor(isEven ? 248 : 255, isEven ? 250 : 255, isEven ? 252 : 255);
+    doc.rect(marginX, currentY, contentWidth, refRowH, 'FD');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(51, 65, 85);
+    doc.text(r[0], marginX + 3, currentY + 4.5);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(71, 85, 105);
+    doc.text(r[1], marginX + refCol1W + 3, currentY + 4.5);
+
+    currentY += refRowH;
+  });
+
+  // Page 3 End -> Add Page 4
+  doc.addPage();
+  const flowPage = 4;
+
+  // =========================================================================
+  // --- PÁGINA 4: 2. FLUJO DEL PROCESO (TEMPLATE PÁGINA 4) ---
+  // =========================================================================
+  if (onProgress) onProgress('Generando Sección 2: Matriz de Flujo del Proceso...');
+
+  currentY = 25;
+
+  // Section Heading: 2. FLUJO DEL PROCESO
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(14);
+  doc.setTextColor(navyColor[0], navyColor[1], navyColor[2]);
+  doc.text('2. FLUJO DEL PROCESO', marginX, currentY);
+
+  doc.setDrawColor(blueRuleColor[0], blueRuleColor[1], blueRuleColor[2]);
+  doc.setLineWidth(0.6);
+  doc.line(marginX, currentY + 2.5, marginX + contentWidth, currentY + 2.5);
+  currentY += 10;
+
+  // Explanatory note
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(51, 65, 85);
+  doc.text(
+    'La siguiente tabla resume la secuencia completa del proceso, el módulo SAP involucrado y la transacción a utilizar en cada paso.',
+    marginX,
+    currentY
+  );
+  currentY += 6;
+
+  // Process Flow Table Header
+  const flowColW = [10, 68, 30, 18, 52];
+  const flowH = 7.5;
+
+  doc.setFillColor(navyColor[0], navyColor[1], navyColor[2]);
+  doc.rect(marginX, currentY, contentWidth, flowH, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.5);
+  doc.setTextColor(255, 255, 255);
+
+  let fX = marginX;
+  doc.text('#', fX + 3.5, currentY + 4.8);
+  fX += flowColW[0];
+  doc.text('Paso', fX + 2.5, currentY + 4.8);
+  fX += flowColW[1];
+  doc.text('Transacción', fX + 2.5, currentY + 4.8);
+  fX += flowColW[2];
+  doc.text('Módulo', fX + 2.5, currentY + 4.8);
+  fX += flowColW[3];
+  doc.text('Observación', fX + 2.5, currentY + 4.8);
+
+  currentY += flowH;
+
+  // Build sequence matrix from manual.steps
+  manual.steps.forEach((step, sIdx) => {
+    // Pagination check to avoid overflowing process flow table
+    if (currentY + flowH > maxY - 15) {
+      doc.addPage();
+      currentY = 25;
+      // Re-render table header on new page
+      doc.setFillColor(navyColor[0], navyColor[1], navyColor[2]);
+      doc.rect(marginX, currentY, contentWidth, flowH, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(255, 255, 255);
+      let fX2 = marginX;
+      doc.text('#', fX2 + 3.5, currentY + 4.8);
+      fX2 += flowColW[0];
+      doc.text('Paso', fX2 + 2.5, currentY + 4.8);
+      fX2 += flowColW[1];
+      doc.text('Transacción', fX2 + 2.5, currentY + 4.8);
+      fX2 += flowColW[2];
+      doc.text('Módulo', fX2 + 2.5, currentY + 4.8);
+      fX2 += flowColW[3];
+      doc.text('Observación', fX2 + 2.5, currentY + 4.8);
+      currentY += flowH;
+    }
+
+    const isEven = sIdx % 2 === 0;
+    doc.setFillColor(isEven ? 248 : 255, isEven ? 250 : 255, isEven ? 252 : 255);
+    doc.rect(marginX, currentY, contentWidth, flowH, 'FD');
+
+    // Number Badge
+    doc.setFillColor(navyColor[0], navyColor[1], navyColor[2]);
+    doc.roundedRect(marginX + 1.5, currentY + 1.5, 7, 4.5, 0.8, 0.8, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.5);
+    doc.setTextColor(255, 255, 255);
+    doc.text(`${sIdx + 1}`, marginX + 5, currentY + 4.6, { align: 'center' });
+
+    // Step Title
+    let curColX = marginX + flowColW[0];
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(30, 41, 59);
+    const stepShortTitle = doc.splitTextToSize(step.title, flowColW[1] - 4)[0];
+    doc.text(stepShortTitle, curColX + 2, currentY + 4.8);
+
+    // Transaction Code
+    curColX += flowColW[1];
+    let txCode = 'VA01';
+    if (step.description.includes('MM02') || step.title.includes('maestro')) txCode = 'MM02 / MM03';
+    else if (step.description.includes('ME11')) txCode = 'ME11';
+    else if (step.description.includes('ME58') || step.description.includes('ME21N')) txCode = 'ME58 / ME21N';
+    else if (step.description.includes('MIGO')) txCode = 'MIGO';
+    else if (step.description.includes('MIRO')) txCode = 'MIRO';
+    else if (step.description.includes('VL10A')) txCode = 'VL10A';
+    else if (step.description.includes('VF04')) txCode = 'VF04';
+    else if (step.description.includes('ZMMT0033') || step.title.includes('ZMMT0033')) txCode = 'ZMMT0033';
+    else if (step.description.includes('ZSD_T0001_CL')) txCode = 'ZSD_T0001_CL';
+    else txCode = step.targetElement ? step.targetElement.substring(0, 14) : 'SAP GUI';
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(24, 59, 108);
+    doc.text(txCode, curColX + 2, currentY + 4.8);
+
+    // Module Badge
+    curColX += flowColW[2];
+    const isSD = ['VA01', 'VL10A', 'VF04', 'ZSD_T0001_CL'].some((t) => txCode.includes(t));
+    const modStr = isSD ? 'SD' : 'MM';
+    const modColor: [number, number, number] = isSD ? [37, 99, 235] : [5, 150, 105];
+
+    doc.setFillColor(modColor[0], modColor[1], modColor[2]);
+    doc.roundedRect(curColX + 2, currentY + 1.5, 11, 4.5, 0.8, 0.8, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.5);
+    doc.setTextColor(255, 255, 255);
+    doc.text(modStr, curColX + 7.5, currentY + 4.6, { align: 'center' });
+
+    // Observación
+    curColX += flowColW[3];
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(71, 85, 105);
+    const obsText = step.expectedResult || step.description;
+    const shortObs = doc.splitTextToSize(obsText, flowColW[4] - 4)[0];
+    doc.text(shortObs, curColX + 2, currentY + 4.8);
+
+    currentY += flowH;
+  });
+
+  // Footnote
+  currentY += 4;
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(7.5);
+  doc.setTextColor(100, 116, 139);
+  doc.text(
+    'Nota: las transacciones indicadas corresponden a la parametrización estándar y personalizada en SAP S/4HANA.',
+    marginX,
+    currentY
+  );
+
+  // Page 4 End -> Add Page 5
+  doc.addPage();
+
+  // =========================================================================
+  // --- PÁGINAS PROCEDURALES DETALLADAS (TEMPLATE PÁGINAS 5 A 18) ---
+  // =========================================================================
+  let figureCounter = 1;
+  let sectionCounter = 3;
+
+  for (let i = 0; i < manual.steps.length; i++) {
+    const step = manual.steps[i];
+    if (onProgress) {
+      onProgress(`Diseñando sección técnica ${i + 1} de ${manual.steps.length}...`);
+    }
+
+    currentY = 25;
+
+    // Record exact starting page
+    const stepPageNum = doc.getNumberOfPages();
+    stepStartPages[i] = stepPageNum;
+
+    // 1. SECTION TITLE (Matching Template: "3. DATOS MAESTROS")
+    const sectionTitleText = `${sectionCounter}. ${step.title.toUpperCase()}`;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(13);
+    doc.setTextColor(navyColor[0], navyColor[1], navyColor[2]);
+    doc.text(sectionTitleText, marginX, currentY);
+
+    // Blue Rule Under Title
+    doc.setDrawColor(blueRuleColor[0], blueRuleColor[1], blueRuleColor[2]);
+    doc.setLineWidth(0.6);
+    doc.line(marginX, currentY + 2.5, marginX + contentWidth, currentY + 2.5);
+    currentY += 8;
+
+    // 2. TRANSACTION RIBBON STRIP (Matching Template Style)
+    // Dark Navy badge: "TRANSACCIÓN"
+    doc.setFillColor(navyColor[0], navyColor[1], navyColor[2]);
+    doc.rect(marginX, currentY, 26, 6, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(255, 255, 255);
+    doc.text('TRANSACCIÓN', marginX + 13, currentY + 4.2, { align: 'center' });
+
+    // Transaction Code Badge
+    let txTag = 'VA01';
+    if (step.description.includes('MM02') || step.title.includes('maestro')) txTag = 'MM02';
+    else if (step.description.includes('ME11')) txTag = 'ME11';
+    else if (step.description.includes('ME58') || step.description.includes('ME21N')) txTag = 'ME58';
+    else if (step.description.includes('MIGO')) txTag = 'MIGO';
+    else if (step.description.includes('MIRO')) txTag = 'MIRO';
+    else if (step.description.includes('VL10A')) txTag = 'VL10A';
+    else if (step.description.includes('VF04')) txTag = 'VF04';
+    else if (step.description.includes('ZMMT0033') || step.title.includes('ZMMT0033')) txTag = 'ZMMT0033';
+    else if (step.description.includes('ZSD_T0001_CL')) txTag = 'ZSD_T0001_CL';
+    else txTag = (step.actionType || 'GUI').toUpperCase();
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    const txTagW = doc.getTextWidth(txTag) + 8;
+    doc.setFillColor(239, 246, 255); // #EFF6FF
+    doc.setDrawColor(191, 219, 254);
+    doc.roundedRect(marginX + 28, currentY, txTagW, 6, 0.8, 0.8, 'FD');
+    doc.setTextColor(29, 78, 216);
+    doc.text(txTag, marginX + 28 + txTagW / 2, currentY + 4.2, { align: 'center' });
+
+    // Transaction description text to the right
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(71, 85, 105);
+    const txDesc = `${step.targetElement || step.title} · Módulo MM / SD`;
+    doc.text(txDesc, marginX + 30 + txTagW, currentY + 4.2);
+
+    currentY += 10;
+
+    // 3. STEP DETAILED INSTRUCTIONS (Numbered 1, 2, 3 or bulleted)
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(51, 65, 85);
+
+    const descParagraphs = step.description.split('\n').filter((p) => p.trim());
+    if (descParagraphs.length === 1) {
+      const wrappedDesc = doc.splitTextToSize(step.description, contentWidth);
+      doc.text(wrappedDesc, marginX, currentY);
+      currentY += wrappedDesc.length * 4.4 + 4;
+    } else {
+      descParagraphs.forEach((p, pIdx) => {
+        const pLines = doc.splitTextToSize(`${pIdx + 1}. ${p}`, contentWidth);
+        doc.text(pLines, marginX, currentY);
+        currentY += pLines.length * 4.4 + 2;
+      });
+      currentY += 3;
+    }
+
+    // 4. SCREENSHOT PRESENTATION WITH PIXEL-PERFECT ANNOTATIONS
+    if (step.image) {
+      const { dataUrl, width: imgW, height: imgH } = await renderAnnotatedScreenshotForPdf(
+        step.image,
+        step.annotations
+      );
+
+      const aspect = imgH && imgW ? imgH / imgW : 0.5625;
+      const maxAllowedH = Math.min(105, maxY - currentY - 32);
+      let renderW = contentWidth;
+      let renderH = renderW * aspect;
+
+      if (renderH > maxAllowedH) {
+        renderH = maxAllowedH;
+        renderW = Math.min(contentWidth, renderH / aspect);
+      }
+
+      const imgX = marginX + (contentWidth - renderW) / 2;
+
+      // Clean corporate picture frame
+      doc.setDrawColor(209, 213, 219);
+      doc.setLineWidth(0.3);
+      doc.rect(imgX - 0.5, currentY - 0.5, renderW + 1, renderH + 1);
+
+      try {
+        doc.addImage(dataUrl, 'PNG', imgX, currentY, renderW, renderH);
+      } catch (err) {
+        console.warn('Failed to embed screenshot:', err);
+      }
+
+      currentY += renderH + 4;
+
+      // Centered Figure Caption (Matching Template: "Figura X. [Descripción]")
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(7.5);
+      doc.setTextColor(100, 116, 139);
+      const figCaption = `Figura ${figureCounter}. ${step.title} (${step.targetElement || txTag}).`;
+      doc.text(figCaption, marginX + contentWidth / 2, currentY, { align: 'center' });
+      currentY += 8;
+      figureCounter++;
+    }
+
+    // 5. CORPORATE CALLOUT CARDS (Matching Template)
+    // 5.1 IMPORTANTE / ALERTA (Amber)
+    if (step.warning) {
+      const warnLines = doc.splitTextToSize(step.warning, contentWidth - 14);
+      const cardH = 8 + warnLines.length * 4.2 + 2;
+
+      doc.setFillColor(255, 251, 235); // amber-50
+      doc.setDrawColor(253, 230, 138); // amber-200
+      doc.roundedRect(marginX, currentY, contentWidth, cardH, 1, 1, 'FD');
+
+      doc.setFillColor(217, 119, 6); // amber-600 #D97706
+      doc.rect(marginX, currentY, 2.5, cardH, 'F');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(180, 83, 9);
+      doc.text('IMPORTANTE · Precaución Operativa', marginX + 6, currentY + 5);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(146, 64, 14);
+      warnLines.forEach((ln: string, lIdx: number) => {
+        doc.text(ln, marginX + 6, currentY + 9 + lIdx * 4.2);
+      });
+
+      currentY += cardH + 5;
+    }
+
+    // 5.2 ESCENARIO / NOTA O CONSEJO (Green/Blue)
+    if (step.tip || step.expectedResult) {
+      const noteTitle = step.tip ? 'CONSEJO DE EXPERTO' : 'RESULTADO ESPERADO';
+      const noteBody = step.tip || step.expectedResult || '';
+      const noteLines = doc.splitTextToSize(noteBody, contentWidth - 14);
+      const cardH = 8 + noteLines.length * 4.2 + 2;
+
+      const isTip = !!step.tip;
+      const barCol: [number, number, number] = isTip ? [5, 150, 105] : [37, 99, 235];
+      const bgCol: [number, number, number] = isTip ? [240, 253, 244] : [239, 246, 255];
+      const borderCol: [number, number, number] = isTip ? [187, 247, 208] : [191, 219, 254];
+
+      doc.setFillColor(bgCol[0], bgCol[1], bgCol[2]);
+      doc.setDrawColor(borderCol[0], borderCol[1], borderCol[2]);
+      doc.roundedRect(marginX, currentY, contentWidth, cardH, 1, 1, 'FD');
+
+      doc.setFillColor(barCol[0], barCol[1], barCol[2]);
+      doc.rect(marginX, currentY, 2.5, cardH, 'F');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(barCol[0], barCol[1], barCol[2]);
+      doc.text(noteTitle, marginX + 6, currentY + 5);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(51, 65, 85);
+      noteLines.forEach((ln: string, lIdx: number) => {
+        doc.text(ln, marginX + 6, currentY + 9 + lIdx * 4.2);
+      });
+
+      currentY += cardH + 5;
+    }
+
+    // 5.3 AUDIO DEL INSTRUCTOR (Purple)
+    const audioQuote = step.instructorAudioQuote || step.instructorNotes;
+    if (audioQuote) {
+      const audLines = doc.splitTextToSize(`"${audioQuote}"`, contentWidth - 14);
+      const cardH = 8 + audLines.length * 4.2 + 2;
+
+      doc.setFillColor(250, 245, 255);
+      doc.setDrawColor(233, 213, 255);
+      doc.roundedRect(marginX, currentY, contentWidth, cardH, 1, 1, 'FD');
+
+      doc.setFillColor(126, 34, 206);
+      doc.rect(marginX, currentY, 2.5, cardH, 'F');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(126, 34, 206);
+      doc.text('EXPLICACIÓN DEL INSTRUCTOR (AUDIO EN VIVO)', marginX + 6, currentY + 5);
+
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(8);
+      doc.setTextColor(88, 28, 135);
+      audLines.forEach((ln: string, lIdx: number) => {
+        doc.text(ln, marginX + 6, currentY + 9 + lIdx * 4.2);
+      });
+
+      currentY += cardH + 5;
+    }
+
+    sectionCounter++;
+
+    // Dedicated page per procedural step
+    if (i < manual.steps.length - 1) {
+      doc.addPage();
+    }
+  }
+
+  // =========================================================================
+  // --- SECCIÓN FINAL: RESOLUCIÓN DE PROBLEMAS & CHECKLIST ---
+  // =========================================================================
+  let troubleStartPage = 0;
+  if (manual.troubleshooting && manual.troubleshooting.length > 0) {
+    doc.addPage();
+    troubleStartPage = doc.getNumberOfPages();
+    currentY = 25;
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.setTextColor(navyColor[0], navyColor[1], navyColor[2]);
+    doc.text(`${sectionCounter}. RESOLUCIÓN DE PROBLEMAS FRECUENTES`, marginX, currentY);
+
+    doc.setDrawColor(blueRuleColor[0], blueRuleColor[1], blueRuleColor[2]);
+    doc.setLineWidth(0.6);
+    doc.line(marginX, currentY + 2.5, marginX + contentWidth, currentY + 2.5);
+    currentY += 10;
+
+    manual.troubleshooting.forEach((item) => {
+      const solLines = doc.splitTextToSize(item.solution, contentWidth - 14);
+      const itemH = 8 + solLines.length * 4.2 + 3;
+
+      if (currentY + itemH > maxY) {
+        doc.addPage();
+        currentY = 25;
+      }
+
+      doc.setFillColor(248, 250, 252);
+      doc.setDrawColor(226, 232, 240);
+      doc.roundedRect(marginX, currentY, contentWidth, itemH, 1, 1, 'FD');
+
+      doc.setFillColor(217, 119, 6);
+      doc.rect(marginX, currentY, 2.5, itemH, 'F');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.setTextColor(30, 41, 59);
+      doc.text(`Problema: ${item.problem}`, marginX + 6, currentY + 5);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(71, 85, 105);
+      solLines.forEach((sl: string, sIdx: number) => {
+        doc.text(sl, marginX + 6, currentY + 9 + sIdx * 4.2);
+      });
+
+      currentY += itemH + 4;
+    });
+
+    sectionCounter++;
+  }
+
+  let checklistStartPage = 0;
+  if (manual.summaryChecklist && manual.summaryChecklist.length > 0) {
+    if (currentY > maxY - 40) {
+      doc.addPage();
+      currentY = 25;
+    } else {
+      currentY += 8;
+    }
+    checklistStartPage = doc.getNumberOfPages();
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.setTextColor(navyColor[0], navyColor[1], navyColor[2]);
+    doc.text(`${sectionCounter}. LISTA DE VERIFICACIÓN FINAL`, marginX, currentY);
+
+    doc.setDrawColor(blueRuleColor[0], blueRuleColor[1], blueRuleColor[2]);
+    doc.setLineWidth(0.6);
+    doc.line(marginX, currentY + 2.5, marginX + contentWidth, currentY + 2.5);
+    currentY += 10;
+
+    manual.summaryChecklist.forEach((chk) => {
+      if (currentY + 8 > maxY) {
+        doc.addPage();
+        currentY = 25;
+      }
+
+      doc.setDrawColor(148, 163, 184);
+      doc.rect(marginX + 2, currentY - 2.5, 3.5, 3.5);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(51, 65, 85);
+      doc.text(chk, marginX + 9, currentY);
+      currentY += 6;
+    });
+  }
+
+  // =========================================================================
+  // --- SECOND PASS: RENDER EXACT TABLE OF CONTENTS ON PAGE 2 ---
+  // =========================================================================
+  if (onProgress) onProgress('Finalizando Índice con numeración de páginas exactas...');
+  doc.setPage(tocPage);
+
+  let curTocY = tocStartY;
+
+  const drawTocItem = (
+    title: string,
+    pageNum: number,
+    level: 1 | 2 = 1
+  ) => {
+    const isLevel1 = level === 1;
+    doc.setFont('helvetica', isLevel1 ? 'bold' : 'normal');
+    doc.setFontSize(isLevel1 ? 9 : 8.5);
+    doc.setTextColor(isLevel1 ? navyColor[0] : 71, isLevel1 ? navyColor[1] : 85, isLevel1 ? navyColor[2] : 105);
+
+    const xPos = isLevel1 ? marginX : marginX + 6;
+    doc.text(title, xPos, curTocY);
+
+    // Calculate dotted leaders
+    const titleWidth = doc.getTextWidth(title);
+    const startDotsX = xPos + titleWidth + 3;
+    const endDotsX = marginX + contentWidth - 10;
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(148, 163, 184);
+
+    const dotStr = '.';
+    const dotW = doc.getTextWidth(dotStr);
+    const numDots = Math.floor((endDotsX - startDotsX) / (dotW * 1.5));
+    if (numDots > 3) {
+      const dots = Array(numDots).fill('.').join(' ');
+      doc.text(dots, startDotsX, curTocY);
+    }
+
+    // Right-aligned page number
+    doc.setFont('helvetica', isLevel1 ? 'bold' : 'normal');
+    doc.setFontSize(isLevel1 ? 9 : 8.5);
+    doc.setTextColor(isLevel1 ? navyColor[0] : 71, isLevel1 ? navyColor[1] : 85, isLevel1 ? navyColor[2] : 105);
+    doc.text(`${pageNum}`, marginX + contentWidth, curTocY, { align: 'right' });
+
+    curTocY += isLevel1 ? 6.8 : 5.8;
+  };
+
+  // Section 1
+  drawTocItem('1 INTRODUCCIÓN', introPage, 1);
+  drawTocItem('1.1 Objetivo', introPage, 2);
+  drawTocItem('1.2 Escenarios cubiertos', introPage, 2);
+  drawTocItem('1.3 Datos de referencia', introPage, 2);
+
+  // Section 2
+  drawTocItem('2 FLUJO DEL PROCESO', flowPage, 1);
+
+  // Sections 3..N (Procedural steps)
+  let tocSecNum = 3;
+  manual.steps.forEach((st, sIdx) => {
+    const pNum = stepStartPages[sIdx] || 5 + sIdx;
+    drawTocItem(`${tocSecNum} ${st.title.toUpperCase()}`, pNum, 1);
+    tocSecNum++;
+  });
+
+  if (troubleStartPage > 0) {
+    drawTocItem(`${tocSecNum} RESOLUCIÓN DE PROBLEMAS`, troubleStartPage, 1);
+    tocSecNum++;
+  }
+  if (checklistStartPage > 0) {
+    drawTocItem(`${tocSecNum} LISTA DE VERIFICACIÓN`, checklistStartPage, 1);
+  }
+
+  // =========================================================================
+  // --- THIRD PASS: RUNNING HEADERS & FOOTERS (ALL PAGES 2 TO TOTAL) ---
+  // =========================================================================
+  const totalPages = doc.getNumberOfPages();
+
+  for (let p = 2; p <= totalPages; p++) {
+    doc.setPage(p);
+
+    // 1. RUNNING HEADER (Matching Template)
+    drawCorporateLogos(doc, marginX, marginX + contentWidth, 11, true);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(30, 41, 59);
+    const centerTitle = `Manual de Usuario SAP · ${manual.title}`;
+    const shortCenterTitle = doc.splitTextToSize(centerTitle, 110)[0];
+    doc.text(shortCenterTitle, marginX + contentWidth / 2, 16.5, { align: 'center' });
+
+    doc.setDrawColor(209, 213, 219);
+    doc.setLineWidth(0.3);
+    doc.line(marginX, 19.5, marginX + contentWidth, 19.5);
+
+    // 2. RUNNING FOOTER (Matching Template)
+    doc.setDrawColor(209, 213, 219);
+    doc.setLineWidth(0.3);
+    doc.line(marginX, pageHeight - 14, marginX + contentWidth, pageHeight - 14);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text(
+      'HSBT · Compromiso y Calidad | Weber Chile – SD · MM',
+      marginX,
+      pageHeight - 9.5
+    );
+
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(71, 85, 105);
+    doc.text(`Página ${p} de ${totalPages}`, marginX + contentWidth, pageHeight - 9.5, {
+      align: 'right',
+    });
+  }
+
+  // Download PDF file
+  const safeName = manual.title
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+
+  doc.save(`${safeName || 'manual-usuario-sap'}.pdf`);
+}
