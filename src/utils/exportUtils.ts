@@ -1,7 +1,7 @@
 import { UserManual, VisualAnnotation, getActionTypeSpanish } from '../types/manual';
 import { jsPDF } from 'jspdf';
-import { exportToPdfWithTemplateStructure } from './pdfTemplateGenerator';
-export { exportToPdfWithTemplateStructure };
+import { exportToPdfWithTemplateStructure, exportProjectDossierPdf } from './pdfTemplateGenerator';
+export { exportToPdfWithTemplateStructure, exportProjectDossierPdf };
 import {
   Document,
   Packer,

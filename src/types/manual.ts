@@ -79,6 +79,7 @@ export interface InstructorTranscriptSegment {
 
 export interface UserManual {
   id: string;
+  projectId?: string;
   title: string;
   subtitle: string;
   overview: string;

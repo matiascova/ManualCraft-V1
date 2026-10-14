@@ -86,6 +86,7 @@ function createMockScreenshot(title: string, subtitle: string, highlightText: st
 export const SAMPLE_MANUALS: UserManual[] = [
   {
     id: 'manual-sap-comex',
+    projectId: 'prj-weber-sap',
     title: 'Distribución de Facturas de Importación Comex en Órdenes de Compra (SAP)',
     subtitle: 'Guía práctica paso a paso para consultar, validar y grabar la distribución de facturas de comercio exterior mediante la transacción ZMMT0033',
     overview: 'Este manual describe el procedimiento estándar para distribuir facturas de importación (Comex) asociadas a Órdenes de Compra en el sistema SAP S/4HANA. El usuario aprenderá a acceder a la transacción personalizada, filtrar por sociedad y número de solicitud, revisar los importes y condiciones comerciales, y guardar de forma segura los registros en el sistema.',
@@ -271,6 +272,7 @@ export const SAMPLE_MANUALS: UserManual[] = [
   },
   {
     id: 'manual-facturacion',
+    projectId: 'prj-acme-finanzas',
     title: 'Guía de Emisión y Timbrado de Facturas Electrónicas',
     subtitle: 'Procedimiento paso a paso para generar y certificar comprobantes fiscales en la plataforma web',
     overview: 'Este manual describe el flujo estándar para emitir una nueva factura electrónica con desglose de impuestos, adjuntar notas de crédito y enviar el comprobante automáticamente por correo al cliente.',
@@ -399,6 +401,7 @@ export const SAMPLE_MANUALS: UserManual[] = [
   },
   {
     id: 'manual-2fa-seguridad',
+    projectId: 'prj-nexus-seguridad',
     title: 'Activación de Autenticación en Dos Pasos (2FA)',
     subtitle: 'Protege tu cuenta corporativa mediante códigos temporales TOTP en Google Authenticator',
     overview: 'Instrucciones obligatorias para que los colaboradores activen el segundo factor de seguridad en sus dispositivos móviles y protejan la información confidencial de la organización.',

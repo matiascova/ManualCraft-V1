@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf';
 import { UserManual } from '../types/manual';
+import { Project } from '../types/project';
 import { renderAnnotatedScreenshotForPdf } from './exportUtils';
 
 /**
@@ -1049,3 +1050,393 @@ export async function exportToPdfWithTemplateStructure(
 
   doc.save(`${safeName || 'manual-usuario-sap'}.pdf`);
 }
+
+/**
+ * Genera el Dossier Consolidado del Proyecto con todos los manuales que forman parte
+ * de la solución final, incorporando el nombre del cliente, logo y las características
+ * seleccionadas en las opciones del proyecto.
+ */
+export async function exportProjectDossierPdf(
+  project: Project,
+  manuals: UserManual[],
+  onProgress?: (msg: string) => void
+): Promise<void> {
+  if (onProgress) onProgress(`Iniciando generación del Dossier de Solución para ${project.clientName}...`);
+
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+  });
+
+  const pageWidth = 210;
+  const pageHeight = 297;
+  const marginX = 16;
+  const contentWidth = pageWidth - marginX * 2; // 178mm
+  const maxY = pageHeight - 20;
+
+  const navyColor: [number, number, number] = [24, 59, 108]; // #183B6C
+  const docOpts = project.documentOptions || {};
+
+  // =========================================================================
+  // --- PÁGINA 1: PORTADA OFICIAL DEL PROYECTO ---
+  // =========================================================================
+  if (docOpts.includeCoverPage !== false) {
+    if (onProgress) onProgress('Generando portada institucional del proyecto...');
+
+    // Draw logos or client header
+    if (docOpts.includeClientLogo !== false) {
+      drawCorporateLogos(doc, marginX, marginX + contentWidth, 18, false);
+    }
+
+    // Title banner
+    const bannerY = 50;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(20);
+    const titleLines = doc.splitTextToSize(project.name, contentWidth - 16);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9.5);
+    const subText =
+      project.description ||
+      `Dossier Consolidado de Solución y Manuales de Usuario · Cliente: ${project.clientName}`;
+    const subLines = doc.splitTextToSize(subText, contentWidth - 16);
+
+    const bannerH = Math.max(50, 16 + titleLines.length * 8 + subLines.length * 4.8 + 8);
+    doc.setFillColor(navyColor[0], navyColor[1], navyColor[2]);
+    doc.rect(marginX, bannerY, contentWidth, bannerH, 'F');
+
+    // Title text
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(16);
+    let curTextY = bannerY + 12;
+    titleLines.forEach((tl: string) => {
+      doc.text(tl, marginX + 8, curTextY);
+      curTextY += 7.5;
+    });
+
+    curTextY += 1.5;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(203, 213, 225);
+    subLines.forEach((sl: string) => {
+      doc.text(sl, marginX + 8, curTextY);
+      curTextY += 4.5;
+    });
+
+    // Subtitle bar
+    doc.setFillColor(241, 245, 249);
+    doc.rect(marginX, bannerY + bannerH, contentWidth, 8, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(51, 65, 85);
+    doc.text(
+      `DOSSIER DE SOLUCIÓN TÉCNICA · ${project.clientName.toUpperCase()} · ${manuals.length} MANUALES INCLUIDOS`,
+      marginX + 6,
+      bannerY + bannerH + 5.5
+    );
+
+    // Document Control Table
+    if (docOpts.includeDocumentControl !== false) {
+      const tableY = bannerY + bannerH + 16;
+      doc.setFillColor(navyColor[0], navyColor[1], navyColor[2]);
+      doc.rect(marginX, tableY, contentWidth, 8, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.setTextColor(255, 255, 255);
+      doc.text('CONTROL DEL DOCUMENTO Y FICHA TÉCNICA DEL PROYECTO', marginX + 5, tableY + 5.5);
+
+      const metaRows: [string, string][] = [
+        ['Cliente / Organización', project.clientName],
+        ['Código de Proyecto', project.code || 'PRJ-2026-WEBER'],
+        ['Área / Módulos', project.category || 'Supply Chain, SAP SD · MM · Comex'],
+        ['Versión de Solución', `Versión ${project.version || '1.0'}`],
+        ['Estado del Proyecto', project.status || 'Aprobado'],
+        ['Consultor Líder / Autor', project.author || 'Equipo de Procesos & Consultoría'],
+        ['Audiencia Objetivo', project.targetAudience || 'Usuarios finales, Key Users y Administradores'],
+        ['Fecha de Emisión', new Date(project.updatedAt).toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })],
+        ['Manuales Consolidados', `${manuals.length} procedimiento(s) operativos`],
+      ];
+
+      let rowY = tableY + 8;
+      const rowHeight = 7;
+      metaRows.forEach(([lbl, val], rIdx) => {
+        const isEven = rIdx % 2 === 0;
+        doc.setFillColor(isEven ? 248 : 255, isEven ? 250 : 255, isEven ? 252 : 255);
+        doc.rect(marginX, rowY, contentWidth, rowHeight, 'F');
+        doc.setDrawColor(226, 232, 240);
+        doc.rect(marginX, rowY, contentWidth, rowHeight, 'S');
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(51, 65, 85);
+        doc.text(lbl, marginX + 4, rowY + 4.8);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(15, 23, 42);
+        doc.text(val, marginX + 58, rowY + 4.8);
+
+        rowY += rowHeight;
+      });
+    }
+
+    doc.addPage();
+  }
+
+  // =========================================================================
+  // --- PÁGINA 2: ÍNDICE DE LA SOLUCIÓN Y RESUMEN EJECUTIVO ---
+  // =========================================================================
+  let curY = 26;
+
+  if (docOpts.includeTableOfContents !== false) {
+    if (onProgress) onProgress('Compilando índice consolidado de manuales...');
+
+    doc.setFillColor(navyColor[0], navyColor[1], navyColor[2]);
+    doc.rect(marginX, curY, contentWidth, 8, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(255, 255, 255);
+    doc.text('ÍNDICE CONSOLIDADO DE MANUALES DEL PROYECTO', marginX + 4, curY + 5.5);
+    curY += 12;
+
+    manuals.forEach((m, mIdx) => {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(15, 23, 42);
+      const title = `${mIdx + 1}. ${m.title}`;
+      doc.text(title, marginX + 4, curY);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`${m.steps.length} pasos · v${m.version || '1.0'}`, marginX + contentWidth - 4, curY, { align: 'right' });
+      curY += 5;
+
+      if (m.subtitle) {
+        doc.setFontSize(7);
+        doc.setTextColor(71, 85, 105);
+        doc.text(`   ↳ ${m.subtitle.slice(0, 95)}`, marginX + 4, curY);
+        curY += 4.5;
+      }
+    });
+
+    curY += 6;
+  }
+
+  // Executive Summary
+  if (docOpts.includeExecutiveSummary !== false) {
+    doc.setFillColor(navyColor[0], navyColor[1], navyColor[2]);
+    doc.rect(marginX, curY, contentWidth, 8, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(255, 255, 255);
+    doc.text('RESUMEN EJECUTIVO Y ALCANCE DE LA SOLUCIÓN', marginX + 4, curY + 5.5);
+    curY += 12;
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(30, 41, 59);
+    const summaryText =
+      project.description ||
+      `La presente documentación técnica y operativa ha sido elaborada especialmente para ${project.clientName}. Incluye todos los procedimientos estándar, pantallas del sistema y validaciones requeridas para la ejecución sin errores de los procesos comerciales y de abastecimiento.`;
+    const sumLines = doc.splitTextToSize(summaryText, contentWidth - 8);
+    doc.text(sumLines, marginX + 4, curY);
+    curY += sumLines.length * 4.5 + 4;
+
+    if (project.scope) {
+      doc.setFont('helvetica', 'bold');
+      doc.text('Alcance de la Entrega:', marginX + 4, curY);
+      curY += 4.5;
+      doc.setFont('helvetica', 'normal');
+      const scopeLines = doc.splitTextToSize(project.scope, contentWidth - 8);
+      doc.text(scopeLines, marginX + 4, curY);
+      curY += scopeLines.length * 4.5 + 6;
+    }
+  }
+
+  // Process matrix
+  if (docOpts.includeProcessMatrix !== false) {
+    if (curY > maxY - 40) {
+      doc.addPage();
+      curY = 26;
+    }
+
+    doc.setFillColor(navyColor[0], navyColor[1], navyColor[2]);
+    doc.rect(marginX, curY, contentWidth, 8, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(255, 255, 255);
+    doc.text('MATRIZ DE PROCESOS Y MANUALES OPERATIVOS', marginX + 4, curY + 5.5);
+    curY += 10;
+
+    // Table header
+    doc.setFillColor(241, 245, 249);
+    doc.rect(marginX, curY, contentWidth, 6, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(51, 65, 85);
+    doc.text('#', marginX + 3, curY + 4.2);
+    doc.text('Manual / Proceso', marginX + 12, curY + 4.2);
+    doc.text('Pasos', marginX + 115, curY + 4.2);
+    doc.text('Dificultad', marginX + 135, curY + 4.2);
+    doc.text('Versión', marginX + 160, curY + 4.2);
+    curY += 7;
+
+    manuals.forEach((m, mIdx) => {
+      const isEven = mIdx % 2 === 0;
+      doc.setFillColor(isEven ? 248 : 255, isEven ? 250 : 255, isEven ? 252 : 255);
+      doc.rect(marginX, curY, contentWidth, 6.5, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      doc.setTextColor(15, 23, 42);
+      doc.text(String(mIdx + 1), marginX + 3, curY + 4.5);
+      doc.text(m.title.slice(0, 55), marginX + 12, curY + 4.5);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`${m.steps.length} pasos`, marginX + 115, curY + 4.5);
+      doc.text(m.difficulty || 'Intermedio', marginX + 135, curY + 4.5);
+      doc.text(`v${m.version || '1.0'}`, marginX + 160, curY + 4.5);
+      curY += 6.5;
+    });
+  }
+
+  // =========================================================================
+  // --- PROCEDIMIENTOS DETALLADOS DE CADA MANUAL ---
+  // =========================================================================
+  for (let mIdx = 0; mIdx < manuals.length; mIdx++) {
+    const man = manuals[mIdx];
+    if (onProgress) onProgress(`Renderizando Manual ${mIdx + 1}/${manuals.length}: ${man.title}...`);
+
+    doc.addPage();
+    curY = 26;
+
+    // Header banner for this manual inside the project dossier
+    doc.setFillColor(navyColor[0], navyColor[1], navyColor[2]);
+    doc.rect(marginX, curY, contentWidth, 12, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10.5);
+    doc.setTextColor(255, 255, 255);
+    doc.text(`MANUAL ${mIdx + 1}: ${man.title.toUpperCase()}`, marginX + 5, curY + 8);
+    curY += 16;
+
+    if (man.overview) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(30, 41, 59);
+      const ovLines = doc.splitTextToSize(man.overview, contentWidth - 6);
+      doc.text(ovLines, marginX + 3, curY);
+      curY += ovLines.length * 4.2 + 6;
+    }
+
+    // Steps
+    for (let sIdx = 0; sIdx < man.steps.length; sIdx++) {
+      const step = man.steps[sIdx];
+      const stepH = 95; // Approximate height for step + screenshot
+
+      if (curY + stepH > maxY) {
+        doc.addPage();
+        curY = 26;
+      }
+
+      // Step title & action badge
+      doc.setFillColor(241, 245, 249);
+      doc.rect(marginX, curY, contentWidth, 7, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(15, 23, 42);
+      doc.text(`Paso ${step.stepNumber || sIdx + 1}: ${step.title}`, marginX + 4, curY + 4.8);
+
+      if (step.actionType) {
+        doc.setFillColor(37, 99, 235);
+        doc.rect(marginX + contentWidth - 28, curY + 1.2, 26, 4.5, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(6.5);
+        doc.setTextColor(255, 255, 255);
+        doc.text(step.actionType.toUpperCase(), marginX + contentWidth - 15, curY + 4.2, { align: 'center' });
+      }
+
+      curY += 9;
+
+      // Description
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(51, 65, 85);
+      const descLines = doc.splitTextToSize(step.description, contentWidth - 6);
+      doc.text(descLines, marginX + 3, curY);
+      curY += descLines.length * 3.8 + 3;
+
+      // Screenshot
+      if (step.image && docOpts.includeStepScreenshots !== false) {
+        try {
+          const renderedImg = await renderAnnotatedScreenshotForPdf(
+            step.image,
+            step.annotations || []
+          );
+          const imgH = 65;
+          const imgW = 120;
+          doc.setDrawColor(203, 213, 225);
+          doc.rect(marginX + 20, curY, imgW, imgH, 'S');
+          doc.addImage(renderedImg.dataUrl, 'JPEG', marginX + 20.5, curY + 0.5, imgW - 1, imgH - 1);
+          curY += imgH + 6;
+        } catch (e) {
+          curY += 4;
+        }
+      } else {
+        curY += 4;
+      }
+    }
+  }
+
+  // =========================================================================
+  // --- RUNNING HEADERS & FOOTERS (ALL PAGES 2 TO TOTAL) ---
+  // =========================================================================
+  const totalPages = doc.getNumberOfPages();
+  for (let p = 2; p <= totalPages; p++) {
+    doc.setPage(p);
+
+    if (docOpts.includeClientLogo !== false) {
+      drawCorporateLogos(doc, marginX, marginX + contentWidth, 11, true);
+    }
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(30, 41, 59);
+    doc.text(
+      `${project.clientName} · ${project.name}`,
+      marginX + contentWidth / 2,
+      16,
+      { align: 'center' }
+    );
+
+    doc.setDrawColor(209, 213, 219);
+    doc.setLineWidth(0.3);
+    doc.line(marginX, 19, marginX + contentWidth, 19);
+
+    doc.line(marginX, pageHeight - 14, marginX + contentWidth, pageHeight - 14);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text(
+      `Dossier de Solución Técnica · ${project.clientName}`,
+      marginX,
+      pageHeight - 9.5
+    );
+
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(71, 85, 105);
+    doc.text(`Página ${p} de ${totalPages}`, marginX + contentWidth, pageHeight - 9.5, {
+      align: 'right',
+    });
+  }
+
+  const safeClientName = project.clientName
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+
+  doc.save(`dossier-proyecto-${safeClientName || 'solucion'}.pdf`);
+}
+

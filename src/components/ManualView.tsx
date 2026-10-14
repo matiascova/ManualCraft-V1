@@ -29,10 +29,16 @@ import {
   Check,
   X,
   RotateCcw,
+  ArrowLeft,
+  Building2,
+  FolderKanban,
 } from 'lucide-react';
+import { Project } from '../types/project';
 
 interface ManualViewProps {
   manual: UserManual;
+  project?: Project;
+  onBackToProject?: () => void;
   onUpdateManual: (manual: UserManual) => void;
   onStartInteractivePlayer: (stepIndex?: number) => void;
   onOpenExportModal: () => void;
@@ -44,6 +50,8 @@ interface ManualViewProps {
 
 export const ManualView: React.FC<ManualViewProps> = ({
   manual,
+  project,
+  onBackToProject,
   onUpdateManual,
   onStartInteractivePlayer,
   onOpenExportModal,
@@ -124,6 +132,43 @@ export const ManualView: React.FC<ManualViewProps> = ({
 
   return (
     <div className="w-[98%] max-w-[98vw] mx-auto px-2 sm:px-4 py-6">
+      {/* Project Context & Breadcrumb Bar */}
+      {project && (
+        <div className="mb-4 bg-white border border-slate-200 rounded-xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-2.5">
+            {onBackToProject && (
+              <button
+                onClick={onBackToProject}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                title="Volver a la vista del proyecto"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Volver al Proyecto</span>
+              </button>
+            )}
+            <div className="h-4 w-px bg-slate-200 hidden sm:block" />
+            <div className="flex items-center gap-2 text-xs text-slate-600">
+              {project.clientLogo && (
+                <div className="w-6 h-6 rounded bg-slate-50 border border-slate-200 p-0.5 flex items-center justify-center overflow-hidden flex-shrink-0">
+                  <img
+                    src={project.clientLogo}
+                    alt={project.clientName}
+                    className="max-w-full max-h-full object-contain"
+                  />
+                </div>
+              )}
+              <span className="font-semibold text-slate-400">Cliente:</span>
+              <span className="font-bold text-slate-900">{project.clientName}</span>
+              <span className="text-slate-300">/</span>
+              <span className="font-semibold text-indigo-700">{project.name}</span>
+            </div>
+          </div>
+          <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+            Manual del Proyecto
+          </span>
+        </div>
+      )}
+
       {/* Top Action Header Bar */}
       <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-6 border-b border-slate-200">
         <div>

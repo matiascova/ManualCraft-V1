@@ -5,9 +5,13 @@
 
 import React, { useState, useEffect } from 'react';
 import { UserManual, ManualStep } from './types/manual';
+import { Project } from './types/project';
 import { SAMPLE_MANUALS } from './data/sampleManuals';
+import { SAMPLE_PROJECTS } from './data/sampleProjects';
 import { Navbar } from './components/Navbar';
 import { ManualView } from './components/ManualView';
+import { ProjectWorkspace } from './components/ProjectWorkspace';
+import { ProjectModal } from './components/ProjectModal';
 import { CreateManualModal } from './components/CreateManualModal';
 import { InteractivePlayer } from './components/InteractivePlayer';
 import { ExportModal } from './components/ExportModal';
@@ -17,16 +21,29 @@ import { InteractiveWorkflowSimulator } from './components/InteractiveWorkflowSi
 import {
   Sparkles,
   BookOpen,
+  FolderKanban,
   FileCheck2,
   Video,
   MonitorPlay,
   ShieldCheck,
   CheckCircle,
+  Building2,
+  FolderPlus,
 } from 'lucide-react';
 
 import { manualStorage } from './utils/storage';
 
 export default function App() {
+  // Projects state
+  const [projects, setProjects] = useState<Project[]>(() => {
+    return manualStorage.loadProjects(SAMPLE_PROJECTS);
+  });
+
+  const [activeProjectId, setActiveProjectId] = useState<string>(() => {
+    return projects[0]?.id || SAMPLE_PROJECTS[0]?.id || 'prj-weber-sap';
+  });
+
+  // Manuals state
   const [manuals, setManuals] = useState<UserManual[]>(() => {
     return manualStorage.loadManuals(SAMPLE_MANUALS);
   });
@@ -35,8 +52,16 @@ export default function App() {
     return SAMPLE_MANUALS[0]?.id || manuals[0]?.id || '';
   });
 
+  // Navigation mode: 'project' (Project Workspace & Solution view) | 'manual' (individual manual editor)
+  const [viewMode, setViewMode] = useState<'project' | 'manual'>('project');
+
   // Modals state
+  const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
+
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [createManualProjectId, setCreateManualProjectId] = useState<string>('');
+
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isPlayerOpen, setIsPlayerOpen] = useState(false);
   const [playerInitialStepIndex, setPlayerInitialStepIndex] = useState(0);
@@ -45,16 +70,98 @@ export default function App() {
   const [editingStep, setEditingStep] = useState<ManualStep | null>(null);
   const [annotatingStep, setAnnotatingStep] = useState<ManualStep | null>(null);
 
-  // Sync with storage safely
+  // Sync projects with localStorage
+  useEffect(() => {
+    manualStorage.saveProjects(projects);
+  }, [projects]);
+
+  // Sync manuals with localStorage
   useEffect(() => {
     manualStorage.saveManuals(manuals);
   }, [manuals]);
 
-  const activeManual = manuals.find((m) => m.id === activeManualId) || manuals[0] || SAMPLE_MANUALS[0];
+  // Active Project and its associated manuals
+  const activeProject =
+    projects.find((p) => p.id === activeProjectId) || projects[0] || SAMPLE_PROJECTS[0];
 
+  const manualsInActiveProject = manuals.filter(
+    (m) => m.projectId === activeProject?.id
+  );
+
+  // Active Manual
+  const activeManual =
+    manuals.find((m) => m.id === activeManualId) ||
+    manualsInActiveProject[0] ||
+    manuals[0] ||
+    SAMPLE_MANUALS[0];
+
+  // Handler: Save Project (create or edit)
+  const handleSaveProject = (savedProject: Project) => {
+    setProjects((prev) => {
+      const exists = prev.some((p) => p.id === savedProject.id);
+      if (exists) {
+        return prev.map((p) => (p.id === savedProject.id ? savedProject : p));
+      }
+      return [savedProject, ...prev];
+    });
+    setActiveProjectId(savedProject.id);
+    setViewMode('project');
+  };
+
+  // Handler: Select a Project
+  const handleSelectProject = (projectId: string) => {
+    setActiveProjectId(projectId);
+    const relatedManuals = manuals.filter((m) => m.projectId === projectId);
+    if (relatedManuals.length > 0) {
+      setActiveManualId(relatedManuals[0].id);
+    }
+  };
+
+  // Handler: Open Manual from Project Workspace
+  const handleOpenManual = (manualId: string) => {
+    setActiveManualId(manualId);
+    setViewMode('manual');
+  };
+
+  // Handler: Open Project Settings modal
+  const handleOpenProjectSettings = (projectToEdit: Project) => {
+    setEditingProject(projectToEdit);
+    setIsProjectModalOpen(true);
+  };
+
+  // Handler: Open Create Manual Modal bound to a specific project
+  const handleOpenCreateManualForProject = (projectId: string) => {
+    setCreateManualProjectId(projectId);
+    setIsCreateModalOpen(true);
+  };
+
+  // Handler: Link an existing manual to a project
+  const handleLinkManualToProject = (manualId: string, projectId: string) => {
+    setManuals((prev) =>
+      prev.map((m) => (m.id === manualId ? { ...m, projectId, updatedAt: new Date().toISOString() } : m))
+    );
+  };
+
+  // Handler: Unlink manual from project
+  const handleUnlinkManualFromProject = (manualId: string) => {
+    if (window.confirm('¿Deseas desvincular este manual de este proyecto? Seguirá existiendo en tu biblioteca.')) {
+      setManuals((prev) =>
+        prev.map((m) => (m.id === manualId ? { ...m, projectId: undefined, updatedAt: new Date().toISOString() } : m))
+      );
+    }
+  };
+
+  // Handler: New Manual Created
   const handleManualCreated = (newManual: UserManual) => {
-    setManuals((prev) => [newManual, ...prev]);
-    setActiveManualId(newManual.id);
+    const targetProjectId = newManual.projectId || activeProjectId;
+    const manualWithProject = {
+      ...newManual,
+      projectId: targetProjectId,
+    };
+    setManuals((prev) => [manualWithProject, ...prev]);
+    setActiveManualId(manualWithProject.id);
+    setActiveProjectId(targetProjectId);
+    setViewMode('manual');
   };
 
   const handleUpdateManual = (updated: UserManual) => {
@@ -108,20 +215,51 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans">
+      {/* Top Navbar with Project selector & View Mode switch */}
       <Navbar
+        projects={projects}
+        activeProjectId={activeProjectId}
+        onSelectProject={handleSelectProject}
+        onOpenNewProjectModal={() => {
+          setEditingProject(null);
+          setIsProjectModalOpen(true);
+        }}
+        onOpenProjectSettings={handleOpenProjectSettings}
         manuals={manuals}
         activeManualId={activeManualId}
         onSelectManual={setActiveManualId}
-        onOpenCreateModal={() => setIsCreateModalOpen(true)}
+        onOpenCreateModal={() => {
+          setCreateManualProjectId(activeProjectId);
+          setIsCreateModalOpen(true);
+        }}
         onOpenExportModal={() => setIsExportModalOpen(true)}
         onOpenSimulator={() => setIsSimulatorOpen(true)}
+        viewMode={viewMode}
+        onChangeViewMode={setViewMode}
       />
 
-      {/* Main Documentation Area */}
+      {/* Main Content Area: Project Workspace vs Manual View */}
       <div className="flex-1">
-        {activeManual ? (
+        {viewMode === 'project' && activeProject ? (
+          <ProjectWorkspace
+            project={activeProject}
+            allProjects={projects}
+            manualsInProject={manualsInActiveProject}
+            allManuals={manuals}
+            onSelectProject={handleSelectProject}
+            onOpenManual={handleOpenManual}
+            onOpenCreateManualForProject={handleOpenCreateManualForProject}
+            onOpenProjectSettings={handleOpenProjectSettings}
+            onOpenExportProject={() => setIsExportModalOpen(true)}
+            onUpdateProject={handleSaveProject}
+            onLinkManualToProject={handleLinkManualToProject}
+            onUnlinkManualFromProject={handleUnlinkManualFromProject}
+          />
+        ) : activeManual ? (
           <ManualView
             manual={activeManual}
+            project={activeProject}
+            onBackToProject={() => setViewMode('project')}
             onUpdateManual={handleUpdateManual}
             onStartInteractivePlayer={handleStartInteractivePlayer}
             onOpenExportModal={() => setIsExportModalOpen(true)}
@@ -137,7 +275,10 @@ export default function App() {
               Crea tu primer manual subiendo capturas de pantalla o grabando un video de tu flujo.
             </p>
             <button
-              onClick={() => setIsCreateModalOpen(true)}
+              onClick={() => {
+                setCreateManualProjectId(activeProjectId);
+                setIsCreateModalOpen(true);
+              }}
               className="py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded-xl shadow"
             >
               Crear Nuevo Manual
@@ -152,24 +293,37 @@ export default function App() {
           <div className="flex items-center gap-2">
             <span className="font-bold text-slate-800">ManualCraft AI</span>
             <span>·</span>
-            <span>Generación automatizada de manuales técnicos y onboarding</span>
+            <span>Gestión de Proyectos, Clientes y Solución Integral de Manuales</span>
           </div>
           <div className="flex items-center gap-4">
-            <span>Detección de Clics &amp; Enter</span>
+            <span>Cliente &amp; Logo Personalizado</span>
             <span>·</span>
-            <span>Exportación en PDF</span>
+            <span>Dossier Consolidado</span>
             <span>·</span>
-            <span>Web Interactiva Autónoma</span>
+            <span>Exportación Oficial en PDF</span>
           </div>
         </div>
       </footer>
 
-      {/* MODALS */}
+      {/* PROJECT MODAL (New & Edit Project) */}
+      <ProjectModal
+        isOpen={isProjectModalOpen}
+        onClose={() => {
+          setIsProjectModalOpen(false);
+          setEditingProject(null);
+        }}
+        onSaveProject={handleSaveProject}
+        existingProject={editingProject}
+      />
+
+      {/* CREATE MANUAL MODAL */}
       <CreateManualModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
         onManualCreated={handleManualCreated}
         onOpenSimulator={() => setIsSimulatorOpen(true)}
+        projects={projects}
+        activeProjectId={createManualProjectId || activeProjectId}
       />
 
       {isSimulatorOpen && (
@@ -179,6 +333,7 @@ export default function App() {
         />
       )}
 
+      {/* INTERACTIVE PLAYER & EXPORT MODAL */}
       {activeManual && (
         <>
           <InteractivePlayer
@@ -192,10 +347,13 @@ export default function App() {
             manual={activeManual}
             isOpen={isExportModalOpen}
             onClose={() => setIsExportModalOpen(false)}
+            project={activeProject}
+            manualsInProject={manualsInActiveProject}
           />
         </>
       )}
 
+      {/* STEP EDITOR MODAL */}
       {editingStep && (
         <StepEditorModal
           step={editingStep}
@@ -210,6 +368,7 @@ export default function App() {
         />
       )}
 
+      {/* ANNOTATION EDITOR */}
       {annotatingStep && annotatingStep.image && (
         <AnnotationEditor
           imageSrc={annotatingStep.image}

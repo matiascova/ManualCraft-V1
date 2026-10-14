@@ -26,8 +26,11 @@ import {
   RefreshCw,
   History,
   Save,
+  FolderKanban,
+  Building2,
 } from 'lucide-react';
 import { VideoFrameCandidate, UserManual, InstructorTranscriptSegment } from '../types/manual';
+import { Project } from '../types/project';
 import { extractFramesFromVideo } from '../utils/videoExtractor';
 import { screenRecorder } from '../utils/screenRecorder';
 import { screenActionDetector, AutoCapturedSnapshot } from '../utils/motionDetector';
@@ -43,6 +46,8 @@ export interface CreateManualModalProps {
   existingManual?: UserManual | null;
   onOpenSimulator?: () => void;
   initialTab?: 'screenshots' | 'video' | 'record';
+  projects?: Project[];
+  activeProjectId?: string;
 }
 
 export const CreateManualModal: React.FC<CreateManualModalProps> = ({
@@ -53,7 +58,12 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
   existingManual = null,
   onOpenSimulator,
   initialTab = 'screenshots',
+  projects = [],
+  activeProjectId = '',
 }) => {
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(
+    existingManual?.projectId || activeProjectId || projects[0]?.id || ''
+  );
   const [activeTab, setActiveTab] = useState<'screenshots' | 'video' | 'record'>('screenshots');
   const [topic, setTopic] = useState('');
   const [context, setContext] = useState('');
@@ -510,6 +520,7 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
             version: nextVer,
             overview: context.trim() || existingManual.overview,
             targetAudience: targetAudience.trim() || existingManual.targetAudience,
+            projectId: selectedProjectId || existingManual.projectId,
             instructorTranscript:
               instructorTranscripts.length > 0 ? instructorTranscripts : existingManual.instructorTranscript,
             fullTranscriptionText: fullTranscriptionText || existingManual.fullTranscriptionText,
@@ -522,6 +533,7 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
         }
       }
 
+      generated.projectId = selectedProjectId || 'prj-weber-sap';
       onManualCreated(generated);
       onClose();
     } catch (err: any) {
@@ -609,6 +621,7 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
       summaryChecklist: ['Completar todas las acciones de la secuencia'],
       instructorTranscript: instructorTranscripts,
       fullTranscriptionText,
+      projectId: selectedProjectId || 'prj-weber-sap',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       version: '1.0',
@@ -621,6 +634,7 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
           title: topic.trim() || existingManual.title,
           overview: context.trim() || existingManual.overview,
           targetAudience: targetAudience.trim() || existingManual.targetAudience,
+          projectId: selectedProjectId || existingManual.projectId,
           steps,
           instructorTranscript:
             instructorTranscripts.length > 0 ? instructorTranscripts : existingManual.instructorTranscript,
@@ -638,6 +652,7 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
           id: `manual-${Date.now()}`,
           title: topic.trim() || existingManual.title,
           version: nextVer,
+          projectId: selectedProjectId || existingManual.projectId,
           overview: context.trim() || existingManual.overview,
           targetAudience: targetAudience.trim() || existingManual.targetAudience,
           instructorTranscript:
@@ -742,6 +757,37 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
 
           {/* Metadata Section */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+            {projects && projects.length > 0 && (
+              <div className="md:col-span-2 bg-white p-3 rounded-lg border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center flex-shrink-0">
+                    <FolderKanban className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-800 block">
+                      Proyecto Asociado
+                    </label>
+                    <span className="text-[11px] text-slate-500">
+                      Este manual se incorporará dentro de la solución del cliente seleccionado
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <select
+                    value={selectedProjectId}
+                    onChange={(e) => setSelectedProjectId(e.target.value)}
+                    className="w-full sm:w-auto text-xs font-bold text-slate-800 bg-slate-50 hover:bg-slate-100 border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none cursor-pointer"
+                  >
+                    {projects.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.clientName} · {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+
             <div>
               <label className="text-xs font-bold uppercase text-slate-600 block mb-1">
                 Título o Tarea a Documentar *

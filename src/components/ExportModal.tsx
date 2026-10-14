@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { UserManual } from '../types/manual';
+import { Project } from '../types/project';
 import {
   X,
   FileDown,
@@ -15,6 +16,8 @@ import {
   Sparkles,
   Layers,
   Check,
+  Building2,
+  FolderKanban,
 } from 'lucide-react';
 import {
   exportToInteractiveHtml,
@@ -22,6 +25,7 @@ import {
   exportToJson,
   exportToPdf,
   exportToPdfWithTemplateStructure,
+  exportProjectDossierPdf,
   exportToDocx,
 } from '../utils/exportUtils';
 
@@ -29,12 +33,16 @@ interface ExportModalProps {
   manual: UserManual;
   isOpen: boolean;
   onClose: () => void;
+  project?: Project;
+  manualsInProject?: UserManual[];
 }
 
 export const ExportModal: React.FC<ExportModalProps> = ({
   manual,
   isOpen,
   onClose,
+  project,
+  manualsInProject = [],
 }) => {
   const [isGeneratingTemplatePdf, setIsGeneratingTemplatePdf] = useState(false);
   const [templatePdfStatus, setTemplatePdfStatus] = useState<string>('');
@@ -48,11 +56,19 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const [docxStatus, setDocxStatus] = useState<string>('');
   const [docxSuccess, setDocxSuccess] = useState(false);
 
+  const [isGeneratingDossierPdf, setIsGeneratingDossierPdf] = useState(false);
+  const [dossierPdfStatus, setDossierPdfStatus] = useState<string>('');
+  const [dossierPdfSuccess, setDossierPdfSuccess] = useState(false);
+
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
-  const isBusy = isGeneratingTemplatePdf || isGeneratingCompactPdf || isGeneratingDocx;
+  const isBusy =
+    isGeneratingTemplatePdf ||
+    isGeneratingCompactPdf ||
+    isGeneratingDocx ||
+    isGeneratingDossierPdf;
 
   // 1. Export using Official Corporate Template Structure
   const handleDownloadTemplatePdf = async () => {
@@ -107,6 +123,35 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         err.message || 'Ocurrió un error al generar el PDF. Puedes intentar imprimir directamente.'
       );
       setIsGeneratingCompactPdf(false);
+    }
+  };
+
+  // 2b. Export Consolidated Project Dossier
+  const handleDownloadDossierPdf = async () => {
+    if (!project || isBusy) return;
+    setIsGeneratingDossierPdf(true);
+    setDossierPdfStatus(`Compilando dossier del proyecto para ${project.clientName}...`);
+    setErrorMessage(null);
+    setDossierPdfSuccess(false);
+
+    try {
+      const listToExport = manualsInProject.length > 0 ? manualsInProject : [manual];
+      await exportProjectDossierPdf(project, listToExport, (msg) => {
+        setDossierPdfStatus(msg);
+      });
+      setDossierPdfSuccess(true);
+      setDossierPdfStatus('¡Dossier integral del proyecto generado y descargado!');
+      setTimeout(() => {
+        onClose();
+        setDossierPdfSuccess(false);
+        setIsGeneratingDossierPdf(false);
+      }, 1500);
+    } catch (err: any) {
+      console.error('Error generating project dossier PDF:', err);
+      setErrorMessage(
+        err.message || 'Ocurrió un error al generar el Dossier consolidado del proyecto.'
+      );
+      setIsGeneratingDossierPdf(false);
     }
   };
 
@@ -183,6 +228,85 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
         {/* Options Grid */}
         <div className="p-6 overflow-y-auto space-y-4 flex-1">
+          {/* OPTION: Consolidated Project Dossier PDF (if project provided) */}
+          {project && (
+            <div
+              onClick={handleDownloadDossierPdf}
+              className={`group p-5 rounded-2xl border-2 transition-all cursor-pointer shadow-sm relative ${
+                isGeneratingDossierPdf
+                  ? 'border-amber-500 bg-amber-50/70'
+                  : dossierPdfSuccess
+                  ? 'border-emerald-500 bg-emerald-50/70'
+                  : 'border-amber-500/80 bg-gradient-to-br from-amber-50/50 via-white to-orange-50/30 hover:border-amber-600 hover:shadow-md'
+              }`}
+            >
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 rounded-xl bg-amber-600 text-white flex items-center justify-center flex-shrink-0 shadow-sm group-hover:scale-105 transition-transform">
+                  {isGeneratingDossierPdf ? (
+                    <Loader2 className="w-6 h-6 animate-spin" />
+                  ) : dossierPdfSuccess ? (
+                    <CheckCircle className="w-6 h-6 text-white" />
+                  ) : (
+                    <FolderKanban className="w-6 h-6" />
+                  )}
+                </div>
+                <div className="flex-1">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-base font-bold text-slate-900">
+                        Dossier Consolidado del Proyecto: {project.clientName}
+                      </h4>
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-800 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1">
+                        <Sparkles className="w-3 h-3 text-amber-600" />
+                        Solución Completa ({manualsInProject.length || 1} manuales)
+                      </span>
+                    </div>
+                    <span className="text-xs font-bold text-amber-800 bg-amber-100/70 px-2.5 py-1 rounded-lg border border-amber-200">
+                      Entregable de Proyecto
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                    Compila todos los manuales de este proyecto en un único documento corporativo con carátula oficial del cliente ({project.clientName}), índice consolidado, matriz unificada de procesos y las características de salida seleccionadas.
+                  </p>
+
+                  {/* Highlights */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 pt-3 border-t border-amber-200/70 text-[11px] text-slate-700 font-medium">
+                    <div className="flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                      <span>Logo {project.clientName}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                      <span>{manualsInProject.length || 1} Manuales Integrados</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                      <span>Matriz de Procesos Unificada</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                      <span>Control de Cambios &amp; Foliado</span>
+                    </div>
+                  </div>
+
+                  {isGeneratingDossierPdf && (
+                    <div className="mt-3 p-2.5 bg-white/95 border border-amber-300 rounded-xl flex items-center gap-2.5 text-xs text-amber-900 font-semibold animate-pulse">
+                      <Loader2 className="w-4 h-4 animate-spin text-amber-600 flex-shrink-0" />
+                      <span>{dossierPdfStatus}</span>
+                    </div>
+                  )}
+
+                  {dossierPdfSuccess && (
+                    <div className="mt-3 p-2.5 bg-emerald-50 border border-emerald-300 rounded-xl flex items-center gap-2 text-xs text-emerald-800 font-semibold">
+                      <CheckCircle className="w-4 h-4 text-emerald-600" />
+                      <span>{dossierPdfStatus}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* FEATURED OPTION: Official Corporate Template Structure */}
           <div
             onClick={handleDownloadTemplatePdf}
