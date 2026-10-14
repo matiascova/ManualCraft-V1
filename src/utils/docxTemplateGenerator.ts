@@ -15,6 +15,8 @@ import {
   PageNumber,
   PageBreak,
   HeadingLevel,
+  TabStopType,
+  LeaderType,
 } from 'docx';
 import { UserManual, getActionTypeSpanish } from '../types/manual';
 import { Project } from '../types/project';
@@ -85,7 +87,7 @@ async function generateCorporateBrandHeaderPng(
     try {
       const canvas = document.createElement('canvas');
       canvas.width = 1600;
-      canvas.height = 420;
+      canvas.height = 300;
       const ctx = canvas.getContext('2d');
       if (!ctx) {
         resolve(null);
@@ -106,8 +108,8 @@ async function generateCorporateBrandHeaderPng(
       if (ourLogoSrc) {
         const ourImg = await loadImageElement(ourLogoSrc);
         if (ourImg && ourImg.width > 0 && ourImg.height > 0) {
-          const maxW = 640;
-          const maxH = 360;
+          const maxW = 520;
+          const maxH = 220;
           const ratio = Math.min(maxW / ourImg.width, maxH / ourImg.height);
           const drawW = ourImg.width * ratio;
           const drawH = ourImg.height * ratio;
@@ -119,33 +121,33 @@ async function generateCorporateBrandHeaderPng(
       }
 
       if (!ourImgLoaded) {
-        // Fallback: draw crisp vector Weber / Company scaled up
+        // Fallback: draw crisp vector Weber / Company at balanced intermediate scale
         const startX = 40;
-        const startY = (canvas.height - 180) / 2;
+        const startY = (canvas.height - 130) / 2;
         ctx.fillStyle = '#FEDB00'; // Yellow
         ctx.beginPath();
-        ctx.moveTo(startX, startY + 140);
-        ctx.lineTo(startX + 90, startY);
-        ctx.lineTo(startX + 180, startY + 140);
+        ctx.moveTo(startX, startY + 100);
+        ctx.lineTo(startX + 65, startY);
+        ctx.lineTo(startX + 130, startY + 100);
         ctx.closePath();
         ctx.fill();
 
         ctx.fillStyle = '#1E293B';
-        ctx.fillRect(startX + 50, startY + 56, 80, 84);
+        ctx.fillRect(startX + 36, startY + 40, 58, 60);
 
         ctx.fillStyle = '#0F172A';
-        ctx.font = 'bold 96px Arial, sans-serif';
+        ctx.font = 'bold 70px Arial, sans-serif';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'top';
         const brandName = config.ourCompanyName || 'weber';
-        ctx.fillText(brandName.toLowerCase(), startX + 210, startY + 10);
+        ctx.fillText(brandName.toLowerCase(), startX + 155, startY + 5);
 
         ctx.fillStyle = '#475569';
-        ctx.font = 'bold 38px Arial, sans-serif';
+        ctx.font = 'bold 28px Arial, sans-serif';
         ctx.fillText(
           (config.ourSlogan || 'SAINT-GOBAIN CHILE').toUpperCase(),
-          startX + 210,
-          startY + 115
+          startX + 155,
+          startY + 82
         );
       }
 
@@ -154,8 +156,8 @@ async function generateCorporateBrandHeaderPng(
       if (clientLogoSrc) {
         const clientImg = await loadImageElement(clientLogoSrc);
         if (clientImg && clientImg.width > 0 && clientImg.height > 0) {
-          const maxW = 640;
-          const maxH = 360;
+          const maxW = 520;
+          const maxH = 220;
           const ratio = Math.min(maxW / clientImg.width, maxH / clientImg.height);
           const drawW = clientImg.width * ratio;
           const drawH = clientImg.height * ratio;
@@ -167,17 +169,17 @@ async function generateCorporateBrandHeaderPng(
       }
 
       if (!rightSideDrawn) {
-        // Draw HSBT / Partner Badge scaled up proportionally
-        const hsbtW = 360;
-        const hsbtH = 160;
+        // Draw HSBT / Partner Badge at balanced intermediate scale
+        const hsbtW = 260;
+        const hsbtH = 115;
         const hsbtX = canvas.width - hsbtW - 40;
-        const hsbtY = (canvas.height - hsbtH - 30) / 2;
+        const hsbtY = (canvas.height - hsbtH - 24) / 2;
 
         ctx.fillStyle = '#183B6C'; // Corporate Navy
         ctx.fillRect(hsbtX, hsbtY, hsbtW, hsbtH);
 
         ctx.strokeStyle = '#2563EB';
-        ctx.lineWidth = 5;
+        ctx.lineWidth = 4;
         ctx.beginPath();
         ctx.moveTo(hsbtX + hsbtW * 0.33, hsbtY);
         ctx.lineTo(hsbtX + hsbtW * 0.33, hsbtY + hsbtH);
@@ -186,18 +188,18 @@ async function generateCorporateBrandHeaderPng(
         ctx.stroke();
 
         ctx.fillStyle = '#FFFFFF';
-        ctx.font = 'bold 58px Arial, sans-serif';
+        ctx.font = 'bold 42px Arial, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(config.secondaryName || 'HSBT', hsbtX + hsbtW / 2, hsbtY + hsbtH / 2);
 
         ctx.fillStyle = '#475569';
-        ctx.font = 'bold 24px Arial, sans-serif';
+        ctx.font = 'bold 18px Arial, sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText(
           config.secondarySlogan || 'COMPROMISO & CALIDAD',
           hsbtX + hsbtW / 2,
-          hsbtY + hsbtH + 34
+          hsbtY + hsbtH + 26
         );
       }
 
@@ -346,7 +348,7 @@ export async function exportToDocxWithTemplateStructure(
               data: brandHeaderPng,
               transformation: {
                 width: 580,
-                height: 155,
+                height: 108,
               },
             }),
           ],
@@ -527,127 +529,106 @@ export async function exportToDocxWithTemplateStructure(
   // =========================================================================
   if (onProgress) onProgress('Construyendo Índice Formal y Mapa de Procesos...');
 
+  // Title: "ÍNDICE" with clean blue accent underline (#2563EB)
   docChildren.push(
     new Paragraph({
-      heading: HeadingLevel.HEADING_1,
-      spacing: { before: 100, after: 60 },
+      spacing: { before: 100, after: 140 },
+      border: {
+        bottom: {
+          style: BorderStyle.SINGLE,
+          size: 16,
+          color: '2563EB',
+          space: 8,
+        },
+      },
       children: [
         new TextRun({
-          text: 'ÍNDICE GENERAL DEL DOCUMENTO',
+          text: 'ÍNDICE',
           bold: true,
           color: '183B6C',
-          size: 30,
+          size: 32,
         }),
       ],
     })
   );
 
-  // Subtitle underline
-  docChildren.push(
-    new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      rows: [
-        new TableRow({
-          children: [
-            new TableCell({
-              borders: {
-                top: { style: BorderStyle.SINGLE, size: 12, color: '2563EB' },
-                bottom: { style: BorderStyle.NONE },
-                left: { style: BorderStyle.NONE },
-                right: { style: BorderStyle.NONE },
-              },
-              children: [new Paragraph({})],
-            }),
-          ],
-        }),
-      ],
-    })
-  );
+  interface DocxTocItem {
+    title: string;
+    pageNum: number;
+    level: 1 | 2;
+  }
 
-  docChildren.push(new Paragraph({ spacing: { after: 140 } }));
-
-  const tocEntries = [
-    { num: '1', title: 'INTRODUCCIÓN Y OBJETIVO GENERAL', page: 'Pág. 3' },
-    { num: '1.1', title: 'Objetivo y Alcance Operativo', page: 'Pág. 3' },
-    { num: '1.2', title: 'Escenarios Operativos Cubiertos (Entrega Directa vs Almacén)', page: 'Pág. 3' },
-    { num: '1.3', title: 'Parámetros de Referencia y Datos Maestros SAP', page: 'Pág. 3' },
-    { num: '2', title: 'MATRIZ DE FLUJO DEL PROCESO OPERATIVO', page: 'Pág. 4' },
-    { num: '3', title: 'PROCEDIMIENTO DETALLADO PASO A PASO', page: 'Pág. 5' },
-    ...manual.steps.map((st, sIdx) => ({
-      num: `3.${sIdx + 1}`,
-      title: `Paso ${sIdx + 1 < 10 ? '0' : ''}${sIdx + 1}: ${st.title} (${getActionTypeSpanish(st.actionType)})`,
-      page: `Pág. ${5 + sIdx}`,
-    })),
-    { num: '4', title: 'RESOLUCIÓN DE PROBLEMAS Y ERRORES SAP', page: `Pág. ${5 + manual.steps.length}` },
-    { num: '5', title: 'LISTA DE VERIFICACIÓN Y CONTROL DE CALIDAD', page: `Pág. ${5 + manual.steps.length}` },
+  const tocItems: DocxTocItem[] = [
+    { title: '1 INTRODUCCIÓN', pageNum: 3, level: 1 },
+    { title: '1.1 Objetivo', pageNum: 3, level: 2 },
+    { title: '1.2 Escenarios cubiertos', pageNum: 3, level: 2 },
+    { title: '1.3 Datos de referencia', pageNum: 3, level: 2 },
+    { title: '2 FLUJO DEL PROCESO', pageNum: 4, level: 1 },
   ];
 
-  const tocRows: TableRow[] = tocEntries.map((item, idx) => {
-    const isMajor = !item.num.includes('.');
-    return new TableRow({
-      children: [
-        new TableCell({
-          width: { size: 12, type: WidthType.PERCENTAGE },
-          borders: noBorders,
-          margins: { top: 60, bottom: 60, left: 60, right: 60 },
-          children: [
-            new Paragraph({
-              children: [
-                new TextRun({
-                  text: item.num,
-                  bold: isMajor,
-                  size: isMajor ? 20 : 18,
-                  color: isMajor ? '183B6C' : '475569',
-                }),
-              ],
-            }),
-          ],
-        }),
-        new TableCell({
-          width: { size: 76, type: WidthType.PERCENTAGE },
-          borders: noBorders,
-          margins: { top: 60, bottom: 60, left: 60, right: 60 },
-          children: [
-            new Paragraph({
-              children: [
-                new TextRun({
-                  text: item.title,
-                  bold: isMajor,
-                  size: isMajor ? 20 : 18,
-                  color: isMajor ? '0F172A' : '334155',
-                }),
-              ],
-            }),
-          ],
-        }),
-        new TableCell({
-          width: { size: 12, type: WidthType.PERCENTAGE },
-          borders: noBorders,
-          margins: { top: 60, bottom: 60, left: 60, right: 60 },
-          children: [
-            new Paragraph({
-              alignment: AlignmentType.RIGHT,
-              children: [
-                new TextRun({
-                  text: item.page,
-                  bold: isMajor,
-                  size: 17,
-                  color: '64748B',
-                }),
-              ],
-            }),
-          ],
-        }),
-      ],
+  manual.steps.forEach((st, sIdx) => {
+    const stepNum = 3 + sIdx;
+    tocItems.push({
+      title: `${stepNum} ${st.title.toUpperCase()}`,
+      pageNum: 5 + sIdx,
+      level: 1,
     });
   });
 
-  docChildren.push(
-    new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      rows: tocRows,
-    })
-  );
+  const nextSec = 3 + manual.steps.length;
+  if (manual.troubleshooting && manual.troubleshooting.length > 0) {
+    tocItems.push({
+      title: `${nextSec} RESOLUCIÓN DE PROBLEMAS`,
+      pageNum: 5 + manual.steps.length,
+      level: 1,
+    });
+  }
+
+  const checkSec = nextSec + (manual.troubleshooting && manual.troubleshooting.length > 0 ? 1 : 0);
+  if (manual.summaryChecklist && manual.summaryChecklist.length > 0) {
+    tocItems.push({
+      title: `${checkSec} LISTA DE VERIFICACIÓN`,
+      pageNum: 5 + manual.steps.length,
+      level: 1,
+    });
+  }
+
+  tocItems.forEach((item) => {
+    const isLevel1 = item.level === 1;
+    docChildren.push(
+      new Paragraph({
+        spacing: {
+          before: isLevel1 ? 90 : 45,
+          after: isLevel1 ? 50 : 35,
+        },
+        indent: item.level === 2 ? { left: 420 } : undefined,
+        tabStops: [
+          {
+            type: TabStopType.RIGHT,
+            position: 9000,
+            leader: LeaderType.DOT,
+          },
+        ],
+        children: [
+          new TextRun({
+            text: item.title,
+            bold: isLevel1,
+            size: isLevel1 ? 19 : 17,
+            color: isLevel1 ? '183B6C' : '475569',
+          }),
+          new TextRun({
+            text: '\t',
+          }),
+          new TextRun({
+            text: `${item.pageNum}`,
+            bold: isLevel1,
+            size: isLevel1 ? 19 : 17,
+            color: isLevel1 ? '183B6C' : '475569',
+          }),
+        ],
+      })
+    );
+  });
 
   // End of Page 2 -> Page Break
   docChildren.push(new Paragraph({ children: [new PageBreak()] }));
@@ -1755,7 +1736,7 @@ export async function exportProjectDossierDocx(
           new ImageRun({
             type: 'png',
             data: brandHeaderPng,
-            transformation: { width: 580, height: 155 },
+            transformation: { width: 580, height: 108 },
           }),
         ],
       })

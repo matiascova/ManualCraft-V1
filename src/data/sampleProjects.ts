@@ -52,7 +52,67 @@ export const GLOBAL_TECH_LOGO = `data:image/svg+xml;utf8,${encodeURIComponent(`
 </svg>
 `)}`;
 
+export const HSBT_OFFICIAL_LOGO = `data:image/svg+xml;utf8,${encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 100" width="320" height="100">
+  <rect width="320" height="100" rx="12" fill="#ffffff" />
+  <rect x="18" y="20" width="70" height="60" rx="8" fill="#183B6C" />
+  <line x1="41" y1="20" x2="41" y2="80" stroke="#2563EB" stroke-width="2.5" />
+  <line x1="64" y1="20" x2="64" y2="80" stroke="#2563EB" stroke-width="2.5" />
+  <text x="53" y="58" font-family="system-ui, -apple-system, sans-serif" font-weight="900" font-size="22" fill="#ffffff" text-anchor="middle">HSBT</text>
+  <text x="102" y="48" font-family="system-ui, -apple-system, sans-serif" font-weight="800" font-size="20" fill="#183B6C">HSBT</text>
+  <text x="102" y="68" font-family="system-ui, -apple-system, sans-serif" font-weight="600" font-size="11" fill="#64748B" letter-spacing="1.5">COMPROMISO &amp; CALIDAD</text>
+</svg>
+`)}`;
+
+export const WEBER_OFFICIAL_LOGO = `data:image/svg+xml;utf8,${encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 100" width="320" height="100">
+  <rect width="320" height="100" rx="12" fill="#ffffff" />
+  <g transform="translate(18, 15)">
+    <polygon points="0,62 38,0 76,62" fill="#fedb00" />
+    <polygon points="21,24 55,24 48,62 28,62" fill="#1e293b" />
+    <text x="88" y="44" font-family="Arial, Helvetica, sans-serif" font-weight="900" font-size="44" fill="#0f172a" letter-spacing="-1">weber</text>
+    <text x="90" y="60" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="12" fill="#475569" letter-spacing="2">SAINT-GOBAIN</text>
+  </g>
+</svg>
+`)}`;
+
 export const SAMPLE_PROJECTS: Project[] = [
+  {
+    id: 'prj-weber-wms-hu',
+    name: 'Implementación SAP WMS con HU',
+    code: 'WEBER_CL_2026_WM001',
+    organizationName: 'HSBT',
+    organizationLogo: HSBT_OFFICIAL_LOGO,
+    organizationSlogan: 'COMPROMISO & CALIDAD',
+    clientName: 'Weber',
+    clientLogo: WEBER_OFFICIAL_LOGO,
+    description: 'Conjunto estructurado de manuales operativos y procedimientos estándar para este proyecto.',
+    status: 'En Progreso',
+    category: 'Gestión de Almacenes & ERP SAP',
+    version: '1.0',
+    author: 'Equipo de Consultoría y Procesos HSBT & Weber',
+    targetAudience: 'Operadores de Bodega, Supervisores Logísticos y Key Users',
+    scope: 'Implementación de Warehouse Management System (WMS) con Handling Units (HU)',
+    colorTheme: '#183B6C',
+    documentOptions: {
+      ...DEFAULT_DOCUMENT_OPTIONS,
+      includeOurLogo: true,
+      includeClientLogo: true,
+      includeCoverPage: true,
+      includeExecutiveSummary: true,
+      includeDocumentControl: true,
+      includeTableOfContents: true,
+      includeProcessMatrix: true,
+      includePrerequisites: true,
+      includeStepScreenshots: true,
+      includeActionBadges: true,
+      includeTroubleshooting: true,
+      includeChecklists: true,
+      includeInstructorNotes: true,
+    },
+    createdAt: '2026-10-12T10:00:00.000Z',
+    updatedAt: '2026-10-14T11:00:00.000Z',
+  },
   {
     id: 'prj-weber-sap',
     name: 'Implementación SAP S/4HANA: Supply Chain, Ventas & Logística',
