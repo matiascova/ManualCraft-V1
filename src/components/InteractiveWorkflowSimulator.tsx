@@ -234,40 +234,40 @@ export const InteractiveWorkflowSimulator: React.FC<InteractiveWorkflowSimulator
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-1 sm:p-2 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl w-[98vw] max-w-[98vw] h-[98vh] max-h-[98vh] flex flex-col overflow-hidden border border-slate-200">
+    <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-1 sm:p-2 overflow-hidden select-none">
+      <div className="bg-white rounded-2xl shadow-2xl w-[98vw] max-w-[98vw] h-[96vh] max-h-[96vh] flex flex-col overflow-hidden border border-slate-200">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+        <div className="px-5 py-3 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs">
-              <Zap className="w-5 h-5" />
+            <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs">
+              <Zap className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900">
+              <h3 className="text-sm sm:text-base font-bold text-slate-900 leading-tight">
                 Capturador Inteligente de Acciones (Clics, Inputs, Enter y Grabar)
               </h3>
-              <p className="text-xs text-slate-500">
-                Interactúa con la interfaz de abajo. Cada clic, dato completado, tecla Enter o guardado tomará una captura automática con coordenadas precisas.
+              <p className="text-[11px] text-slate-500 hidden sm:block">
+                Interactúa con la interfaz. Cada acción toma una captura automática con coordenadas precisas.
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-xs font-semibold text-slate-500 hover:text-slate-800"
+            className="text-xs font-semibold text-slate-500 hover:text-slate-800 px-2 py-1 rounded-lg hover:bg-slate-200/60"
           >
             ✕ Cerrar
           </button>
         </div>
 
         {/* Workspace */}
-        <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+        <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
           {/* Left: Live Interactive App Simulator */}
-          <div className="flex-1 p-6 bg-slate-100 overflow-y-auto" ref={containerRef}>
-            <div className="bg-white rounded-xl shadow-md border border-slate-200 overflow-hidden">
+          <div className="flex-1 p-3 sm:p-4 bg-slate-100 overflow-y-auto lg:overflow-hidden flex flex-col justify-center" ref={containerRef}>
+            <div className="bg-white rounded-xl shadow-md border border-slate-200 overflow-hidden flex flex-col">
               {/* App Bar */}
-              <div className="bg-slate-900 text-white px-4 py-3 flex items-center justify-between">
+              <div className="bg-slate-900 text-white px-3.5 py-2.5 flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-2 text-xs font-semibold">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                   <span>ERP Empresarial · Modo Captura Activo</span>
                 </div>
                 <span className="text-[10px] text-slate-400 font-mono">
@@ -276,9 +276,9 @@ export const InteractiveWorkflowSimulator: React.FC<InteractiveWorkflowSimulator
               </div>
 
               {/* Form Content */}
-              <form onSubmit={handleSaveSubmit} className="p-6 flex flex-col gap-5">
+              <form onSubmit={handleSaveSubmit} className="p-4 flex flex-col gap-3">
                 {/* Tabs for click detection */}
-                <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
+                <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
                   <button
                     type="button"
                     onClick={() => handleTabClick('datos')}
@@ -392,7 +392,7 @@ export const InteractiveWorkflowSimulator: React.FC<InteractiveWorkflowSimulator
                 </div>
 
                 {/* Save button */}
-                <div className="pt-4 border-t border-slate-200 flex items-center justify-between">
+                <div className="pt-2.5 border-t border-slate-200 flex items-center justify-between">
                   <div className="text-xs text-slate-500">
                     {savedSuccess ? (
                       <span className="text-emerald-600 font-bold flex items-center gap-1">
@@ -405,7 +405,7 @@ export const InteractiveWorkflowSimulator: React.FC<InteractiveWorkflowSimulator
 
                   <button
                     type="submit"
-                    className="py-2.5 px-6 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-2 hover:scale-105 active:scale-95"
+                    className="py-2 px-5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-2 hover:scale-105 active:scale-95"
                   >
                     <Save className="w-4 h-4" />
                     <span>💾 Grabar y Guardar Datos</span>
@@ -416,9 +416,9 @@ export const InteractiveWorkflowSimulator: React.FC<InteractiveWorkflowSimulator
           </div>
 
           {/* Right: Live Action Log & Snapshot Stream */}
-          <div className="w-full lg:w-88 border-t lg:border-t-0 lg:border-l border-slate-200 bg-white p-5 flex flex-col justify-between overflow-y-auto">
+          <div className="w-full lg:w-84 border-t lg:border-t-0 lg:border-l border-slate-200 bg-white p-3.5 flex flex-col justify-between overflow-y-auto">
             <div>
-              <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
+              <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-slate-100">
                 <span className="text-xs font-bold uppercase tracking-wider text-slate-600">
                   Acciones Capturadas ({capturedActions.length})
                 </span>

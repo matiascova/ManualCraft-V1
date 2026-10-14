@@ -24,26 +24,15 @@ import {
   CheckCircle,
 } from 'lucide-react';
 
-const STORAGE_KEY = 'manualcraft_user_manuals_v1';
+import { manualStorage } from './utils/storage';
 
 export default function App() {
   const [manuals, setManuals] = useState<UserManual[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
-        }
-      }
-    } catch (e) {
-      console.error('Failed to load from storage:', e);
-    }
-    return SAMPLE_MANUALS;
+    return manualStorage.loadManuals(SAMPLE_MANUALS);
   });
 
   const [activeManualId, setActiveManualId] = useState<string>(() => {
-    return manuals[0]?.id || SAMPLE_MANUALS[0].id;
+    return SAMPLE_MANUALS[0]?.id || manuals[0]?.id || '';
   });
 
   // Modals state
@@ -56,13 +45,9 @@ export default function App() {
   const [editingStep, setEditingStep] = useState<ManualStep | null>(null);
   const [annotatingStep, setAnnotatingStep] = useState<ManualStep | null>(null);
 
-  // Sync with localStorage
+  // Sync with storage safely
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(manuals));
-    } catch (e) {
-      console.warn('LocalStorage save failed:', e);
-    }
+    manualStorage.saveManuals(manuals);
   }, [manuals]);
 
   const activeManual = manuals.find((m) => m.id === activeManualId) || manuals[0] || SAMPLE_MANUALS[0];

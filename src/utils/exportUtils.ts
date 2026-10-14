@@ -446,31 +446,87 @@ export async function exportToPdf(manual: UserManual, onProgress?: (msg: string)
   }
 
   // --- COVER SECTION: TABLE / MAP OF PROCEDURE STEPS ---
-  // To avoid any awkward empty space on Page 1 and ensure Step 1 starts on a fresh page
-  // with 100% of its visual space, render an executive step index on Page 1.
+  // Renders the executive step index according to the corporate template,
+  // dynamically adapting whether the manual has 2, 6, 12, or 25 steps.
+  const stepIndexPageMarkers: Array<{ page: number; x: number; y: number; stepIdx: number }> = [];
+  const stepStartPages: number[] = [];
+
   if (manual.steps.length > 0) {
     const remainingCoverH = maxY - currentY;
+    const isMultiColumn = manual.steps.length > 6 && manual.steps.length <= 14;
+    const numRows = isMultiColumn ? Math.ceil(manual.steps.length / 2) : Math.min(manual.steps.length, 6);
     const stepRowH = 7.5;
-    const maxStepsOnCover = Math.min(manual.steps.length, Math.floor((remainingCoverH - 16) / stepRowH));
+    const indexBoxH = Math.min(remainingCoverH, 10 + numRows * stepRowH + 5);
 
-    if (maxStepsOnCover >= 2) {
-      const indexBoxH = 10 + maxStepsOnCover * stepRowH + 4;
-      doc.setFillColor(248, 250, 252);
-      doc.setDrawColor(226, 232, 240);
-      doc.roundedRect(marginX, currentY, contentWidth, indexBoxH, 1.5, 1.5, 'FD');
+    // Render Box Container
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(marginX, currentY, contentWidth, indexBoxH, 1.5, 1.5, 'FD');
 
-      // Top Indigo Accent Line
-      doc.setFillColor(79, 70, 229);
-      doc.rect(marginX, currentY, contentWidth, 2, 'F');
+    // Top Indigo Accent Line
+    doc.setFillColor(79, 70, 229);
+    doc.rect(marginX, currentY, contentWidth, 2, 'F');
 
-      // Section Header
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
-      doc.setTextColor(67, 56, 202);
-      doc.text('ESTRUCTURA DEL PROCEDIMIENTO · ÍNDICE DE PASOS', marginX + 6, currentY + 6.2);
+    // Section Header
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(67, 56, 202);
+    doc.text('ESTRUCTURA DEL PROCEDIMIENTO · ÍNDICE DE PASOS', marginX + 6, currentY + 6.2);
 
-      let rowY = currentY + 11;
-      for (let sIdx = 0; sIdx < maxStepsOnCover; sIdx++) {
+    if (isMultiColumn) {
+      // 2-Column Adaptive Layout for 7-14 steps
+      const colWidth = (contentWidth - 10) / 2;
+      const midPoint = Math.ceil(manual.steps.length / 2);
+
+      for (let sIdx = 0; sIdx < manual.steps.length; sIdx++) {
+        const st = manual.steps[sIdx];
+        const isRightCol = sIdx >= midPoint;
+        const rowInCol = isRightCol ? sIdx - midPoint : sIdx;
+        const colStartX = isRightCol ? marginX + colWidth + 10 : marginX + 4;
+        const rowY = currentY + 11.5 + rowInCol * stepRowH;
+
+        // Step number pill
+        doc.setFillColor(79, 70, 229);
+        doc.roundedRect(colStartX, rowY - 3.2, 7.5, 4.8, 1, 1, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(6.5);
+        doc.setTextColor(255, 255, 255);
+        doc.text(`${sIdx + 1 < 10 ? '0' : ''}${sIdx + 1}`, colStartX + 3.75, rowY, { align: 'center' });
+
+        // Action tag pill (TYPE, CLICK, VERIFY, etc.)
+        const actTag = (st.actionType || 'action').toUpperCase();
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(6);
+        const actTagW = doc.getTextWidth(actTag) + 3.5;
+        doc.setFillColor(238, 242, 255);
+        doc.setDrawColor(199, 210, 254);
+        doc.roundedRect(colStartX + 9, rowY - 3.2, actTagW, 4.8, 1, 1, 'FD');
+        doc.setTextColor(67, 56, 202);
+        doc.text(actTag, colStartX + 9 + actTagW / 2, rowY, { align: 'center' });
+
+        // Step title
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(30, 41, 59);
+        const titleX = colStartX + 10.5 + actTagW;
+        const availW = colWidth - (titleX - colStartX) - 15;
+        const shortTitle = doc.splitTextToSize(st.title, Math.max(20, availW))[0];
+        doc.text(shortTitle, titleX, rowY);
+
+        // Marker for exact page reference to be filled after procedural steps pass
+        stepIndexPageMarkers.push({
+          page: doc.getNumberOfPages(),
+          x: colStartX + colWidth - 2,
+          y: rowY,
+          stepIdx: sIdx,
+        });
+      }
+    } else {
+      // Standard Single-Column Layout (up to 6 steps or first page batch)
+      const maxOnCover = Math.min(manual.steps.length, Math.floor((indexBoxH - 12) / stepRowH));
+      let rowY = currentY + 11.5;
+
+      for (let sIdx = 0; sIdx < maxOnCover; sIdx++) {
         const st = manual.steps[sIdx];
 
         // Step number pill
@@ -481,8 +537,8 @@ export async function exportToPdf(manual: UserManual, onProgress?: (msg: string)
         doc.setTextColor(255, 255, 255);
         doc.text(`${sIdx + 1 < 10 ? '0' : ''}${sIdx + 1}`, marginX + 9.75, rowY, { align: 'center' });
 
-        // Action tag pill (Siempre en español: CLIC, INGRESAR, VERIFICAR, etc.)
-        const actTag = getActionTypeSpanish(st.actionType);
+        // Action tag pill (TYPE, CLICK, VERIFY, etc.)
+        const actTag = (st.actionType || 'action').toUpperCase();
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(6.5);
         const actTagW = doc.getTextWidth(actTag) + 4;
@@ -501,11 +557,13 @@ export async function exportToPdf(manual: UserManual, onProgress?: (msg: string)
         const shortTitle = doc.splitTextToSize(st.title, availableTitleW)[0];
         doc.text(shortTitle, titleX, rowY);
 
-        // Page reference badge
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(7);
-        doc.setTextColor(148, 163, 184);
-        doc.text(`Pág. ${sIdx + 2}`, marginX + contentWidth - 6, rowY, { align: 'right' });
+        // Marker for exact page reference to be filled after procedural steps pass
+        stepIndexPageMarkers.push({
+          page: doc.getNumberOfPages(),
+          x: marginX + contentWidth - 6,
+          y: rowY,
+          stepIdx: sIdx,
+        });
 
         rowY += stepRowH;
       }
@@ -629,6 +687,9 @@ export async function exportToPdf(manual: UserManual, onProgress?: (msg: string)
       currentY = 22; // Start below running header on clean page
     }
 
+    // Record the exact page where this step starts
+    stepStartPages[i] = doc.getNumberOfPages();
+
     // ==========================================
     // --- DRAW UNIFIED, ALIGNED STEP BLOCK ---
     // ==========================================
@@ -645,8 +706,8 @@ export async function exportToPdf(manual: UserManual, onProgress?: (msg: string)
     doc.setTextColor(255, 255, 255);
     doc.text(stepNumStr, marginX + stepNumW / 2, currentY + 3.8, { align: 'center' });
 
-    // Action Tag Pill (Siempre en español: CLIC, INGRESAR, VERIFICAR, etc.)
-    const actionStr = getActionTypeSpanish(step.actionType);
+    // Action Tag Pill (TYPE, CLICK, VERIFY, ENTER, etc.)
+    const actionStr = (step.actionType || 'action').toUpperCase();
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7.5);
     const actionW = doc.getTextWidth(actionStr) + 6;
@@ -915,6 +976,18 @@ export async function exportToPdf(manual: UserManual, onProgress?: (msg: string)
       currentY += 5.5;
     });
   }
+
+  // ==========================================
+  // --- 4.5. FILL IN DYNAMIC PAGE REFERENCES IN TABLE OF CONTENTS ---
+  // ==========================================
+  stepIndexPageMarkers.forEach((marker) => {
+    doc.setPage(marker.page);
+    const actualPage = stepStartPages[marker.stepIdx] || (marker.stepIdx + 2);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(148, 163, 184);
+    doc.text(`Pág. ${actualPage}`, marker.x, marker.y, { align: 'right' });
+  });
 
   // ==========================================
   // --- 5. RUNNING HEADERS & FOOTERS ---
