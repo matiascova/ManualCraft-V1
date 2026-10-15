@@ -10,6 +10,8 @@ import {
   Crosshair,
   Image as ImageIcon,
   Mic,
+  Target,
+  MessageSquareQuote,
 } from 'lucide-react';
 
 interface StepEditorModalProps {
@@ -44,7 +46,6 @@ export const StepEditorModal: React.FC<StepEditorModalProps> = ({
   const [aiInstruction, setAiInstruction] = useState('');
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [aiMessage, setAiMessage] = useState<string | null>(null);
-  const [activeExtraTab, setActiveExtraTab] = useState<'tip' | 'warning' | 'audio'>('tip');
 
   if (!isOpen) return null;
 
@@ -79,6 +80,7 @@ export const StepEditorModal: React.FC<StepEditorModalProps> = ({
         actionType: data.enhanced.actionType || prev.actionType,
         targetElement: data.enhanced.targetElement || prev.targetElement,
         expectedResult: data.enhanced.expectedResult || prev.expectedResult,
+        purpose: data.enhanced.purpose || prev.purpose,
         tip: data.enhanced.tip || prev.tip,
         warning: data.enhanced.warning || prev.warning,
       }));
@@ -162,10 +164,10 @@ export const StepEditorModal: React.FC<StepEditorModalProps> = ({
 
         {/* Body (2-Column Grid designed to fit 100% on screen with ZERO vertical scroll) */}
         <div className="flex-1 p-3 sm:p-4 grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch min-h-0 overflow-y-auto lg:overflow-hidden">
-          {/* Left Column: Form Fields (7 cols) */}
-          <div className="lg:col-span-7 flex flex-col justify-between gap-2.5 h-full min-h-0">
+          {/* Left Column: Form Fields (7 cols) - Scrollable to ensure all fields are visible */}
+          <div className="lg:col-span-7 flex flex-col gap-3 h-full min-h-0 overflow-y-auto pr-1 sm:pr-2">
             {/* Row 1: Title & Action Type */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 shrink-0">
               <div className="sm:col-span-2">
                 <label className="text-[11px] font-bold text-slate-700 block mb-1">
                   Título de la Acción *
@@ -174,6 +176,7 @@ export const StepEditorModal: React.FC<StepEditorModalProps> = ({
                   type="text"
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  placeholder="Ej. Ingresar Código de Sociedad"
                   className="w-full text-xs px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
                 />
               </div>
@@ -199,7 +202,7 @@ export const StepEditorModal: React.FC<StepEditorModalProps> = ({
             </div>
 
             {/* Row 2: Target Element & Expected Result */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 shrink-0">
               <div>
                 <label className="text-[11px] font-bold text-slate-700 block mb-1">
                   Elemento Objetivo en Pantalla
@@ -228,120 +231,119 @@ export const StepEditorModal: React.FC<StepEditorModalProps> = ({
             </div>
 
             {/* Row 3: Description */}
-            <div className="flex-1 flex flex-col min-h-0">
+            <div className="flex flex-col shrink-0">
               <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                Descripción Detallada
+                Descripción Detallada *
               </label>
               <textarea
                 rows={3}
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                className="w-full flex-1 text-xs px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 leading-relaxed resize-none min-h-[60px]"
+                placeholder="Explica detalladamente qué debe hacer el usuario en este paso..."
+                className="w-full text-xs px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 leading-relaxed resize-none"
               />
             </div>
 
-            {/* Row 4: Tabbed Extra Information (Consejos, Advertencias, Audio) to eliminate vertical height bloat */}
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5">
-              <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-slate-200">
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setActiveExtraTab('tip')}
-                    className={`px-2 py-0.5 text-xs font-semibold rounded-md transition-colors flex items-center gap-1 ${
-                      activeExtraTab === 'tip'
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : 'text-slate-500 hover:text-slate-800'
-                    }`}
-                  >
-                    <Lightbulb className="w-3 h-3 text-emerald-600" />
-                    <span>Consejo Pro</span>
-                    {formData.tip && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
-                  </button>
+            {/* Row 4: Propósito y Justificación Pedagógica (Modelo 4C/ID) */}
+            <div className="bg-blue-50/60 border border-blue-200 rounded-xl p-2.5 shrink-0">
+              <div className="flex items-center gap-1.5 mb-1 text-blue-900 font-bold text-[11px]">
+                <Target className="w-3.5 h-3.5 text-blue-600" />
+                <span>Propósito & Justificación Funcional (¿Por qué se realiza este paso?)</span>
+              </div>
+              <input
+                type="text"
+                value={formData.purpose || ''}
+                onChange={(e) => setFormData({ ...formData, purpose: e.target.value })}
+                placeholder="Ej. Garantizar que la solicitud se asigne a la entidad legal correspondiente para su imputación contable..."
+                className="w-full text-xs px-2.5 py-1.5 bg-white border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-800"
+              />
+            </div>
 
-                  <button
-                    type="button"
-                    onClick={() => setActiveExtraTab('warning')}
-                    className={`px-2 py-0.5 text-xs font-semibold rounded-md transition-colors flex items-center gap-1 ${
-                      activeExtraTab === 'warning'
-                        ? 'bg-amber-100 text-amber-800'
-                        : 'text-slate-500 hover:text-slate-800'
-                    }`}
-                  >
-                    <AlertTriangle className="w-3 h-3 text-amber-600" />
-                    <span>Advertencia</span>
-                    {formData.warning && <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setActiveExtraTab('audio')}
-                    className={`px-2 py-0.5 text-xs font-semibold rounded-md transition-colors flex items-center gap-1 ${
-                      activeExtraTab === 'audio'
-                        ? 'bg-purple-100 text-purple-800'
-                        : 'text-slate-500 hover:text-slate-800'
-                    }`}
-                  >
-                    <Mic className="w-3 h-3 text-purple-600" />
-                    <span>Audio del Instructor</span>
-                    {(formData.instructorAudioQuote || formData.instructorNotes) && (
-                      <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />
-                    )}
-                  </button>
+            {/* Row 5: EXPLICACIÓN DEL INSTRUCTOR (Audio Transcrito / Explicación Verbal) - VISIBLE ON THIS SCREEN */}
+            <div className="bg-gradient-to-r from-purple-50 via-indigo-50/50 to-purple-50/70 border-2 border-purple-300 rounded-xl p-3 shrink-0 shadow-2xs">
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-lg bg-purple-600 text-white flex items-center justify-center font-bold shadow-2xs">
+                    <Mic className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-purple-950 block leading-tight">
+                      Explicación del Instructor (Argumentos & Ejemplos)
+                    </span>
+                    <span className="text-[10px] text-purple-700">
+                      Argumentos de fondo, justificaciones de negocio o ejemplos prácticos
+                    </span>
+                  </div>
                 </div>
+                <span className="text-[10px] bg-purple-200/90 text-purple-900 font-bold px-2 py-0.5 rounded-full border border-purple-300">
+                  Visible en PDF & Word
+                </span>
               </div>
 
-              {activeExtraTab === 'tip' && (
-                <div>
-                  <input
-                    type="text"
-                    value={formData.tip || ''}
-                    onChange={(e) => setFormData({ ...formData, tip: e.target.value })}
-                    placeholder="Ej. Puedes usar Ctrl+S o Enter como atajo rápido"
-                    className="w-full text-xs px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                </div>
-              )}
+              <textarea
+                rows={2}
+                value={formData.instructorAudioQuote || formData.instructorNotes || ''}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setFormData({
+                    ...formData,
+                    instructorAudioQuote: val,
+                    instructorNotes: val,
+                  });
+                }}
+                placeholder='Escribe los argumentos o ejemplos prácticos que dio el instructor (ej. "En clientes corporativos usamos el almacén central para evitar quiebres"). Si la información ya está en la descripción detallada, déjalo vacío.'
+                className="w-full text-xs px-2.5 py-2 bg-white border border-purple-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-slate-900 leading-relaxed resize-none shadow-2xs"
+              />
 
-              {activeExtraTab === 'warning' && (
-                <div>
-                  <input
-                    type="text"
-                    value={formData.warning || ''}
-                    onChange={(e) => setFormData({ ...formData, warning: e.target.value })}
-                    placeholder="Ej. Escribir siempre el código en mayúsculas para evitar errores"
-                    className="w-full text-xs px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  />
-                </div>
-              )}
+              <div className="flex items-center justify-between mt-1 text-[10px] text-purple-800">
+                <span>💡 Regla pedagógica: Coloca argumentos o ejemplos prácticos. Si ya está en la descripción, déjalo vacío.</span>
+                {(formData.instructorAudioQuote || formData.instructorNotes) && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFormData({
+                        ...formData,
+                        instructorAudioQuote: '',
+                        instructorNotes: '',
+                      })
+                    }
+                    className="text-red-500 hover:text-red-700 font-semibold text-[10px] underline ml-2 shrink-0"
+                  >
+                    Borrar explicación
+                  </button>
+                )}
+              </div>
+            </div>
 
-              {activeExtraTab === 'audio' && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <div>
-                    <span className="text-[10px] text-purple-900 font-semibold block mb-0.5">
-                      Cita Textual
-                    </span>
-                    <input
-                      type="text"
-                      value={formData.instructorAudioQuote || ''}
-                      onChange={(e) => setFormData({ ...formData, instructorAudioQuote: e.target.value })}
-                      placeholder='Ej. "No dejen el campo en blanco"'
-                      className="w-full text-xs px-2 py-1 bg-white border border-purple-200 rounded-md focus:outline-none focus:ring-1 focus:ring-purple-500 italic"
-                    />
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-purple-900 font-semibold block mb-0.5">
-                      Notas del Instructor
-                    </span>
-                    <input
-                      type="text"
-                      value={formData.instructorNotes || ''}
-                      onChange={(e) => setFormData({ ...formData, instructorNotes: e.target.value })}
-                      placeholder="Detalles hablados en la sesión..."
-                      className="w-full text-xs px-2 py-1 bg-white border border-purple-200 rounded-md focus:outline-none focus:ring-1 focus:ring-purple-500"
-                    />
-                  </div>
-                </div>
-              )}
+            {/* Row 6: Consejos Pro y Advertencias (2 columns) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 shrink-0">
+              <div className="bg-emerald-50/60 border border-emerald-200 rounded-xl p-2.5">
+                <label className="text-[11px] font-bold text-emerald-900 flex items-center gap-1.5 mb-1">
+                  <Lightbulb className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Consejo Pro</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.tip || ''}
+                  onChange={(e) => setFormData({ ...formData, tip: e.target.value })}
+                  placeholder="Ej. Puedes usar Ctrl+S o Enter como atajo rápido"
+                  className="w-full text-xs px-2.5 py-1.5 bg-white border border-emerald-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              <div className="bg-amber-50/60 border border-amber-200 rounded-xl p-2.5">
+                <label className="text-[11px] font-bold text-amber-900 flex items-center gap-1.5 mb-1">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Advertencia / Precaución</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.warning || ''}
+                  onChange={(e) => setFormData({ ...formData, warning: e.target.value })}
+                  placeholder="Ej. Escribir siempre el código en mayúsculas"
+                  className="w-full text-xs px-2.5 py-1.5 bg-white border border-amber-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
             </div>
           </div>
 

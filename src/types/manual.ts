@@ -55,6 +55,7 @@ export interface ManualStep {
   description: string;
   targetElement?: string;
   expectedResult?: string;
+  purpose?: string; // Propósito de negocio y justificación pedagógica (Modelo 4C/ID: el "por qué" de la acción)
   tip?: string;
   warning?: string;
   instructorNotes?: string; // Transcripción o explicación verbal clave que el instructor indicó durante la grabación
@@ -100,6 +101,7 @@ export interface UserManual {
   version?: string;
   code?: string;
   category?: string;
+  pedagogicalApproach?: 'sop' | 'microlearning' | 'onboarding';
 }
 
 export interface VideoFrameCandidate {

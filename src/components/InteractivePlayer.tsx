@@ -15,6 +15,7 @@ import {
   Mic,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { getEffectiveInstructorContent } from '../utils/instructorUtils';
 
 interface InteractivePlayerProps {
   manual: UserManual;
@@ -200,30 +201,34 @@ export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
                 </div>
               )}
 
-              {/* Instructor Spoken Quote / Audio Guidance */}
-              {(currentStep.instructorAudioQuote || currentStep.instructorNotes) && (
-                <div className="p-3 bg-purple-950/50 border border-purple-800/60 rounded-xl text-xs text-purple-200 flex gap-2.5">
-                  <Mic className="w-4 h-4 text-purple-400 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <div className="flex items-center gap-1.5 mb-0.5">
-                      <span className="font-bold text-purple-300">Voz del Instructor</span>
-                      <span className="text-[10px] bg-purple-900/80 text-purple-200 px-1.5 py-0.5 rounded font-semibold">
-                        Audio Transcrito
-                      </span>
+              {/* Instructor Spoken Quote / Audio Guidance (Non-Redundant Arguments & Examples Only) */}
+              {(() => {
+                const effective = getEffectiveInstructorContent(currentStep);
+                if (!effective.shouldShow) return null;
+                return (
+                  <div className="p-3 bg-purple-950/50 border border-purple-800/60 rounded-xl text-xs text-purple-200 flex gap-2.5">
+                    <Mic className="w-4 h-4 text-purple-400 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <span className="font-bold text-purple-300">Argumentos & Ejemplos del Instructor</span>
+                        <span className="text-[10px] bg-purple-900/80 text-purple-200 px-1.5 py-0.5 rounded font-semibold">
+                          Audio de Sesión
+                        </span>
+                      </div>
+                      {effective.quote && (
+                        <p className="italic text-purple-100 font-medium mb-1">
+                          "{effective.quote}"
+                        </p>
+                      )}
+                      {effective.notes && (
+                        <p className="text-purple-300/90 leading-relaxed font-normal">
+                          {effective.notes}
+                        </p>
+                      )}
                     </div>
-                    {currentStep.instructorAudioQuote && (
-                      <p className="italic text-purple-100 font-medium mb-1">
-                        "{currentStep.instructorAudioQuote}"
-                      </p>
-                    )}
-                    {currentStep.instructorNotes && currentStep.instructorNotes !== currentStep.instructorAudioQuote && (
-                      <p className="text-purple-300/90 leading-relaxed font-normal">
-                        {currentStep.instructorNotes}
-                      </p>
-                    )}
                   </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
 
             <div className="pt-6 border-t border-slate-800/80 mt-6 flex items-center justify-between text-xs text-slate-400">
@@ -334,22 +339,42 @@ export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
                           className="w-3.5 h-3.5 rounded-full absolute"
                         />
                         {ann.label && (() => {
+                          const isNearTop = (ann.y || 0) < 16;
+                          const isNearBottom = (ann.y || 0) > 82;
+                          const pos = ann.labelPosition || (isNearTop ? 'bottom' : (isNearBottom ? 'top' : 'top'));
+                          const color = ann.color || '#ef4444';
                           let labelStyle: React.CSSProperties = {
-                            backgroundColor: ann.color || '#0f172a',
+                            backgroundColor: color,
                           };
                           if (ann.labelPosition === 'custom' && (ann.labelOffsetX !== undefined || ann.labelOffsetY !== undefined)) {
                             labelStyle.top = '0px';
                             labelStyle.left = '0px';
                             labelStyle.transform = `translate(${ann.labelOffsetX || 0}px, ${ann.labelOffsetY || 0}px)`;
+                          } else if (pos === 'bottom') {
+                            labelStyle.top = 'calc(100% + 6px)';
+                            labelStyle.left = '50%';
+                            labelStyle.transform = 'translateX(-50%)';
+                          } else if (pos === 'right') {
+                            labelStyle.top = '50%';
+                            labelStyle.left = 'calc(100% + 6px)';
+                            labelStyle.transform = 'translateY(-50%)';
+                          } else if (pos === 'left') {
+                            labelStyle.top = '50%';
+                            labelStyle.right = 'calc(100% + 6px)';
+                            labelStyle.transform = 'translateY(-50%)';
+                          } else if (pos === 'inside') {
+                            labelStyle.top = '50%';
+                            labelStyle.left = '50%';
+                            labelStyle.transform = 'translate(-50%, -50%)';
                           } else {
-                            labelStyle.bottom = '-26px';
+                            labelStyle.bottom = 'calc(100% + 6px)';
                             labelStyle.left = '50%';
                             labelStyle.transform = 'translateX(-50%)';
                           }
                           return (
                             <span
                               style={labelStyle}
-                              className="absolute text-white text-[10px] font-semibold px-2 py-0.5 rounded shadow whitespace-nowrap border border-white/20"
+                              className="absolute text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-lg whitespace-nowrap border border-white/30 z-20"
                             >
                               {ann.label}
                             </span>

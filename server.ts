@@ -68,10 +68,12 @@ app.post('/api/generate-manual', async (req: Request, res: Response) => {
     const {
       topic = '',
       context = '',
-      targetAudience = 'Usuarios finales y clientes',
+      targetAudience = 'Usuarios finales y colaboradores',
       images = [], // Array<{ dataUrl: string, label?: string, timestamp?: number }>
       instructorTranscription = null, // { fullText?: string, items?: Array<{ timestamp: number, text: string }> }
       language = 'es',
+      pedagogicalApproach = 'sop', // 'sop' | 'microlearning' | 'onboarding'
+      autoAnonymizePii = true,
     } = req.body;
 
     const ai = getAiClient();
@@ -109,38 +111,52 @@ ${transcriptFullText.trim()}
 """
 INSTRUCCIONES CLAVE DE ENRIQUECIMIENTO CON EL AUDIO DEL INSTRUCTOR:
 1. Utiliza las palabras, términos de negocio, códigos y explicaciones exactas que mencionó el instructor.
-2. En cada paso ('steps'), correlaciona la pantalla con el audio del instructor correspondiente a ese momento y completa:
-   - "instructorNotes": La explicación verbal detallada que dio el instructor para esa pantalla o acción.
-   - "instructorAudioQuote": Cita textual destacada o consejo clave dicho por el instructor en ese punto.
+2. REGLA ESTRICTA DE DIFERENCIACIÓN PEDAGÓGICA (ARGUMENTOS Y EJEMPLOS):
+   - En 'description' (Descripción detallada) explica con claridad la ACCIÓN física y procedimental paso a paso.
+   - En 'instructorNotes' e 'instructorAudioQuote': NO coloques la acción que se está realizando (ej. NO escribir "Hacer clic en Guardar" o "Seleccionar la fecha").
+   - En 'instructorNotes' DEBES colocar EXCLUSIVAMENTE los ARGUMENTOS, RAZONAMIENTOS DE FONDO O EJEMPLOS PRÁCTICOS que aporta el instructor (ej. justificaciones de negocio, impacto en auditoría, casos de uso habituales, ejemplos con clientes reales o configuraciones de excepción).
+   - REGLA DE NO REDUNDANCIA: Si la información de la explicación del instructor YA ESTÁ en la descripción detallada, o si no aporta ningún argumento ni ejemplo adicional, NO ES NECESARIO PONERLO: deja 'instructorNotes' e 'instructorAudioQuote' vacíos ("") para no redundar.
 3. Si el instructor mencionó precauciones o trucos ("tips"), intégralos directamente en "warning" y "tip".
 4. El manual debe reflejar el valor pedagógico del instructor como si se tratara de una minuta técnica de reunión ejecutiva.
 ===================================================================`;
     }
 
-    // System prompt & user guidelines
-    const instructionPrompt = `Eres un redactor técnico de nivel mundial (Technical Writer & UX Documentation Specialist) experto en crear manuales de usuario interactivos y guías paso a paso tipo Scribe, Tango o GitBook.
+    let approachGuideline = '';
+    if (pedagogicalApproach === 'microlearning') {
+      approachGuideline = `ENFOQUE PEDAGÓGICO: Microaprendizaje / Guía Rápida (Quick Start). Prioriza pasos breves, verbos directos, máxima concisión y velocidad de resolución sin rodeos innecesarios.`;
+    } else if (pedagogicalApproach === 'onboarding') {
+      approachGuideline = `ENFOQUE PEDAGÓGICO: Capacitación Integral y Onboarding. Explica con claridad pedagógica el contexto empresarial, define términos clave y ayuda a colaboradores nuevos a comprender la visión global del proceso.`;
+    } else {
+      approachGuideline = `ENFOQUE PEDAGÓGICO: Procedimiento Operativo Estándar (SOP). Prioriza rigor normativo, nombres exactos de campos del sistema, validaciones críticas, precauciones de seguridad y trazabilidad de auditoría.`;
+    }
+
+    // System prompt & user guidelines based on 4C/ID Instructional Design & PII Privacy
+    const instructionPrompt = `Eres un Redactor Técnico Senior y Especialista en Usabilidad, Diseño Instruccional y Pedagogía de Adultos (Andragogía), experto en crear manuales operativos y procedimientos estándar (SOPs) basados en el Modelo 4C/ID y microaprendizaje.
 Analiza detenidamente la secuencia cronológica de capturas de pantalla/fotogramas proporcionados para el tema: "${topic || 'Proceso de Sistema / Flujo de Software'}".
 Contexto adicional proporcionado por el autor: "${context || 'Ninguno'}".
 Público objetivo: "${targetAudience}".
 Idioma de respuesta: ${language === 'es' ? 'Español' : language}.
+${approachGuideline}
 ${transcriptBlock}
 
-CAPACIDAD CRÍTICA DE IDENTIFICACIÓN DE ACCIONES:
-Identifica con alta precisión:
-1. CUÁNDO SE HACE UN CLIC: Identifica botones, pestañas, iconos o menús seleccionados (Ej. "Haz clic en 'Guardar'", "Haz clic en la pestaña 'Clientes'").
-2. CUÁNDO SE COMPLETA UN DATO: Identifica campos de entrada de texto, números, contraseñas o selectores que fueron rellenados (Ej. "Ingresa el nombre del cliente en el campo 'Razón Social'").
-3. CUÁNDO SE PRESIONA ENTER: Identifica cuando el usuario presiona la tecla Enter para buscar, enviar o confirmar un formulario (Ej. "Presiona la tecla Enter para ejecutar la búsqueda").
-4. CUÁNDO SE DA EN GRABAR / GUARDAR / CONFIRMAR: Identifica el botón de confirmación o guardado final (Ej. "Haz clic en el botón 'Grabar / Guardar Cambios' para persistir la información").
+CAPA DE ANÁLISIS FUNCIONAL E INTENCIÓN PEDAGÓGICA (MODELO 4C/ID):
+No te limites a describir la acción física pasiva. Cada paso debe estructurarse con:
+1. TÍTULO ACCIONABLE (Orientado a metas con verbo en imperativo): Ej. "Ingresar el código de transacción en la barra de comandos", "Validar los totales de facturación", "Guardar y confirmar la orden".
+2. PROPÓSITO Y JUSTIFICACIÓN ('purpose' - El "Por qué"): Explica la intención funcional de negocio detrás de este paso (Ej. "Garantiza que el documento quede imputado al centro de costos correcto y previene discrepancias fiscales en el cierre contable").
+3. DESCRIPCIÓN CLARA: Instrucciones amables, paso a paso, enriquecidas con la terminología de negocio y las indicaciones del instructor.
+4. ELEMENTO DE ATENCIÓN: Nombre exacto del botón, selector o campo y coordenadas estimadas (hotspotX, hotspotY de 0 a 100).
+5. RESULTADO ESPERADO ('expectedResult'): Qué estado o confirmación visual comprueba que el paso fue exitoso.
 
-Para cada imagen en orden (Imagen 1, Imagen 2, etc.):
-1. Identifica qué elemento clave de la interfaz interactuó el usuario.
-2. Genera un título de acción claro y conciso (Ejemplo: "Haz clic en 'Grabar Cambios'", "Completa el campo 'Email'", "Presiona Enter para confirmar").
-3. Asigna un tipo de acción: 'click' | 'type' | 'enter' | 'save' | 'navigate' | 'select' | 'verify' | 'info'.
-4. Redacta una descripción clara, amigable y profesional orientada a resolver la tarea sin fricción, enriquecida con lo indicado por el instructor.
-5. Estima las coordenadas aproximadas del elemento principal de atención (coordenadas hotspotX y hotspotY en porcentaje de 0 a 100, donde 0,0 es esquina superior izquierda y 100,100 es inferior derecha).
-6. Agrega un consejo pro ("tip") o advertencia ("warning") si corresponde para evitar errores comunes.
-7. Explica el resultado esperado ("expectedResult") tras realizar la acción.
-8. Si hay transcripción de audio del instructor, incluye "instructorNotes" e "instructorAudioQuote".
+CAPA DE ANONIMIZACIÓN Y PRIVACIDAD AUTOMÁTICA (DETECCIÓN DE PII):
+Inspecciona detenidamente los datos que aparecen visibles en cada captura.
+Si identificas datos sensibles reales o confidenciales como:
+- Direcciones de correo electrónico personales
+- Números de tarjeta bancaria o cuentas bancarias
+- Contraseñas o tokens expuestos
+- Nombres de personas físicas protegidos
+- Claves de identificación fiscal personales (RUT, DNI, SSN) o saldos altamente confidenciales
+Genera en 'sensitiveDataRegions' las coordenadas aproximadas de la caja que contiene ese dato:
+(x, y del centro en porcentaje 0-100, width y height en porcentaje de la pantalla) para aplicar difuminado automático (blur) de protección.
 
 Además, genera:
 - Un título atractivo para el manual
@@ -205,17 +221,36 @@ Asegúrate de responder estrictamente en el formato JSON estructurado solicitado
                 title: { type: Type.STRING, description: 'Título de la acción' },
                 actionType: { type: Type.STRING, description: 'click, type, enter, save, navigate, select, verify o info' },
                 description: { type: Type.STRING, description: 'Descripción detallada paso a paso' },
+                purpose: {
+                  type: Type.STRING,
+                  description: 'Propósito funcional del paso: justificación del por qué se realiza esta acción en el flujo de negocio',
+                },
                 targetElement: { type: Type.STRING, description: 'Nombre o etiqueta del elemento interactivo' },
                 expectedResult: { type: Type.STRING, description: 'Lo que el usuario verá o conseguirá tras el paso' },
                 tip: { type: Type.STRING, description: 'Consejo o atajo útil opcional' },
                 warning: { type: Type.STRING, description: 'Advertencia sobre precaución importante si aplica' },
+                sensitiveDataRegions: {
+                  type: Type.ARRAY,
+                  description: 'Regiones con información personal identificable o sensible (PII: emails, tarjetas, rfc, etc.) que deben difuminarse',
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      x: { type: Type.NUMBER, description: 'Posición X porcentual (0 a 100) del centro del dato sensible' },
+                      y: { type: Type.NUMBER, description: 'Posición Y porcentual (0 a 100) del centro del dato sensible' },
+                      width: { type: Type.NUMBER, description: 'Ancho porcentual (5 a 50) de la caja' },
+                      height: { type: Type.NUMBER, description: 'Alto porcentual (3 a 20) de la caja' },
+                      label: { type: Type.STRING, description: 'Tipo de dato detectado (Email, Tarjeta, etc.)' },
+                    },
+                    required: ['x', 'y', 'width', 'height'],
+                  },
+                },
                 instructorNotes: {
                   type: Type.STRING,
-                  description: 'Explicación verbal y técnica que el instructor indicó durante la grabación para este paso',
+                  description: 'Argumentos de fondo o ejemplos prácticos que da el instructor (NO repetir la acción física que ya está en description). Si la información ya está en description o no hay argumentos/ejemplos adicionales, dejar vacío ("")',
                 },
                 instructorAudioQuote: {
                   type: Type.STRING,
-                  description: 'Cita textual destacada o frase clave que dijo el instructor en este paso',
+                  description: 'Cita textual del instructor destacando un argumento, anécdota o ejemplo práctico clave. Dejar vacío ("") si es redundante con la descripción',
                 },
                 hotspotX: { type: Type.NUMBER, description: 'Posición X porcentual (0 a 100) del elemento' },
                 hotspotY: { type: Type.NUMBER, description: 'Posición Y porcentual (0 a 100) del elemento' },
@@ -346,7 +381,9 @@ Asegúrate de responder estrictamente en el formato JSON estructurado solicitado
       const sourceImageIndex = typeof s.stepIndex === 'number' && s.stepIndex < selectedImages.length ? s.stepIndex : idx;
       const matchedImage = selectedImages[sourceImageIndex] || selectedImages[idx];
 
-      const annotations = [];
+      const annotations: any[] = [];
+
+      // 1. Hotspot annotation for primary action
       if (typeof s.hotspotX === 'number' && typeof s.hotspotY === 'number') {
         annotations.push({
           id: `ann-${idx}-${Date.now()}`,
@@ -355,6 +392,24 @@ Asegúrate de responder estrictamente en el formato JSON estructurado solicitado
           shape: 'circle' as const,
           color: '#ef4444',
           label: s.targetElement || `Paso ${idx + 1}`,
+        });
+      }
+
+      // 2. Auto-Anonymization: PII Sensitive Data Blur Annotations
+      if (autoAnonymizePii && Array.isArray(s.sensitiveDataRegions)) {
+        s.sensitiveDataRegions.forEach((region: any, rIdx: number) => {
+          if (typeof region.x === 'number' && typeof region.y === 'number') {
+            annotations.push({
+              id: `blur-${idx}-${rIdx}-${Date.now()}`,
+              x: Math.max(5, Math.min(95, region.x)),
+              y: Math.max(5, Math.min(95, region.y)),
+              width: Math.max(6, Math.min(60, region.width || 18)),
+              height: Math.max(4, Math.min(30, region.height || 10)),
+              shape: 'blur' as const,
+              color: '#f59e0b',
+              label: region.label ? `Privado: ${region.label}` : 'Dato Confidencial (PII)',
+            });
+          }
         });
       }
 
@@ -372,6 +427,36 @@ Asegúrate de responder estrictamente en el formato JSON estructurado solicitado
         }
       }
 
+      // User Rule: If instructor explanation is already in description, do not duplicate it.
+      // Instructor notes should contain arguments or examples, not repeated procedural actions.
+      const descNorm = (s.description || '')
+        .toLowerCase()
+        .replace(/[.,/#!$%^&*;:{}=\-_`~()"'«»“”]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      if (finalInstructorNote) {
+        const noteNorm = finalInstructorNote
+          .toLowerCase()
+          .replace(/[.,/#!$%^&*;:{}=\-_`~()"'«»“”]/g, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+        if (descNorm.includes(noteNorm) || noteNorm.includes(descNorm) || noteNorm === descNorm) {
+          finalInstructorNote = '';
+        }
+      }
+
+      if (finalInstructorQuote) {
+        const quoteNorm = finalInstructorQuote
+          .toLowerCase()
+          .replace(/[.,/#!$%^&*;:{}=\-_`~()"'«»“”]/g, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+        if (descNorm.includes(quoteNorm) || quoteNorm.includes(descNorm) || quoteNorm === descNorm) {
+          finalInstructorQuote = '';
+        }
+      }
+
       return {
         id: `step-${idx + 1}-${Date.now()}`,
         stepNumber: idx + 1,
@@ -380,6 +465,7 @@ Asegúrate de responder estrictamente en el formato JSON estructurado solicitado
           ? s.actionType
           : 'click') as any,
         description: s.description || '',
+        purpose: s.purpose || '',
         targetElement: s.targetElement || '',
         expectedResult: s.expectedResult || '',
         tip: s.tip || '',
@@ -424,6 +510,7 @@ Asegúrate de responder estrictamente en el formato JSON estructurado solicitado
       summaryChecklist: parsedData.summaryChecklist || [],
       instructorTranscript: transcriptItems,
       fullTranscriptionText: transcriptFullText,
+      pedagogicalApproach,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       version: '1.0',
@@ -473,6 +560,7 @@ Responde en formato JSON con la versión mejorada del paso.`;
             actionType: { type: Type.STRING },
             targetElement: { type: Type.STRING },
             expectedResult: { type: Type.STRING },
+            purpose: { type: Type.STRING },
             tip: { type: Type.STRING },
             warning: { type: Type.STRING },
           },

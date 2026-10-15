@@ -164,13 +164,32 @@ export default function App() {
     );
   }, []);
 
-  // Handler: Unlink manual from project
+  // Handler: Delete manual permanently from projects and library
+  const handleDeleteManual = useCallback((manualId: string) => {
+    setManuals((prev) => {
+      const updated = prev.filter((m) => m.id !== manualId);
+      manualStorage.deleteManual(manualId, updated);
+      return updated;
+    });
+
+    setActiveManualId((currentId) => {
+      if (currentId === manualId) {
+        setViewMode('project');
+        return '';
+      }
+      return currentId;
+    });
+  }, []);
+
+  // Handler: Unlink manual from project (safe in-app action without window.confirm)
   const handleUnlinkManualFromProject = useCallback((manualId: string) => {
-    if (window.confirm('¿Deseas desvincular este manual de este proyecto? Seguirá existiendo en tu biblioteca.')) {
-      setManuals((prev) =>
-        prev.map((m) => (m.id === manualId ? { ...m, projectId: undefined, updatedAt: new Date().toISOString() } : m))
+    setManuals((prev) => {
+      const updated = prev.map((m) =>
+        m.id === manualId ? { ...m, projectId: undefined, updatedAt: new Date().toISOString() } : m
       );
-    }
+      manualStorage.saveManuals(updated);
+      return updated;
+    });
   }, []);
 
   // Handler: New Manual Created
@@ -281,6 +300,7 @@ export default function App() {
             onUpdateProject={handleSaveProject}
             onLinkManualToProject={handleLinkManualToProject}
             onUnlinkManualFromProject={handleUnlinkManualFromProject}
+            onDeleteManual={handleDeleteManual}
             branding={branding}
             onOpenOurLogoModal={() => setIsOurLogoModalOpen(true)}
           />
@@ -290,6 +310,7 @@ export default function App() {
             project={activeProject}
             onBackToProject={() => setViewMode('project')}
             onUpdateManual={handleUpdateManual}
+            onDeleteManual={handleDeleteManual}
             onStartInteractivePlayer={handleStartInteractivePlayer}
             onOpenExportModal={() => setIsExportModalOpen(true)}
             onEditStep={(step) => setEditingStep(step)}

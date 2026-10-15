@@ -36,6 +36,7 @@ import {
 } from 'lucide-react';
 import { Project } from '../types/project';
 import { OrganizationBranding } from '../types/branding';
+import { getEffectiveInstructorContent } from '../utils/instructorUtils';
 
 interface ManualViewProps {
   manual: UserManual;
@@ -48,6 +49,7 @@ interface ManualViewProps {
   onAnnotateStep: (step: ManualStep) => void;
   onAddNewStep: () => void;
   onRegenerateRecording?: (manual: UserManual) => void;
+  onDeleteManual?: (manualId: string) => void;
   branding?: OrganizationBranding;
   onOpenOurLogoModal?: () => void;
 }
@@ -57,6 +59,7 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
   project,
   onBackToProject,
   onUpdateManual,
+  onDeleteManual,
   onStartInteractivePlayer,
   onOpenExportModal,
   onEditStep,
@@ -70,7 +73,12 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
   const [activeStepAnchor, setActiveStepAnchor] = useState<string | null>(null);
   const [checkedChecklist, setCheckedChecklist] = useState<Record<number, boolean>>({});
   const [showTranscriptModal, setShowTranscriptModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [copiedTranscript, setCopiedTranscript] = useState(false);
+  const [editingInstructorStepId, setEditingInstructorStepId] = useState<string | null>(null);
+  const [editingInstructorText, setEditingInstructorText] = useState('');
+  const [editingTranscriptIdx, setEditingTranscriptIdx] = useState<number | null>(null);
+  const [editingTranscriptText, setEditingTranscriptText] = useState('');
 
   const filteredSteps = useMemo(() => {
     if (!searchQuery.trim()) return manual.steps;
@@ -136,6 +144,89 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
     navigator.clipboard.writeText(textToCopy);
     setCopiedTranscript(true);
     setTimeout(() => setCopiedTranscript(false), 2000);
+  };
+
+  const handleStartEditInstructor = (step: ManualStep) => {
+    setEditingInstructorStepId(step.id);
+    setEditingInstructorText(step.instructorAudioQuote || step.instructorNotes || '');
+  };
+
+  const handleSaveInstructor = (stepId: string) => {
+    const trimmed = editingInstructorText.trim();
+    const updatedSteps = manual.steps.map((s) => {
+      if (s.id === stepId) {
+        return {
+          ...s,
+          instructorAudioQuote: trimmed,
+          instructorNotes: trimmed,
+        };
+      }
+      return s;
+    });
+
+    onUpdateManual({
+      ...manual,
+      steps: updatedSteps,
+      updatedAt: new Date().toISOString(),
+    });
+
+    setEditingInstructorStepId(null);
+    setEditingInstructorText('');
+  };
+
+  const handleCancelEditInstructor = () => {
+    setEditingInstructorStepId(null);
+    setEditingInstructorText('');
+  };
+
+  const handleStartEditTranscriptItem = (idx: number, currentText: string) => {
+    setEditingTranscriptIdx(idx);
+    setEditingTranscriptText(currentText);
+  };
+
+  const handleSaveEditTranscriptItem = (idx: number) => {
+    if (!manual.instructorTranscript) return;
+    const updated = [...manual.instructorTranscript];
+    if (updated[idx]) {
+      updated[idx] = {
+        ...updated[idx],
+        text: editingTranscriptText.trim(),
+      };
+      onUpdateManual({
+        ...manual,
+        instructorTranscript: updated,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+    setEditingTranscriptIdx(null);
+    setEditingTranscriptText('');
+  };
+
+  const handleAddTranscriptItem = () => {
+    const text = prompt('Escribe la nueva indicación o explicación verbal del instructor:');
+    if (!text || !text.trim()) return;
+    const currentList = manual.instructorTranscript ? [...manual.instructorTranscript] : [];
+    const lastTime = currentList.length > 0 ? currentList[currentList.length - 1].timestamp + 10 : 0;
+    currentList.push({
+      id: `tr-${Date.now()}`,
+      text: text.trim(),
+      timestamp: lastTime,
+    });
+    onUpdateManual({
+      ...manual,
+      instructorTranscript: currentList,
+      updatedAt: new Date().toISOString(),
+    });
+  };
+
+  const handleDeleteTranscriptItem = (idx: number) => {
+    if (!manual.instructorTranscript) return;
+    const updated = manual.instructorTranscript.filter((_, i) => i !== idx);
+    onUpdateManual({
+      ...manual,
+      instructorTranscript: updated,
+      updatedAt: new Date().toISOString(),
+    });
   };
 
   return (
@@ -262,6 +353,17 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
             <Plus className="w-4 h-4 text-slate-600" />
             <span>Añadir Paso</span>
           </button>
+
+          {onDeleteManual && (
+            <button
+              onClick={() => setShowDeleteModal(true)}
+              className="inline-flex items-center gap-1.5 py-2.5 px-3 bg-white hover:bg-red-50 border border-slate-300 hover:border-red-300 text-slate-600 hover:text-red-700 font-semibold text-xs rounded-xl shadow-xs transition-colors"
+              title="Eliminar este manual de forma definitiva"
+            >
+              <Trash2 className="w-4 h-4 text-red-500" />
+              <span className="hidden sm:inline">Eliminar</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -620,6 +722,16 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
 
                   {/* Highlights Grid */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {/* 4C/ID Pedagogical Purpose ("El Por Qué") */}
+                    {step.purpose && (
+                      <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-start gap-2.5 md:col-span-2">
+                        <Target className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <strong className="text-blue-950 font-bold">Propósito & Justificación:</strong>{' '}
+                          {step.purpose}
+                        </div>
+                      </div>
+                    )}
                     {step.expectedResult && (
                       <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 flex items-start gap-2.5">
                         <span className="text-sm">🎯</span>
@@ -646,32 +758,144 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
                       </div>
                     )}
 
-                    {/* Instructor Audio Transcription Callout (Teams Style) */}
-                    {(step.instructorAudioQuote || step.instructorNotes) && (
-                      <div className="p-3.5 bg-gradient-to-r from-purple-50 via-indigo-50/60 to-slate-50 border border-purple-200 rounded-xl text-xs text-purple-950 flex items-start gap-3 shadow-2xs md:col-span-2">
-                        <div className="w-8 h-8 rounded-full bg-purple-600 text-white flex items-center justify-center flex-shrink-0 shadow-xs mt-0.5">
-                          <Mic className="w-4 h-4" />
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-bold text-purple-900 text-xs">Explicación del Instructor (Audio Transcrito)</span>
-                            <span className="text-[10px] bg-purple-200/80 text-purple-800 font-bold px-2 py-0.5 rounded-full">
-                              Grabación en Vivo · Estilo MS Teams
-                            </span>
+                    {/* Instructor Audio Transcription Callout (Teams Style) - ALWAYS VISIBLE & EDITABLE */}
+                    {/* Instructor Audio Transcription Callout - ARGUMENTS & EXAMPLES ONLY (NON-REDUNDANT) */}
+                    {editingInstructorStepId === step.id ? (
+                      <div className="p-4 bg-purple-50 border-2 border-purple-400 rounded-xl text-xs text-purple-950 flex flex-col gap-2.5 shadow-md md:col-span-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-full bg-purple-600 text-white flex items-center justify-center flex-shrink-0 shadow-xs">
+                              <Mic className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <span className="font-bold text-purple-950 text-xs block">
+                                Editar Explicación del Instructor (Argumentos & Ejemplos · Paso #{step.stepNumber})
+                              </span>
+                              <span className="text-[10px] text-purple-700">
+                                Argumentos de fondo, justificaciones de negocio o ejemplos prácticos (no repetir la acción física ya descrita)
+                              </span>
+                            </div>
                           </div>
-                          {step.instructorAudioQuote && (
-                            <p className="italic text-purple-900 font-semibold mb-1 text-xs">
-                              "{step.instructorAudioQuote}"
-                            </p>
-                          )}
-                          {step.instructorNotes && step.instructorNotes !== step.instructorAudioQuote && (
-                            <p className="text-slate-700 leading-relaxed font-normal">
-                              {step.instructorNotes}
-                            </p>
-                          )}
+                          <span className="text-[10px] bg-purple-200 text-purple-800 font-bold px-2 py-0.5 rounded-full">
+                            Edición en Vivo
+                          </span>
+                        </div>
+
+                        <textarea
+                          rows={3}
+                          value={editingInstructorText}
+                          onChange={(e) => setEditingInstructorText(e.target.value)}
+                          placeholder='Escribe los argumentos o ejemplos prácticos que dio el instructor (ej. "En clientes corporativos usamos el almacén central para evitar retrasos"). Si la información ya está en la descripción detallada, déjalo vacío.'
+                          className="w-full text-xs p-3 bg-white border border-purple-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-slate-900 leading-relaxed resize-none shadow-2xs"
+                          autoFocus
+                        />
+
+                        <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                          <span className="text-[10px] text-purple-700">
+                            💡 Si la información ya está en la descripción detallada, no es necesario ponerla aquí.
+                          </span>
+                          <div className="flex items-center gap-2">
+                            {editingInstructorText && (
+                              <button
+                                type="button"
+                                onClick={() => setEditingInstructorText('')}
+                                className="px-2.5 py-1 text-red-600 hover:text-red-800 hover:bg-red-50 text-xs font-semibold rounded-lg transition-colors"
+                              >
+                                Limpiar / Dejar vacío
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={handleCancelEditInstructor}
+                              className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 font-semibold text-xs rounded-lg border border-slate-300 transition-colors"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSaveInstructor(step.id)}
+                              className="px-4 py-1.5 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-lg shadow-sm transition-all flex items-center gap-1.5"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                              Guardar Explicación
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    )}
+                    ) : (() => {
+                      const effective = getEffectiveInstructorContent(step);
+                      if (effective.shouldShow) {
+                        return (
+                          <div className="p-3.5 bg-gradient-to-r from-purple-50 via-indigo-50/60 to-slate-50 border border-purple-200 rounded-xl text-xs text-purple-950 flex items-start gap-3 shadow-2xs md:col-span-2 group/inst">
+                            <div className="w-8 h-8 rounded-full bg-purple-600 text-white flex items-center justify-center flex-shrink-0 shadow-xs mt-0.5">
+                              <Mic className="w-4 h-4" />
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex items-center justify-between gap-2 mb-1.5">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-bold text-purple-900 text-xs">Explicación del Instructor (Argumentos & Ejemplos)</span>
+                                  <span className="text-[10px] bg-purple-200/80 text-purple-800 font-bold px-2 py-0.5 rounded-full">
+                                    Valor Pedagógico
+                                  </span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleStartEditInstructor(step)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-purple-100 text-purple-800 text-xs font-semibold rounded-lg border border-purple-300 shadow-2xs transition-colors"
+                                  title="Editar la explicación o indicación verbal del instructor"
+                                >
+                                  <Edit3 className="w-3 h-3 text-purple-600" />
+                                  <span>Editar Explicación</span>
+                                </button>
+                              </div>
+                              {effective.quote && (
+                                <p
+                                  onClick={() => handleStartEditInstructor(step)}
+                                  className="italic text-purple-900 font-semibold mb-1 text-xs cursor-pointer hover:bg-purple-100/50 p-1 -ml-1 rounded transition-colors"
+                                  title="Haz clic para editar este argumento del instructor"
+                                >
+                                  "{effective.quote}"
+                                </p>
+                              )}
+                              {effective.notes && (
+                                <p
+                                  onClick={() => handleStartEditInstructor(step)}
+                                  className="text-slate-700 leading-relaxed font-normal cursor-pointer hover:bg-purple-100/50 p-1 -ml-1 rounded transition-colors"
+                                  title="Haz clic para editar las notas del instructor"
+                                >
+                                  {effective.notes}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      }
+                      return (
+                        <div className="p-3 bg-purple-50/40 border border-dashed border-purple-300 rounded-xl text-xs text-purple-950 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 md:col-span-2">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-7 h-7 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center flex-shrink-0">
+                              <Mic className="w-3.5 h-3.5" />
+                            </div>
+                            <div>
+                              <span className="font-bold text-purple-900 block text-xs">
+                                ¿El instructor aportó algún argumento o ejemplo verbal en este paso?
+                              </span>
+                              <span className="text-[11px] text-purple-700/80">
+                                En la explicación se colocan argumentos o ejemplos prácticos (si ya está en la descripción, no es necesario).
+                              </span>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleStartEditInstructor(step)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-purple-100 text-purple-800 font-bold text-xs rounded-lg border border-purple-300 shadow-2xs transition-colors self-start sm:self-auto"
+                          >
+                            <Plus className="w-3.5 h-3.5 text-purple-600" />
+                            <span>+ Añadir Argumento / Ejemplo</span>
+                          </button>
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* Step Annotated Screenshot */}
@@ -776,22 +1000,42 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
                                 className="w-3 h-3 rounded-full absolute"
                               />
                               {ann.label && (() => {
+                                const isNearTop = (ann.y || 0) < 16;
+                                const isNearBottom = (ann.y || 0) > 82;
+                                const pos = ann.labelPosition || (isNearTop ? 'bottom' : (isNearBottom ? 'top' : 'top'));
+                                const color = ann.color || '#ef4444';
                                 let style: React.CSSProperties = {
-                                  backgroundColor: ann.color || '#0f172a',
+                                  backgroundColor: color,
                                 };
                                 if (ann.labelPosition === 'custom' && (ann.labelOffsetX !== undefined || ann.labelOffsetY !== undefined)) {
                                   style.top = '0px';
                                   style.left = '0px';
                                   style.transform = `translate(${ann.labelOffsetX || 0}px, ${ann.labelOffsetY || 0}px)`;
+                                } else if (pos === 'bottom') {
+                                  style.top = 'calc(100% + 6px)';
+                                  style.left = '50%';
+                                  style.transform = 'translateX(-50%)';
+                                } else if (pos === 'right') {
+                                  style.top = '50%';
+                                  style.left = 'calc(100% + 6px)';
+                                  style.transform = 'translateY(-50%)';
+                                } else if (pos === 'left') {
+                                  style.top = '50%';
+                                  style.right = 'calc(100% + 6px)';
+                                  style.transform = 'translateY(-50%)';
+                                } else if (pos === 'inside') {
+                                  style.top = '50%';
+                                  style.left = '50%';
+                                  style.transform = 'translate(-50%, -50%)';
                                 } else {
-                                  style.bottom = '-24px';
+                                  style.bottom = 'calc(100% + 6px)';
                                   style.left = '50%';
                                   style.transform = 'translateX(-50%)';
                                 }
                                 return (
                                   <span
                                     style={style}
-                                    className="absolute text-white text-[10px] font-semibold px-2 py-0.5 rounded shadow whitespace-nowrap"
+                                    className="absolute text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-lg whitespace-nowrap border border-white/30 z-20"
                                   >
                                     {ann.label}
                                   </span>
@@ -919,11 +1163,25 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
 
             {/* Modal Body: Transcript Segments */}
             <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-3">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                <span className="text-xs font-bold text-slate-700">
+                  Frases e intervenciones del instructor registradas
+                </span>
+                <button
+                  type="button"
+                  onClick={handleAddTranscriptItem}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-xs rounded-lg border border-purple-200 transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Añadir Frase</span>
+                </button>
+              </div>
+
               {manual.instructorTranscript && manual.instructorTranscript.length > 0 ? (
                 manual.instructorTranscript.map((t, idx) => (
                   <div
                     key={t.id || idx}
-                    className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-start gap-3 hover:border-purple-300 transition-colors"
+                    className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-start gap-3 hover:border-purple-300 transition-colors group"
                   >
                     <span className="font-mono text-purple-700 font-bold text-xs bg-purple-100/80 border border-purple-200 px-2 py-0.5 rounded flex-shrink-0 mt-0.5">
                       {Math.floor(t.timestamp / 60)
@@ -931,23 +1189,102 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
                         .padStart(2, '0')}
                       :{(t.timestamp % 60).toString().padStart(2, '0')}
                     </span>
-                    <div className="flex-1">
-                      <div className="text-[11px] font-bold text-slate-500 mb-0.5">
-                        Relator / Instructor:
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className="text-[11px] font-bold text-slate-500">
+                          Relator / Instructor:
+                        </span>
+                        <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
+                          {editingTranscriptIdx === idx ? null : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleStartEditTranscriptItem(idx, t.text)}
+                                className="p-1 text-slate-500 hover:text-purple-700 hover:bg-purple-50 rounded text-xs"
+                                title="Editar texto"
+                              >
+                                <Edit3 className="w-3 h-3" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteTranscriptItem(idx)}
+                                className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded text-xs"
+                                title="Eliminar"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </div>
-                      <p className="text-xs text-slate-800 leading-relaxed font-normal">
-                        "{t.text}"
-                      </p>
+
+                      {editingTranscriptIdx === idx ? (
+                        <div className="flex flex-col gap-2">
+                          <input
+                            type="text"
+                            value={editingTranscriptText}
+                            onChange={(e) => setEditingTranscriptText(e.target.value)}
+                            className="w-full text-xs p-2 bg-white border border-purple-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            autoFocus
+                          />
+                          <div className="flex items-center gap-2 self-end">
+                            <button
+                              type="button"
+                              onClick={() => setEditingTranscriptIdx(null)}
+                              className="px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-200 rounded"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSaveEditTranscriptItem(idx)}
+                              className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded shadow-xs"
+                            >
+                              Guardar
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p
+                          onClick={() => handleStartEditTranscriptItem(idx, t.text)}
+                          className="text-xs text-slate-800 leading-relaxed font-normal cursor-pointer hover:text-purple-900"
+                          title="Haz clic para editar"
+                        >
+                          "{t.text}"
+                        </p>
+                      )}
                     </div>
                   </div>
                 ))
               ) : manual.fullTranscriptionText ? (
-                <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 font-mono text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">
-                  {manual.fullTranscriptionText}
+                <div className="flex flex-col gap-2">
+                  <textarea
+                    rows={8}
+                    value={manual.fullTranscriptionText}
+                    onChange={(e) => {
+                      onUpdateManual({
+                        ...manual,
+                        fullTranscriptionText: e.target.value,
+                        updatedAt: new Date().toISOString(),
+                      });
+                    }}
+                    className="p-3 bg-slate-50 rounded-xl border border-slate-200 font-mono text-xs text-slate-700 leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                  <span className="text-[10px] text-slate-400">
+                    💡 Puedes editar el texto completo de la transcripción directamente.
+                  </span>
                 </div>
               ) : (
-                <div className="p-8 text-center text-slate-500 text-sm">
-                  No hay transcripción registrada para este manual.
+                <div className="p-8 text-center text-slate-500 text-sm flex flex-col items-center gap-2">
+                  <Mic className="w-8 h-8 text-slate-300" />
+                  <p>No hay transcripción registrada para este manual todavía.</p>
+                  <button
+                    type="button"
+                    onClick={handleAddTranscriptItem}
+                    className="mt-2 px-3.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-lg shadow-xs"
+                  >
+                    + Añadir primera frase hablada
+                  </button>
                 </div>
               )}
             </div>
@@ -984,6 +1321,69 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
                   Cerrar
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* In-app Manual Deletion Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-red-100 text-red-600 flex items-center justify-center flex-shrink-0 shadow-xs">
+                  <Trash2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    ¿Eliminar este manual?
+                  </h3>
+                  <span className="text-xs text-slate-500">
+                    Esta acción eliminará el manual definitivamente
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDeleteModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
+              <div className="font-bold text-slate-900 text-sm leading-snug">{manual.title}</div>
+              <div className="text-xs text-slate-500 mt-1">
+                {manual.steps.length} pasos · Versión {manual.version || '1.0'}
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600">
+              ¿Confirmas que deseas eliminar este manual de la plataforma? Esta acción no se puede deshacer.
+            </p>
+
+            <div className="flex flex-col gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  onDeleteManual?.(manual.id);
+                  setShowDeleteModal(false);
+                }}
+                className="w-full py-2.5 px-4 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white font-bold text-xs rounded-xl shadow-xs transition-colors flex items-center justify-center gap-2"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Sí, Eliminar Manual Definitivamente</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowDeleteModal(false)}
+                className="w-full py-2 px-4 text-slate-500 hover:text-slate-800 text-xs font-semibold rounded-xl text-center"
+              >
+                Cancelar
+              </button>
             </div>
           </div>
         </div>

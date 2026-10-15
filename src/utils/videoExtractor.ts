@@ -63,17 +63,26 @@ export async function extractFramesFromVideo(
         }
 
         for (let i = 0; i < timestamps.length; i++) {
-          const time = timestamps[i];
+          let time = timestamps[i];
           if (onProgress) {
             const pct = Math.round(((i + 1) / timestamps.length) * 100);
-            onProgress(pct, `Extrayendo fotograma ${i + 1} de ${timestamps.length} (segundo ${Math.round(time)}s)...`);
+            onProgress(pct, `Analizando nitidez y extrayendo fotograma ${i + 1} de ${timestamps.length} (${Math.round(time)}s)...`);
           }
 
           await seekToTime(video, time);
 
           if (ctx) {
             ctx.drawImage(video, 0, 0, width, height);
-            const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+
+            // Anti-Motion Blur Check: If frame sharpness is very low (motion transition), probe forward 300ms
+            const sharpness = calculateFrameSharpness(ctx, width, height);
+            if (sharpness < 8 && time + 0.35 < duration) {
+              time = time + 0.35;
+              await seekToTime(video, time);
+              ctx.drawImage(video, 0, 0, width, height);
+            }
+
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
             frames.push({
               id: `frame-${i + 1}-${Date.now()}`,
               timestamp: time,
@@ -131,4 +140,39 @@ export function captureSingleFrameFromVideo(video: HTMLVideoElement): string {
     return canvas.toDataURL('image/jpeg', 0.88);
   }
   return '';
+}
+
+/**
+ * Calculates a sharpness score using gradient edge detection on canvas pixels.
+ * Used to detect and discard blurry frames caused by transitions or rapid movement.
+ */
+function calculateFrameSharpness(ctx: CanvasRenderingContext2D, width: number, height: number): number {
+  try {
+    const sampleW = Math.min(160, width);
+    const sampleH = Math.min(90, height);
+    const imgData = ctx.getImageData(
+      Math.floor((width - sampleW) / 2),
+      Math.floor((height - sampleH) / 2),
+      sampleW,
+      sampleH
+    );
+    const d = imgData.data;
+    let score = 0;
+    const stride = sampleW * 4;
+
+    for (let y = 1; y < sampleH - 1; y += 2) {
+      for (let x = 1; x < sampleW - 1; x += 2) {
+        const idx = y * stride + x * 4;
+        const current = d[idx];
+        const right = d[idx + 4];
+        const down = d[idx + stride];
+        const diffX = Math.abs(current - right);
+        const diffY = Math.abs(current - down);
+        score += diffX + diffY;
+      }
+    }
+    return score / ((sampleW / 2) * (sampleH / 2));
+  } catch {
+    return 100;
+  }
 }

@@ -287,7 +287,24 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     }
 
     const isNearTop = (ann.y || 0) < 18;
-    const pos = ann.labelPosition || (isNearTop ? 'bottom' : 'top');
+    const isNearBottom = (ann.y || 0) > 82;
+    const pos = ann.labelPosition || (isNearTop ? 'bottom' : (isNearBottom ? 'top' : 'top'));
+
+    if (ann.shape === 'circle') {
+      switch (pos) {
+        case 'bottom':
+          return { top: 'calc(100% + 6px)', left: '50%', transform: 'translateX(-50%)', cursor: 'grab' };
+        case 'right':
+          return { top: '50%', left: 'calc(100% + 6px)', transform: 'translateY(-50%)', cursor: 'grab' };
+        case 'left':
+          return { top: '50%', right: 'calc(100% + 6px)', transform: 'translateY(-50%)', cursor: 'grab' };
+        case 'inside':
+          return { top: '50%', left: '50%', transform: 'translate(-50%, -50%)', cursor: 'grab' };
+        case 'top':
+        default:
+          return { bottom: 'calc(100% + 6px)', left: '50%', transform: 'translateX(-50%)', cursor: 'grab' };
+      }
+    }
 
     switch (pos) {
       case 'bottom':
@@ -581,7 +598,7 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                     <div
                       onMouseDown={(e) => handleStartDragLabel(e, ann)}
                       style={{
-                        backgroundColor: ann.color || '#0f172a',
+                        backgroundColor: ann.color || '#ef4444',
                         ...getLabelStyle(ann),
                       }}
                       className="absolute text-white text-[11px] font-bold px-2 py-0.5 rounded shadow-lg whitespace-nowrap z-30 select-none flex items-center gap-1.5 border border-white/20 hover:ring-2 hover:ring-white cursor-grab active:cursor-grabbing"

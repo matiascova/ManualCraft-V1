@@ -28,6 +28,10 @@ import {
   Save,
   FolderKanban,
   Building2,
+  Shield,
+  ShieldCheck,
+  GraduationCap,
+  Target,
 } from 'lucide-react';
 import { VideoFrameCandidate, UserManual, InstructorTranscriptSegment } from '../types/manual';
 import { Project } from '../types/project';
@@ -70,6 +74,8 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
   const [targetAudience, setTargetAudience] = useState('Usuarios finales y colaboradores');
   const [saveMode, setSaveMode] = useState<'update' | 'new_version'>('update');
   const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false);
+  const [pedagogicalApproach, setPedagogicalApproach] = useState<'sop' | 'microlearning' | 'onboarding'>('sop');
+  const [autoAnonymizePii, setAutoAnonymizePii] = useState(true);
 
   // Screenshots state
   const [screenshots, setScreenshots] = useState<Array<{ id: string; dataUrl: string; name: string }>>([]);
@@ -491,6 +497,8 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
                 }
               : undefined,
           language: 'es',
+          pedagogicalApproach,
+          autoAnonymizePii,
         }),
       });
 
@@ -592,11 +600,10 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
         stepNumber: idx + 1,
         title: img.label || `Paso ${idx + 1}: Realizar acción`,
         actionType: 'click' as const,
-        description: stepInstructorNote
-          ? `${stepInstructorNote}. Ejecuta la acción indicada en la pantalla para continuar con el flujo de ${topic || 'la tarea'}.`
-          : `Ejecuta la acción indicada en la captura para continuar con el flujo de ${topic || 'la tarea'}.`,
+        description: `Ejecuta la acción indicada en la captura de pantalla para completar este paso dentro del flujo de ${topic || 'la tarea'}.`,
         targetElement: img.label || 'Elemento en pantalla',
-        expectedResult: 'El sistema valida la acción realizada.',
+        expectedResult: 'El sistema valida la acción realizada y avanza al siguiente paso.',
+        purpose: `Garantizar la correcta ejecución del paso ${idx + 1} dentro del procedimiento de ${topic || 'la tarea'}.`,
         instructorNotes: stepInstructorNote,
         instructorAudioQuote: stepInstructorQuote,
         image: img.dataUrl,
@@ -630,6 +637,7 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
       summaryChecklist: ['Completar todas las acciones de la secuencia'],
       instructorTranscript: instructorTranscripts,
       fullTranscriptionText,
+      pedagogicalApproach,
       projectId: selectedProjectId || 'prj-weber-sap',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -832,6 +840,80 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
                 placeholder="Ej. Enfatizar que se debe revisar el número de referencia antes de guardar"
                 className="w-full text-sm px-3.5 py-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
+            </div>
+
+            {/* Pedagogical Approach (4C/ID) & PII Auto-Anonymization */}
+            <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 p-3 bg-slate-50 border border-slate-200/80 rounded-xl">
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5 mb-1.5">
+                  <Target className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Enfoque Pedagógico (Diseño Instruccional 4C/ID)</span>
+                </label>
+                <div className="grid grid-cols-3 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setPedagogicalApproach('sop')}
+                    className={`py-1.5 px-2 text-xs font-medium rounded-lg border text-center transition-all ${
+                      pedagogicalApproach === 'sop'
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                        : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                    }`}
+                  >
+                    <div className="font-bold">SOP Formal</div>
+                    <div className="text-[10px] opacity-80">Rigor & Auditoría</div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPedagogicalApproach('microlearning')}
+                    className={`py-1.5 px-2 text-xs font-medium rounded-lg border text-center transition-all ${
+                      pedagogicalApproach === 'microlearning'
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                        : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                    }`}
+                  >
+                    <div className="font-bold">Guía Rápida</div>
+                    <div className="text-[10px] opacity-80">Microaprendizaje</div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPedagogicalApproach('onboarding')}
+                    className={`py-1.5 px-2 text-xs font-medium rounded-lg border text-center transition-all ${
+                      pedagogicalApproach === 'onboarding'
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                        : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                    }`}
+                  >
+                    <div className="font-bold">Capacitación</div>
+                    <div className="text-[10px] opacity-80">Didáctico / Onboarding</div>
+                  </button>
+                </div>
+              </div>
+
+              {/* PII Anonymization Toggle */}
+              <div className="flex flex-col justify-between">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5 mb-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Privacidad & Anonimización Automática (PII)</span>
+                </label>
+                <div
+                  onClick={() => setAutoAnonymizePii(!autoAnonymizePii)}
+                  className={`p-2 rounded-lg border cursor-pointer transition-all flex items-center justify-between ${
+                    autoAnonymizePii
+                      ? 'bg-emerald-50/80 border-emerald-300 text-emerald-950'
+                      : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <Shield className={`w-4 h-4 ${autoAnonymizePii ? 'text-emerald-600' : 'text-slate-400'}`} />
+                    <span className="text-xs font-semibold">
+                      {autoAnonymizePii ? 'Difuminar datos sensibles (Emails, RUT, Tarjetas)' : 'Sin difuminado automático de datos'}
+                    </span>
+                  </div>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${autoAnonymizePii ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'}`}>
+                    {autoAnonymizePii ? 'Activo' : 'Inactivo'}
+                  </span>
+                </div>
+              </div>
             </div>
 
             {/* Preservation notice and clear button */}

@@ -3,6 +3,7 @@ import { UserManual } from '../types/manual';
 import { Project } from '../types/project';
 import { OrganizationBranding } from '../types/branding';
 import { renderAnnotatedScreenshotForPdf } from './exportUtils';
+import { getEffectiveInstructorContent } from './instructorUtils';
 
 export interface LogoDim {
   width: number;
@@ -359,33 +360,33 @@ export async function exportToPdfWithTemplateStructure(
   const metaRows: Array<[string, string, string, string]> = [
     [
       'Cliente',
-      'Weber Chile (Saint-Gobain)',
+      project?.clientName || 'Cliente',
       'Documento',
       'Manual de usuario',
     ],
     [
       'Proceso',
       manual.title.length > 32 ? `${manual.title.substring(0, 30)}...` : manual.title,
-      'Módulos',
-      'SD · MM',
+      'Módulo',
+      manual.category || project?.category || 'ERP / Sistema',
     ],
     [
-      'Org. ventas',
-      '6100 – Solcrom',
-      'Sociedad',
-      'SGCL',
+      'Proyecto',
+      project?.name ? (project.name.length > 28 ? `${project.name.substring(0, 26)}...` : project.name) : 'Implementación',
+      'Código',
+      manual.code || project?.code || 'MAN-01',
     ],
     [
       'Versión',
-      manual.version || '1.0',
+      `v${manual.version || '1.0'}`,
       'Fecha',
       formattedDate,
     ],
     [
       'Elaborado por',
-      manual.author || 'HSBT',
+      manual.author || project?.author || effectiveBranding?.companyName || 'HSBT',
       'Estado',
-      'Productivo',
+      project?.status || 'Aprobado',
     ],
   ];
 
@@ -470,11 +471,11 @@ export async function exportToPdfWithTemplateStructure(
   doc.line(marginX, currentY + 2.5, marginX + contentWidth, currentY + 2.5);
   currentY += 10;
 
-  // 1.1 Objetivo
+  // 1.1 Objetivo y Alcance
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10.5);
   doc.setTextColor(navyColor[0], navyColor[1], navyColor[2]);
-  doc.text('1.1 Objetivo', marginX, currentY);
+  doc.text('1.1 Objetivo y Alcance Operativo', marginX, currentY);
   currentY += 5.5;
 
   doc.setFont('helvetica', 'normal');
@@ -482,133 +483,82 @@ export async function exportToPdfWithTemplateStructure(
   doc.setTextColor(51, 65, 85);
   const overviewText =
     manual.overview ||
-    `El presente manual describe el procedimiento en SAP para procesar ${manual.title} en Weber Chile: una operativa que enlaza las transacciones comerciales, compras y almacenes garantizando total trazabilidad.`;
+    `El presente manual describe el procedimiento para ${manual.title} en ${project?.clientName || 'la organización'}: una operativa que enlaza las transacciones y pasos requeridos garantizando total trazabilidad e integridad.`;
   const introLines = doc.splitTextToSize(overviewText, contentWidth);
   doc.text(introLines, marginX, currentY);
-  currentY += introLines.length * 4.4 + 6;
+  currentY += introLines.length * 4.4 + 5;
 
-  // 1.2 Escenarios cubiertos
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10.5);
-  doc.setTextColor(navyColor[0], navyColor[1], navyColor[2]);
-  doc.text('1.2 Escenarios cubiertos', marginX, currentY);
-  currentY += 5.5;
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8.5);
-  doc.setTextColor(51, 65, 85);
-  doc.text(
-    'El proceso distingue los escenarios operativos según la modalidad de despacho y recepción en el sistema:',
-    marginX,
-    currentY
-  );
-  currentY += 5;
-
-  // Scenarios Comparison Table
-  const scenHeaders = [
-    'Atributo',
-    'Escenario A · Entrega directa al cliente',
-    'Escenario B · Entrega en instalaciones Weber',
-  ];
-  const scenColW = [46, 66, 66];
-  const scenRowH = 7.5;
-
-  doc.setFillColor(navyColor[0], navyColor[1], navyColor[2]);
-  doc.rect(marginX, currentY, contentWidth, scenRowH, 'F');
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.5);
-  doc.setTextColor(255, 255, 255);
-  let curX = marginX;
-  scenHeaders.forEach((h, hIdx) => {
-    doc.text(h, curX + 2.5, currentY + 4.8);
-    curX += scenColW[hIdx];
-  });
-  currentY += scenRowH;
-
-  const scenData: Array<[string, string, string]> = [
-    [
-      'Flujo físico',
-      'El proveedor despacha directamente al cliente final.',
-      'El proveedor entrega en Weber; luego Weber despacha al cliente.',
-    ],
-    [
-      'Grupo tipos posición',
-      'BANS – Posición terceros',
-      'BANC – Pedido individual',
-    ],
-    [
-      'Tipo de imputación',
-      'Según SolPed generada desde el pedido',
-      'M – IndivClte s/CO PdClt',
-    ],
-    [
-      'Inventario en Weber',
-      'No hay movimiento físico de stock en Weber.',
-      'Stock especial asignado al pedido de venta.',
-    ],
-    [
-      'Contabilización entrega',
-      'Confirmación de lo enviado por el proveedor.',
-      'Descuento real de inventario en almacén.',
-    ],
-  ];
-
-  doc.setDrawColor(209, 213, 219);
-  doc.setLineWidth(0.2);
-
-  scenData.forEach((row, rIdx) => {
-    const isEven = rIdx % 2 === 0;
-    doc.setFillColor(isEven ? 248 : 255, isEven ? 250 : 255, isEven ? 252 : 255);
-    doc.rect(marginX, currentY, contentWidth, scenRowH, 'FD');
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7.5);
-    doc.setTextColor(51, 65, 85);
-    doc.text(row[0], marginX + 2.5, currentY + 4.8);
-
-    doc.setFont('helvetica', 'normal');
+  if (manual.subtitle) {
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(8);
     doc.setTextColor(71, 85, 105);
-    doc.text(row[1], marginX + scenColW[0] + 2.5, currentY + 4.8);
-    doc.text(row[2], marginX + scenColW[0] + scenColW[1] + 2.5, currentY + 4.8);
+    const subLines = doc.splitTextToSize(manual.subtitle, contentWidth);
+    doc.text(subLines, marginX, currentY);
+    currentY += subLines.length * 4.0 + 5;
+  }
 
-    currentY += scenRowH;
-  });
-  currentY += 6;
-
-  // 1.3 Datos de referencia
+  // 1.2 Requisitos Previos del Proceso
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10.5);
   doc.setTextColor(navyColor[0], navyColor[1], navyColor[2]);
-  doc.text('1.3 Datos de referencia', marginX, currentY);
+  doc.text('1.2 Requisitos Previos y Destinatarios', marginX, currentY);
   currentY += 5.5;
 
-  const refData: Array<[string, string]> = [
-    ['Clase de pedido de venta', 'ZSVC – Ped. Venta calzada'],
-    ['Organización de ventas', '6100 – Solcrom'],
-    ['Sociedad', 'SGCL – Saint-Gobain Weber Chile'],
-    ['Organización de compras / Centro', '6100 / 6100'],
-    ['Clase de solicitud de pedido', 'ZTNB'],
-    ['Clase de pedido de compra', 'NB – Pedido estándar'],
-    ['Reporte de seguimiento', 'ZSD_T0001_CL'],
+  const prereqs =
+    manual.prerequisites && manual.prerequisites.length > 0
+      ? manual.prerequisites
+      : [
+          'Tener credenciales y accesos activos asignados para el sistema.',
+          'Contar con los roles y autorizaciones operativas correspondientes.',
+        ];
+
+  prereqs.forEach((reqText) => {
+    doc.setFillColor(37, 99, 235); // Blue square bullet
+    doc.rect(marginX + 1, currentY - 2.8, 2.2, 2.2, 'F');
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.2);
+    doc.setTextColor(51, 65, 85);
+    const rLines = doc.splitTextToSize(reqText, contentWidth - 8);
+    doc.text(rLines, marginX + 6, currentY);
+    currentY += rLines.length * 4.2 + 2;
+  });
+  currentY += 4;
+
+  // 1.3 Ficha Técnica del Proceso
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10.5);
+  doc.setTextColor(navyColor[0], navyColor[1], navyColor[2]);
+  doc.text('1.3 Ficha Técnica del Proceso', marginX, currentY);
+  currentY += 5.5;
+
+  const realFichaData: Array<[string, string]> = [
+    ['Proyecto Asociado', project?.name || 'Procedimiento Operativo'],
+    ['Código de Identificación', manual.code || project?.code || 'MAN-PROC-001'],
+    ['Cliente / Entidad', project?.clientName || 'Organización'],
+    ['Audiencia y Destinatarios', manual.targetAudience || project?.targetAudience || 'Usuarios finales y operativos'],
+    ['Tiempo Estimado de Ejecución', `${manual.estimatedMinutes || 5} minutos (Nivel ${manual.difficulty || 'Operativo'})`],
+    ['Módulo / Categoría de Sistema', manual.category || project?.category || 'ERP / Gestión de Procesos'],
+    ['Autor / Responsable', manual.author || project?.author || effectiveBranding?.companyName || 'Equipo de Procesos'],
+    ['Secuencia Operativa', `${manual.steps.length} pasos procedimentales estructurados`],
   ];
 
-  const refCol1W = 60;
-  const refRowH = 6.8;
+  const fichaCol1W = 60;
+  const fichaRowH = 6.8;
 
-  // Ref Table Header
+  // Ficha Table Header
   doc.setFillColor(navyColor[0], navyColor[1], navyColor[2]);
-  doc.rect(marginX, currentY, contentWidth, refRowH, 'F');
+  doc.rect(marginX, currentY, contentWidth, fichaRowH, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.5);
   doc.setTextColor(255, 255, 255);
-  doc.text('Elemento', marginX + 3, currentY + 4.5);
-  doc.text('Valor utilizado en el proceso', marginX + refCol1W + 3, currentY + 4.5);
-  currentY += refRowH;
+  doc.text('Parámetro / Elemento', marginX + 3, currentY + 4.5);
+  doc.text('Valor Configurado para este Manual', marginX + fichaCol1W + 3, currentY + 4.5);
+  currentY += fichaRowH;
 
-  refData.forEach((r, rIdx) => {
+  realFichaData.forEach((r, rIdx) => {
     const isEven = rIdx % 2 === 0;
     doc.setFillColor(isEven ? 248 : 255, isEven ? 250 : 255, isEven ? 252 : 255);
-    doc.rect(marginX, currentY, contentWidth, refRowH, 'FD');
+    doc.rect(marginX, currentY, contentWidth, fichaRowH, 'FD');
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7.5);
@@ -616,10 +566,10 @@ export async function exportToPdfWithTemplateStructure(
     doc.text(r[0], marginX + 3, currentY + 4.5);
 
     doc.setFont('helvetica', 'normal');
-    doc.setTextColor(71, 85, 105);
-    doc.text(r[1], marginX + refCol1W + 3, currentY + 4.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text(r[1], marginX + fichaCol1W + 3, currentY + 4.5);
 
-    currentY += refRowH;
+    currentY += fichaRowH;
   });
 
   // Page 3 End -> Add Page 4
@@ -915,6 +865,33 @@ export async function exportToPdfWithTemplateStructure(
 
     // 5. CORPORATE CALLOUT CARDS (Matching Template)
     // 5.1 IMPORTANTE / ALERTA (Amber)
+    // 5.1 PROPÓSITO & JUSTIFICACIÓN (4C/ID Pedagogical Intent) (Indigo)
+    if (step.purpose) {
+      const purpLines = doc.splitTextToSize(step.purpose, contentWidth - 14);
+      const cardH = 8 + purpLines.length * 4.2 + 2;
+
+      doc.setFillColor(238, 242, 255); // indigo-50
+      doc.setDrawColor(199, 210, 254); // indigo-200
+      doc.roundedRect(marginX, currentY, contentWidth, cardH, 1, 1, 'FD');
+
+      doc.setFillColor(79, 70, 229); // indigo-600 #4F46E5
+      doc.rect(marginX, currentY, 2.5, cardH, 'F');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(67, 56, 202);
+      doc.text('PROPÓSITO Y JUSTIFICACIÓN FUNCIONAL (EL POR QUÉ)', marginX + 6, currentY + 5);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(49, 46, 129);
+      purpLines.forEach((ln: string, lIdx: number) => {
+        doc.text(ln, marginX + 6, currentY + 9 + lIdx * 4.2);
+      });
+
+      currentY += cardH + 4;
+    }
+
     if (step.warning) {
       const warnLines = doc.splitTextToSize(step.warning, contentWidth - 14);
       const cardH = 8 + warnLines.length * 4.2 + 2;
@@ -975,10 +952,16 @@ export async function exportToPdfWithTemplateStructure(
       currentY += cardH + 5;
     }
 
-    // 5.3 AUDIO DEL INSTRUCTOR (Purple)
-    const audioQuote = step.instructorAudioQuote || step.instructorNotes;
+    // 5.3 AUDIO DEL INSTRUCTOR (Purple) - Non-redundant arguments & examples only
+    const effectiveInst = getEffectiveInstructorContent(step);
+    const audioQuote = effectiveInst.shouldShow
+      ? (effectiveInst.quote
+        ? `"${effectiveInst.quote}"${effectiveInst.notes ? ` — ${effectiveInst.notes}` : ''}`
+        : effectiveInst.notes)
+      : '';
+
     if (audioQuote) {
-      const audLines = doc.splitTextToSize(`"${audioQuote}"`, contentWidth - 14);
+      const audLines = doc.splitTextToSize(audioQuote, contentWidth - 14);
       const cardH = 8 + audLines.length * 4.2 + 2;
 
       doc.setFillColor(250, 245, 255);
@@ -991,7 +974,7 @@ export async function exportToPdfWithTemplateStructure(
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8);
       doc.setTextColor(126, 34, 206);
-      doc.text('EXPLICACIÓN DEL INSTRUCTOR (AUDIO EN VIVO)', marginX + 6, currentY + 5);
+      doc.text('EXPLICACIÓN DEL INSTRUCTOR (ARGUMENTOS & EJEMPLOS)', marginX + 6, currentY + 5);
 
       doc.setFont('helvetica', 'italic');
       doc.setFontSize(8);
@@ -1150,9 +1133,9 @@ export async function exportToPdfWithTemplateStructure(
 
   // Section 1
   drawTocItem('1 INTRODUCCIÓN', introPage, 1);
-  drawTocItem('1.1 Objetivo', introPage, 2);
-  drawTocItem('1.2 Escenarios cubiertos', introPage, 2);
-  drawTocItem('1.3 Datos de referencia', introPage, 2);
+  drawTocItem('1.1 Objetivo y Alcance', introPage, 2);
+  drawTocItem('1.2 Requisitos Previos', introPage, 2);
+  drawTocItem('1.3 Ficha Técnica del Proceso', introPage, 2);
 
   // Section 2
   drawTocItem('2 FLUJO DEL PROCESO', flowPage, 1);

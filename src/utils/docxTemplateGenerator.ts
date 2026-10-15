@@ -22,6 +22,7 @@ import { UserManual, getActionTypeSpanish } from '../types/manual';
 import { Project } from '../types/project';
 import { OrganizationBranding } from '../types/branding';
 import { renderAnnotatedScreenshotForPdf } from './exportUtils';
+import { getEffectiveInstructorContent } from './instructorUtils';
 
 /**
  * Converts a base64 / dataUrl string to Uint8Array for docx ImageRun
@@ -421,16 +422,21 @@ export async function exportToDocxWithTemplateStructure(
 
   // 1.3 Ficha Técnica de Control Documental (4-column Table)
   const metaRowsData: Array<[string, string, string, string]> = [
-    ['Cliente', clientName, 'Documento', 'Manual de usuario SAP'],
+    ['Cliente', clientName, 'Documento', 'Manual de usuario'],
     [
       'Proceso',
       manual.title.length > 34 ? `${manual.title.substring(0, 32)}...` : manual.title,
-      'Módulos',
-      'SD · MM',
+      'Módulo',
+      manual.category || project?.category || 'ERP / Sistema',
     ],
-    ['Org. ventas', '6100 – Solcrom', 'Sociedad', 'SGCL'],
+    [
+      'Proyecto',
+      project?.name ? (project.name.length > 30 ? `${project.name.substring(0, 28)}...` : project.name) : 'Implementación',
+      'Código',
+      manual.code || project?.code || 'MAN-01',
+    ],
     ['Versión', `v${docVersion}`, 'Fecha', dateFormatted],
-    ['Elaborado por', authorName, 'Estado', 'Productivo / Aprobado'],
+    ['Elaborado por', authorName, 'Estado', project?.status || 'Aprobado'],
   ];
 
   const controlTableRows: TableRow[] = metaRowsData.map((row) => {
@@ -560,9 +566,9 @@ export async function exportToDocxWithTemplateStructure(
 
   const tocItems: DocxTocItem[] = [
     { title: '1 INTRODUCCIÓN', pageNum: 3, level: 1 },
-    { title: '1.1 Objetivo', pageNum: 3, level: 2 },
-    { title: '1.2 Escenarios cubiertos', pageNum: 3, level: 2 },
-    { title: '1.3 Datos de referencia', pageNum: 3, level: 2 },
+    { title: '1.1 Objetivo y Alcance', pageNum: 3, level: 2 },
+    { title: '1.2 Requisitos Previos', pageNum: 3, level: 2 },
+    { title: '1.3 Ficha Técnica del Proceso', pageNum: 3, level: 2 },
     { title: '2 FLUJO DEL PROCESO', pageNum: 4, level: 1 },
   ];
 
@@ -1206,6 +1212,20 @@ export async function exportToDocxWithTemplateStructure(
       })
     );
 
+    // Callout: Purpose (4C/ID Pedagogical Intent)
+    if (step.purpose) {
+      docChildren.push(
+        createDocxCallout(
+          '🎯 PROPÓSITO & JUSTIFICACIÓN (POR QUÉ)',
+          step.purpose,
+          '4F46E5', // indigo
+          'EEF2FF',
+          '3730A3'
+        )
+      );
+      docChildren.push(new Paragraph({ spacing: { after: 80 } }));
+    }
+
     // Callout: Expected Result
     if (step.expectedResult) {
       docChildren.push(
@@ -1248,15 +1268,18 @@ export async function exportToDocxWithTemplateStructure(
       docChildren.push(new Paragraph({ spacing: { after: 80 } }));
     }
 
-    // Callout: Instructor live audio quote (Teams)
-    const docxAudioQuote = step.instructorAudioQuote
-      ? `"${step.instructorAudioQuote}"${step.instructorNotes && step.instructorNotes !== step.instructorAudioQuote ? ` — ${step.instructorNotes}` : ''}`
-      : (step.instructorNotes || '');
+    // Callout: Instructor live audio quote (Teams) - Non-redundant arguments & examples only
+    const effectiveInst = getEffectiveInstructorContent(step);
+    const docxAudioQuote = effectiveInst.shouldShow
+      ? (effectiveInst.quote
+        ? `"${effectiveInst.quote}"${effectiveInst.notes ? ` — ${effectiveInst.notes}` : ''}`
+        : effectiveInst.notes)
+      : '';
 
     if (docxAudioQuote) {
       docChildren.push(
         createDocxCallout(
-          '🎙 EXPLICACIÓN DEL INSTRUCTOR (AUDIO EN VIVO · MS TEAMS)',
+          '🎙 EXPLICACIÓN DEL INSTRUCTOR (ARGUMENTOS & EJEMPLOS)',
           docxAudioQuote,
           '9333EA', // purple
           'FAF5FF',
@@ -2086,6 +2109,11 @@ export async function exportProjectDossierDocx(
           children: [new TextRun({ text: step.description, size: 21, color: '1E293B' })],
         })
       );
+
+      if (step.purpose) {
+        docChildren.push(createDocxCallout('🎯 PROPÓSITO & JUSTIFICACIÓN', step.purpose, '4F46E5', 'EEF2FF', '3730A3'));
+        docChildren.push(new Paragraph({ spacing: { after: 80 } }));
+      }
 
       if (step.expectedResult) {
         docChildren.push(createDocxCallout('✓ RESULTADO ESPERADO', step.expectedResult, '2563EB', 'EFF6FF', '1D4ED8'));

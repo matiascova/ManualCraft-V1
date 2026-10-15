@@ -4,6 +4,7 @@ import { OrganizationBranding, DEFAULT_ORGANIZATION_BRANDING } from '../types/br
 import { SAMPLE_PROJECTS } from '../data/sampleProjects';
 
 const MANUALS_STORAGE_KEY = 'manualcraft_user_manuals_v1';
+const DELETED_MANUALS_KEY = 'manualcraft_deleted_manual_ids_v1';
 const PROJECTS_STORAGE_KEY = 'manualcraft_user_projects_v1';
 const BRANDING_STORAGE_KEY = 'manualcraft_organization_branding_v1';
 
@@ -105,16 +106,22 @@ class ManualStorageService {
       }
 
       const saved = localStorage.getItem(MANUALS_STORAGE_KEY);
+      const deletedRaw = localStorage.getItem(DELETED_MANUALS_KEY);
+      const deletedIds = new Set<string>(deletedRaw ? JSON.parse(deletedRaw) : []);
+
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          // Merge missing default manuals (e.g. SAP Comex) so new updates are always visible
-          const existingIds = new Set(parsed.map((m: UserManual) => m.id));
-          const missingDefaults = defaultManuals.filter((m) => !existingIds.has(m.id));
+        if (Array.isArray(parsed)) {
+          // Exclude any manuals the user has explicitly deleted
+          const filteredSaved = parsed.filter((m: UserManual) => !deletedIds.has(m.id));
+          const existingIds = new Set(filteredSaved.map((m: UserManual) => m.id));
+          const missingDefaults = defaultManuals.filter(
+            (m) => !existingIds.has(m.id) && !deletedIds.has(m.id)
+          );
 
-          let result = parsed;
+          let result = filteredSaved;
           if (missingDefaults.length > 0) {
-            result = [...missingDefaults, ...parsed];
+            result = [...missingDefaults, ...filteredSaved];
           }
 
           // Ensure each manual has a valid projectId
@@ -134,6 +141,24 @@ class ManualStorageService {
     }
 
     return this.inMemoryManualsFallback || defaultManuals;
+  }
+
+  public deleteManual(manualId: string, updatedList: UserManual[]): boolean {
+    this.inMemoryManualsFallback = updatedList;
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const deletedRaw = localStorage.getItem(DELETED_MANUALS_KEY);
+        const deletedArr: string[] = deletedRaw ? JSON.parse(deletedRaw) : [];
+        if (!deletedArr.includes(manualId)) {
+          deletedArr.push(manualId);
+          localStorage.setItem(DELETED_MANUALS_KEY, JSON.stringify(deletedArr));
+        }
+        localStorage.setItem(MANUALS_STORAGE_KEY, JSON.stringify(updatedList));
+      }
+    } catch (err) {
+      console.warn('[ManualStorageService] Failed to delete manual from localStorage:', err);
+    }
+    return true;
   }
 
   public saveManuals(manuals: UserManual[]): boolean {

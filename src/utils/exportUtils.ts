@@ -4,6 +4,7 @@ import { OrganizationBranding } from '../types/branding';
 import { jsPDF } from 'jspdf';
 import { exportToPdfWithTemplateStructure, exportProjectDossierPdf } from './pdfTemplateGenerator';
 export { exportToPdfWithTemplateStructure, exportProjectDossierPdf };
+import { getEffectiveInstructorContent } from './instructorUtils';
 import {
   exportToDocxWithTemplateStructure,
   exportProjectDossierDocx,
@@ -257,21 +258,24 @@ function drawCanvasLabelForPdf(
   const badgeW = textMetrics.width + padX * 2;
   const badgeH = fontSize + padY * 2;
 
-  let badgeX = boxLeft;
+  let badgeX = ann.shape === 'rect' ? boxLeft : boxLeft + boxW / 2 - badgeW / 2;
   let badgeY = boxTop - badgeH - 6;
 
   if (ann.labelPosition === 'custom' && (ann.labelOffsetX !== undefined || ann.labelOffsetY !== undefined)) {
     badgeX = boxLeft + (ann.labelOffsetX || 0);
     badgeY = boxTop + (ann.labelOffsetY || 0);
   } else if (ann.labelPosition === 'inside') {
-    badgeX = boxLeft + 8;
-    badgeY = boxTop + 8;
+    badgeX = ann.shape === 'rect' ? boxLeft + 8 : boxLeft + boxW / 2 - badgeW / 2;
+    badgeY = ann.shape === 'rect' ? boxTop + 8 : boxTop + boxH / 2 - badgeH / 2;
   } else if (ann.labelPosition === 'bottom' || badgeY < 0) {
-    badgeX = boxLeft;
-    badgeY = boxTop + (boxW ? boxW * 0.6 : 30) + 6;
+    badgeX = ann.shape === 'rect' ? boxLeft : boxLeft + boxW / 2 - badgeW / 2;
+    badgeY = boxTop + boxH + 6;
   } else if (ann.labelPosition === 'right') {
     badgeX = boxLeft + boxW + 8;
-    badgeY = boxTop;
+    badgeY = boxTop + boxH / 2 - badgeH / 2;
+  } else if (ann.labelPosition === 'left') {
+    badgeX = boxLeft - badgeW - 8;
+    badgeY = boxTop + boxH / 2 - badgeH / 2;
   }
 
   // Draw badge
@@ -639,9 +643,12 @@ export async function exportToPdf(manual: UserManual, onProgress?: (msg: string)
 
     let instructorHeight = 0;
     let instructorLines: string[] = [];
-    const instructorSpeechText = step.instructorAudioQuote
-      ? `"${step.instructorAudioQuote}"${step.instructorNotes && step.instructorNotes !== step.instructorAudioQuote ? ` — ${step.instructorNotes}` : ''}`
-      : (step.instructorNotes || '');
+    const effectiveInst = getEffectiveInstructorContent(step);
+    const instructorSpeechText = effectiveInst.shouldShow
+      ? (effectiveInst.quote
+        ? `"${effectiveInst.quote}"${effectiveInst.notes ? ` — ${effectiveInst.notes}` : ''}`
+        : effectiveInst.notes)
+      : '';
 
     if (instructorSpeechText) {
       doc.setFont('helvetica', 'normal');
@@ -1305,9 +1312,12 @@ export function exportToInteractiveHtml(manual: UserManual) {
       height: 32px;
       border-radius: 50%;
       border: 3px solid #ef4444;
-      background: rgba(239, 68, 68, 0.25);
+      background: rgba(239, 68, 68, 0.2);
       animation: pulseHotspot 2s infinite;
       cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
     @keyframes pulseHotspot {
       0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
@@ -1316,16 +1326,18 @@ export function exportToInteractiveHtml(manual: UserManual) {
     }
     .hotspot-label {
       position: absolute;
-      bottom: -28px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: #0f172a;
+      background: #ef4444;
       color: #ffffff;
-      font-size: 0.75rem;
-      padding: 0.2rem 0.5rem;
-      border-radius: 0.35rem;
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 1.3;
+      padding: 2px 8px;
+      border-radius: 4px;
       white-space: nowrap;
       pointer-events: none;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      z-index: 20;
     }
     
     /* Interactive Guided Mode Overlay / Modal */
@@ -1540,44 +1552,83 @@ export function exportToInteractiveHtml(manual: UserManual) {
               }
             </div>
 
+            ${(() => {
+              const effective = getEffectiveInstructorContent(step);
+              if (!effective.shouldShow) return '';
+              return `
+                <div style="margin-top: 0.85rem; padding: 0.85rem 1rem; border-radius: 0.75rem; background: #faf5ff; border: 1px solid #e9d5ff; color: #581c87; font-size: 0.85rem; display: flex; align-items: flex-start; gap: 0.65rem;">
+                  <span style="font-size: 1.15rem; line-height: 1;">🎙️</span>
+                  <div>
+                    <div style="font-weight: 700; color: #581c87; font-size: 0.8rem; margin-bottom: 0.25rem;">Explicación del Instructor (Argumentos & Ejemplos)</div>
+                    ${effective.quote ? `<div style="font-style: italic; font-weight: 600; margin-bottom: 0.25rem;">"${escapeHtml(effective.quote)}"</div>` : ''}
+                    ${effective.notes ? `<div>${escapeHtml(effective.notes)}</div>` : ''}
+                  </div>
+                </div>
+              `;
+            })()}
+
             ${
               step.image
                 ? `<div class="image-wrapper">
                     <img src="${step.image}" alt="Captura de paso ${idx + 1}" loading="lazy">
                     ${(step.annotations || [])
                       .map((ann) => {
-                        const isNearTop = (ann.y || 0) < 14;
-                        const pos = ann.labelPosition || (isNearTop ? 'bottom' : 'top');
-                        let labelStyle = '';
-                        if (ann.labelPosition === 'custom' && (ann.labelOffsetX !== undefined || ann.labelOffsetY !== undefined)) {
-                          labelStyle = `top: 0px; left: 0px; transform: translate(${ann.labelOffsetX || 0}px, ${ann.labelOffsetY || 0}px);`;
-                        } else if (pos === 'bottom') {
-                          labelStyle = 'bottom: -26px; left: 0;';
-                        } else if (pos === 'inside') {
-                          labelStyle = 'top: 4px; left: 4px;';
-                        } else if (pos === 'right') {
-                          labelStyle = 'top: 0; right: -90px;';
-                        } else {
-                          labelStyle = 'top: -26px; left: 0;';
-                        }
+                        const color = ann.color || '#ef4444';
+                        const isNearTop = (ann.y || 0) < 16;
+                        const isNearBottom = (ann.y || 0) > 82;
+                        const pos = ann.labelPosition || (isNearTop ? 'bottom' : (isNearBottom ? 'top' : 'top'));
 
                         if (ann.shape === 'blur') {
                           return `
-                            <div style="position: absolute; left: ${ann.x}%; top: ${ann.y}%; width: ${ann.width || 20}%; height: ${ann.height || 10}%; transform: translate(-50%, -50%); backdrop-filter: blur(8px); background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.4); border-radius: 4px;"></div>
+                            <div style="position: absolute; left: ${ann.x}%; top: ${ann.y}%; width: ${ann.width || 20}%; height: ${ann.height || 10}%; transform: translate(-50%, -50%); backdrop-filter: blur(8px); background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.4); border-radius: 4px; pointer-events: none;"></div>
                           `;
                         }
 
                         if (ann.shape === 'rect') {
+                          let labelStyle = '';
+                          if (ann.labelPosition === 'custom' && (ann.labelOffsetX !== undefined || ann.labelOffsetY !== undefined)) {
+                            labelStyle = `top: 0px; left: 0px; transform: translate(${ann.labelOffsetX || 0}px, ${ann.labelOffsetY || 0}px);`;
+                          } else if (pos === 'bottom') {
+                            labelStyle = 'top: calc(100% + 4px); left: 0;';
+                          } else if (pos === 'inside') {
+                            labelStyle = 'top: 4px; left: 4px;';
+                          } else if (pos === 'right') {
+                            labelStyle = 'top: 0; left: calc(100% + 6px);';
+                          } else if (pos === 'left') {
+                            labelStyle = 'top: 0; right: calc(100% + 6px);';
+                          } else {
+                            labelStyle = 'bottom: calc(100% + 4px); left: 0;';
+                          }
+
                           return `
-                            <div style="position: absolute; left: ${ann.x}%; top: ${ann.y}%; width: ${ann.width || 20}%; height: ${ann.height || 12}%; transform: translate(-50%, -50%); border: 2px solid ${ann.color || '#ef4444'}; background: rgba(239, 68, 68, 0.15); border-radius: 6px;">
-                              ${ann.label ? `<span style="position: absolute; ${labelStyle} background: ${ann.color || '#ef4444'}; color: #ffffff; font-size: 10px; font-weight: bold; padding: 2px 6px; border-radius: 4px; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">${escapeHtml(ann.label)}</span>` : ''}
+                            <div style="position: absolute; left: ${ann.x}%; top: ${ann.y}%; width: ${ann.width || 22}%; height: ${ann.height || 14}%; transform: translate(-50%, -50%); border: 2px solid ${color}; background: rgba(239, 68, 68, 0.15); border-radius: 6px; pointer-events: none;">
+                              ${ann.label ? `<span style="position: absolute; ${labelStyle} background: ${color}; color: #ffffff; font-size: 10px; font-weight: bold; padding: 2px 7px; border-radius: 4px; white-space: nowrap; box-shadow: 0 2px 5px rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.25); z-index: 20;">${escapeHtml(ann.label)}</span>` : ''}
                             </div>
                           `;
                         }
 
+                        // Circle Focus (Hotspot)
+                        let circleLabelStyle = '';
+                        if (ann.labelPosition === 'custom' && (ann.labelOffsetX !== undefined || ann.labelOffsetY !== undefined)) {
+                          circleLabelStyle = `top: 0px; left: 0px; transform: translate(${ann.labelOffsetX || 0}px, ${ann.labelOffsetY || 0}px); bottom: auto; right: auto;`;
+                        } else if (pos === 'bottom') {
+                          circleLabelStyle = 'top: calc(100% + 6px); left: 50%; transform: translateX(-50%); bottom: auto;';
+                        } else if (pos === 'right') {
+                          circleLabelStyle = 'top: 50%; left: calc(100% + 6px); transform: translateY(-50%); bottom: auto;';
+                        } else if (pos === 'left') {
+                          circleLabelStyle = 'top: 50%; right: calc(100% + 6px); transform: translateY(-50%); bottom: auto; left: auto;';
+                        } else if (pos === 'inside') {
+                          circleLabelStyle = 'top: 50%; left: 50%; transform: translate(-50%, -50%);';
+                        } else {
+                          // 'top' or default
+                          circleLabelStyle = 'bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); top: auto;';
+                        }
+
                         return `
-                          <div class="hotspot" style="left: ${ann.x}%; top: ${ann.y}%; border-color: ${ann.color || '#ef4444'};">
-                            ${ann.label ? `<span class="hotspot-label" style="${ann.labelPosition === 'custom' ? `top: 0px; left: 0px; transform: translate(${ann.labelOffsetX || 0}px, ${ann.labelOffsetY || 0}px);` : (pos === 'bottom' || isNearTop ? 'bottom: -28px;' : 'top: -28px;')}">${escapeHtml(ann.label)}</span>` : ''}
+                          <div class="hotspot" style="position: absolute; left: ${ann.x}%; top: ${ann.y}%; width: 32px; height: 32px; transform: translate(-50%, -50%); border-radius: 50%; border: 3px solid ${color}; background: rgba(239, 68, 68, 0.2); animation: pulseHotspot 2s infinite; display: flex; align-items: center; justify-content: center; pointer-events: none;">
+                            <div style="width: 14px; height: 14px; border-radius: 50%; background: ${color}; opacity: 0.75; animation: pulseHotspot 1.5s infinite;"></div>
+                            <div style="width: 10px; height: 10px; border-radius: 50%; background: ${color}; position: absolute;"></div>
+                            ${ann.label ? `<span class="hotspot-label" style="position: absolute; ${circleLabelStyle} background: ${color}; color: #ffffff; font-size: 10px; font-weight: bold; padding: 2px 8px; border-radius: 4px; white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.3); z-index: 20;">${escapeHtml(ann.label)}</span>` : ''}
                           </div>
                         `;
                       })
@@ -1647,7 +1698,8 @@ export function exportToInteractiveHtml(manual: UserManual) {
         <button class="btn btn-outline" onclick="closeInteractivePlayer()" style="padding:0.35rem 0.75rem;">✕ Salir</button>
       </div>
       <div class="player-body">
-        <p style="font-size:1.15rem; color:#1e293b; margin-bottom:1.5rem; line-height:1.6;" id="player-step-desc"></p>
+        <p style="font-size:1.15rem; color:#1e293b; margin-bottom:1rem; line-height:1.6;" id="player-step-desc"></p>
+        <div id="player-instructor-box" style="display:none; margin-bottom:1.25rem; padding:0.85rem 1rem; border-radius:0.75rem; background:#faf5ff; border:1px solid #e9d5ff; color:#581c87; font-size:0.875rem;"></div>
         <div id="player-image-container" class="image-wrapper" style="max-height:480px; display:flex; align-items:center; justify-content:center;"></div>
       </div>
       <div class="player-footer">
@@ -1674,6 +1726,77 @@ export function exportToInteractiveHtml(manual: UserManual) {
       document.body.style.overflow = 'auto';
     }
 
+    function escapeHtmlText(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function renderPlayerAnnotations(annotations) {
+      if (!annotations || !annotations.length) return '';
+      return annotations.map(function(ann) {
+        var color = ann.color || '#ef4444';
+        var isNearTop = (ann.y || 0) < 16;
+        var isNearBottom = (ann.y || 0) > 82;
+        var pos = ann.labelPosition || (isNearTop ? 'bottom' : (isNearBottom ? 'top' : 'top'));
+        var labelText = escapeHtmlText(ann.label || '');
+
+        if (ann.shape === 'blur') {
+          return '<div style="position: absolute; left: ' + ann.x + '%; top: ' + ann.y + '%; width: ' + (ann.width || 20) + '%; height: ' + (ann.height || 10) + '%; transform: translate(-50%, -50%); backdrop-filter: blur(8px); background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.4); border-radius: 4px; pointer-events: none;"></div>';
+        }
+
+        if (ann.shape === 'rect') {
+          var labelStyle = '';
+          if (ann.labelPosition === 'custom' && (ann.labelOffsetX !== undefined || ann.labelOffsetY !== undefined)) {
+            labelStyle = 'top: 0px; left: 0px; transform: translate(' + (ann.labelOffsetX || 0) + 'px, ' + (ann.labelOffsetY || 0) + 'px);';
+          } else if (pos === 'bottom') {
+            labelStyle = 'top: calc(100% + 4px); left: 0;';
+          } else if (pos === 'inside') {
+            labelStyle = 'top: 4px; left: 4px;';
+          } else if (pos === 'right') {
+            labelStyle = 'top: 0; left: calc(100% + 6px);';
+          } else if (pos === 'left') {
+            labelStyle = 'top: 0; right: calc(100% + 6px);';
+          } else {
+            labelStyle = 'bottom: calc(100% + 4px); left: 0;';
+          }
+
+          var labelHtml = labelText ? '<span style="position: absolute; ' + labelStyle + ' background: ' + color + '; color: #ffffff; font-size: 10px; font-weight: bold; padding: 2px 7px; border-radius: 4px; white-space: nowrap; box-shadow: 0 2px 5px rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.25); z-index: 20;">' + labelText + '</span>' : '';
+
+          return '<div style="position: absolute; left: ' + ann.x + '%; top: ' + ann.y + '%; width: ' + (ann.width || 22) + '%; height: ' + (ann.height || 14) + '%; transform: translate(-50%, -50%); border: 2px solid ' + color + '; background: rgba(239, 68, 68, 0.15); border-radius: 6px; pointer-events: none;">' + labelHtml + '</div>';
+        }
+
+        // Circle Focus (Hotspot)
+        var circleLabelStyle = '';
+        if (ann.labelPosition === 'custom' && (ann.labelOffsetX !== undefined || ann.labelOffsetY !== undefined)) {
+          circleLabelStyle = 'top: 0px; left: 0px; transform: translate(' + (ann.labelOffsetX || 0) + 'px, ' + (ann.labelOffsetY || 0) + 'px); bottom: auto; right: auto;';
+        } else if (pos === 'bottom') {
+          circleLabelStyle = 'top: calc(100% + 6px); left: 50%; transform: translateX(-50%); bottom: auto;';
+        } else if (pos === 'right') {
+          circleLabelStyle = 'top: 50%; left: calc(100% + 6px); transform: translateY(-50%); bottom: auto;';
+        } else if (pos === 'left') {
+          circleLabelStyle = 'top: 50%; right: calc(100% + 6px); transform: translateY(-50%); bottom: auto; left: auto;';
+        } else if (pos === 'inside') {
+          circleLabelStyle = 'top: 50%; left: 50%; transform: translate(-50%, -50%);';
+        } else {
+          // 'top' or default
+          circleLabelStyle = 'bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); top: auto;';
+        }
+
+        var circleLabelHtml = labelText ? '<span class="hotspot-label" style="position: absolute; ' + circleLabelStyle + ' background: ' + color + '; color: #ffffff; font-size: 10px; font-weight: bold; padding: 2px 8px; border-radius: 4px; white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.3); z-index: 20;">' + labelText + '</span>' : '';
+
+        return '<div class="hotspot" style="position: absolute; left: ' + ann.x + '%; top: ' + ann.y + '%; width: 32px; height: 32px; transform: translate(-50%, -50%); border-radius: 50%; border: 3px solid ' + color + '; background: rgba(239, 68, 68, 0.2); animation: pulseHotspot 2s infinite; display: flex; align-items: center; justify-content: center; pointer-events: none;">' +
+          '<div style="width: 14px; height: 14px; border-radius: 50%; background: ' + color + '; opacity: 0.75; animation: pulseHotspot 1.5s infinite;"></div>' +
+          '<div style="width: 10px; height: 10px; border-radius: 50%; background: ' + color + '; position: absolute;"></div>' +
+          circleLabelHtml +
+        '</div>';
+      }).join('');
+    }
+
     function renderPlayerStep() {
       const step = manualData.steps[currentStepIndex];
       if (!step) return;
@@ -1686,16 +1809,30 @@ export function exportToInteractiveHtml(manual: UserManual) {
       document.getElementById('player-step-title').textContent = step.title;
       document.getElementById('player-step-desc').textContent = step.description;
 
+      const instBox = document.getElementById('player-instructor-box');
+      const q = (step.instructorAudioQuote || '').trim();
+      const n = (step.instructorNotes || '').trim();
+      const desc = (step.description || '').toLowerCase();
+      
+      let effectiveText = '';
+      if (q && !desc.includes(q.toLowerCase())) {
+        effectiveText = '"' + escapeHtmlText(q) + '"';
+      }
+      if (n && !desc.includes(n.toLowerCase()) && n.toLowerCase() !== q.toLowerCase()) {
+        effectiveText = effectiveText ? (effectiveText + ' — ' + escapeHtmlText(n)) : escapeHtmlText(n);
+      }
+      
+      if (effectiveText) {
+        instBox.innerHTML = '<div style="font-weight:700; margin-bottom:0.25rem; display:flex; align-items:center; gap:0.35rem;">🎙️ Argumentos & Ejemplos del Instructor</div><div>' + effectiveText + '</div>';
+        instBox.style.display = 'block';
+      } else {
+        instBox.innerHTML = '';
+        instBox.style.display = 'none';
+      }
+
       const imgContainer = document.getElementById('player-image-container');
       if (step.image) {
-        let annotationsHtml = '';
-        if (step.annotations && step.annotations.length > 0) {
-          annotationsHtml = step.annotations.map(a => \`
-            <div class="hotspot" style="left:\${a.x}%; top:\${a.y}%; border-color:\${a.color || '#ef4444'}">
-              \${a.label ? \`<span class="hotspot-label">\${a.label}</span>\` : ''}
-            </div>
-          \`).join('');
-        }
+        const annotationsHtml = renderPlayerAnnotations(step.annotations || []);
         imgContainer.innerHTML = \`<img src="\${step.image}" alt="\${step.title}">\${annotationsHtml}\`;
         imgContainer.style.display = 'block';
       } else {

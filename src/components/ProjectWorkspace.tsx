@@ -25,6 +25,9 @@ import {
   Eye,
   Check,
   Image,
+  X,
+  Unlink,
+  AlertTriangle,
 } from 'lucide-react';
 
 interface ProjectWorkspaceProps {
@@ -40,6 +43,7 @@ interface ProjectWorkspaceProps {
   onUpdateProject: (updatedProject: Project) => void;
   onLinkManualToProject: (manualId: string, projectId: string) => void;
   onUnlinkManualFromProject: (manualId: string) => void;
+  onDeleteManual?: (manualId: string) => void;
   branding?: OrganizationBranding;
   onOpenOurLogoModal?: () => void;
 }
@@ -57,11 +61,13 @@ const ProjectWorkspaceComponent: React.FC<ProjectWorkspaceProps> = ({
   onUpdateProject,
   onLinkManualToProject,
   onUnlinkManualFromProject,
+  onDeleteManual,
   branding,
   onOpenOurLogoModal,
 }) => {
   const [activeTab, setActiveTab] = useState<'manuals' | 'features' | 'info'>('manuals');
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
+  const [manualToDelete, setManualToDelete] = useState<UserManual | null>(null);
 
   // Unlinked manuals or manuals from other projects (memoized)
   const availableManualsToLink = useMemo(() => {
@@ -441,11 +447,15 @@ const ProjectWorkspaceComponent: React.FC<ProjectWorkspaceProps> = ({
                   {/* Card footer actions */}
                   <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs">
                     <button
-                      onClick={() => onUnlinkManualFromProject(manual.id)}
-                      className="text-slate-400 hover:text-red-600 transition-colors"
-                      title="Quitar este manual del proyecto"
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setManualToDelete(manual);
+                      }}
+                      className="p-1.5 -ml-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center gap-1"
+                      title="Eliminar o desvincular este manual"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <Trash2 className="w-4 h-4 text-red-500" />
                     </button>
 
                     <button
@@ -768,6 +778,102 @@ const ProjectWorkspaceComponent: React.FC<ProjectWorkspaceProps> = ({
                 className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-lg"
               >
                 Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* In-app Manual Deletion & Unlink Confirmation Modal (100% reliable inside iframe) */}
+      {manualToDelete && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-red-100 text-red-600 flex items-center justify-center flex-shrink-0 shadow-xs">
+                  <Trash2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    ¿Eliminar manual?
+                  </h3>
+                  <span className="text-xs text-slate-500">
+                    Confirma qué acción deseas realizar con este manual
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setManualToDelete(null)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Manual details card preview */}
+            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-100">
+                  v{manualToDelete.version || '1.0'}
+                </span>
+                <span className="text-xs text-slate-500 font-medium">
+                  {manualToDelete.steps?.length || 0} pasos · ~{manualToDelete.estimatedMinutes || 3} min
+                </span>
+              </div>
+              <h4 className="font-bold text-slate-900 text-sm leading-snug">
+                {manualToDelete.title}
+              </h4>
+              {manualToDelete.subtitle && (
+                <p className="text-xs text-slate-500 mt-1 line-clamp-2 leading-relaxed">
+                  {manualToDelete.subtitle}
+                </p>
+              )}
+            </div>
+
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2.5 text-xs text-amber-800">
+              <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+              <p>
+                Puedes eliminar el manual de forma definitiva o solo quitarlo de este proyecto ({project.clientName}).
+              </p>
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex flex-col gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  if (onDeleteManual) {
+                    onDeleteManual(manualToDelete.id);
+                  } else {
+                    onUnlinkManualFromProject(manualToDelete.id);
+                  }
+                  setManualToDelete(null);
+                }}
+                className="w-full py-2.5 px-4 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white font-bold text-xs rounded-xl shadow-xs transition-colors flex items-center justify-center gap-2"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Eliminar Manual Definitivamente</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  onUnlinkManualFromProject(manualToDelete.id);
+                  setManualToDelete(null);
+                }}
+                className="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl transition-colors flex items-center justify-center gap-2"
+              >
+                <Unlink className="w-4 h-4 text-slate-500" />
+                <span>Solo desvincular de este proyecto</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setManualToDelete(null)}
+                className="w-full py-2 px-4 text-slate-500 hover:text-slate-800 text-xs font-semibold rounded-xl transition-colors text-center mt-1"
+              >
+                Cancelar
               </button>
             </div>
           </div>
