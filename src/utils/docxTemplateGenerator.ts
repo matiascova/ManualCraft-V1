@@ -303,10 +303,17 @@ export async function exportToDocxWithTemplateStructure(
 ): Promise<void> {
   if (onProgress) onProgress('Preparando plantilla oficial corporativa para Word (.docx)...');
 
-  const clientName = project?.clientName || 'Weber Chile (Saint-Gobain)';
+  const clientName = project?.clientName || 'Organización';
   const clientLogo = project?.clientLogo;
-  const authorName = manual.author || project?.author || 'HSBT · Saint-Gobain Weber Chile';
+  const authorName = manual.author || project?.author || 'Equipo de Procesos';
   const docVersion = manual.version || project?.version || '1.0';
+
+  const isSap = Boolean(
+    (manual.title && manual.title.toUpperCase().includes('SAP')) ||
+    (manual.category && manual.category.toUpperCase().includes('SAP')) ||
+    (project?.category && project.category.toUpperCase().includes('SAP')) ||
+    manual.steps.some((s) => s.sapTransaction)
+  );
 
   const dateObj = new Date(manual.updatedAt || manual.createdAt || Date.now());
   const dateFormatted =
@@ -361,12 +368,19 @@ export async function exportToDocxWithTemplateStructure(
   }
 
   // 1.2 Large Corporate Navy Blue Banner (#183B6C)
+  const manualCategory = manual.category || project?.category;
+  const bannerKickerText = isSap
+    ? 'MANUAL DE USUARIO SAP'
+    : (manualCategory
+        ? `MANUAL DE USUARIO · ${manualCategory.toUpperCase()}`
+        : 'MANUAL DE PROCEDIMIENTO OPERATIVO');
+
   const bannerParagraphs: Paragraph[] = [
     new Paragraph({
       spacing: { before: 80, after: 60 },
       children: [
         new TextRun({
-          text: 'MANUAL DE USUARIO SAP',
+          text: bannerKickerText,
           bold: true,
           color: 'FFFFFF',
           size: 19,
@@ -640,9 +654,9 @@ export async function exportToDocxWithTemplateStructure(
   docChildren.push(new Paragraph({ children: [new PageBreak()] }));
 
   // =========================================================================
-  // --- 3. SECCIÓN 1: INTRODUCCIÓN, ESCENARIOS & REFERENCIAS (PAGE 3) ---
+  // --- 3. SECCIÓN 1: INTRODUCCIÓN, REQUISITOS & FICHA TÉCNICA (PAGE 3) ---
   // =========================================================================
-  if (onProgress) onProgress('Generando Sección 1: Introducción y Escenarios SAP...');
+  if (onProgress) onProgress('Generando Sección 1: Introducción, Requisitos y Ficha Técnica...');
 
   docChildren.push(
     new Paragraph({
@@ -677,7 +691,7 @@ export async function exportToDocxWithTemplateStructure(
 
   const introText =
     manual.overview ||
-    `El presente manual describe el procedimiento estándar en SAP para ${manual.title} en ${clientName}: una operativa que enlaza las transacciones comerciales, compras y almacenes garantizando total trazabilidad e integridad de los datos.`;
+    `El presente manual describe el procedimiento para ${manual.title} en ${clientName}: una operativa estructurada que detalla los pasos requeridos garantizando trazabilidad e integridad.`;
 
   docChildren.push(
     new Paragraph({
@@ -692,14 +706,14 @@ export async function exportToDocxWithTemplateStructure(
     })
   );
 
-  // Section 1.2 Escenarios Cubiertos
+  // Section 1.2 Requisitos Previos y Destinatarios
   docChildren.push(
     new Paragraph({
       heading: HeadingLevel.HEADING_2,
       spacing: { before: 100, after: 60 },
       children: [
         new TextRun({
-          text: '1.2 Escenarios Operativos Cubiertos',
+          text: '1.2 Requisitos Previos y Destinatarios',
           bold: true,
           color: '183B6C',
           size: 22,
@@ -708,138 +722,36 @@ export async function exportToDocxWithTemplateStructure(
     })
   );
 
-  docChildren.push(
-    new Paragraph({
-      spacing: { after: 80 },
-      children: [
-        new TextRun({
-          text: 'El proceso distingue los escenarios operativos según la modalidad de despacho y recepción en el sistema:',
-          size: 20,
-          color: '475569',
-        }),
-      ],
-    })
-  );
+  const prereqList =
+    manual.prerequisites && manual.prerequisites.length > 0
+      ? manual.prerequisites
+      : [
+          'Contar con credenciales y accesos activos autorizados en el sistema correspondiente.',
+          'Disponer de los permisos y roles operativos necesarios para ejecutar las transacciones.',
+        ];
 
-  // Scenarios Comparison Table
-  const scenHeaders = [
-    'Atributo',
-    'Escenario A · Entrega directa al cliente',
-    'Escenario B · Entrega en instalaciones Weber',
-  ];
-  const scenRowsData: Array<[string, string, string]> = [
-    [
-      'Flujo físico',
-      'El proveedor despacha directamente al cliente final.',
-      'El proveedor entrega en Weber; luego Weber despacha al cliente.',
-    ],
-    ['Grupo tipos posición', 'BANS – Posición terceros', 'BANC – Pedido individual'],
-    ['Tipo de imputación', 'Según SolPed generada desde el pedido', 'M – IndivClte s/CO PdClt'],
-    ['Inventario en Weber', 'No hay movimiento físico de stock en Weber.', 'Stock especial asignado al pedido de venta.'],
-    ['Contabilización entrega', 'Confirmación de lo enviado por el proveedor.', 'Descuento real de inventario en almacén.'],
-  ];
-
-  const scenDocxRows: TableRow[] = [
-    new TableRow({
-      children: scenHeaders.map((h, hIdx) => {
-        return new TableCell({
-          width: { size: hIdx === 0 ? 26 : 37, type: WidthType.PERCENTAGE },
-          shading: { fill: '183B6C' },
-          borders: tableBordersAll,
-          margins: { top: 90, bottom: 90, left: 100, right: 100 },
-          children: [
-            new Paragraph({
-              children: [
-                new TextRun({
-                  text: h,
-                  bold: true,
-                  size: 16,
-                  color: 'FFFFFF',
-                }),
-              ],
-            }),
-          ],
-        });
-      }),
-    }),
-    ...scenRowsData.map((row, rIdx) => {
-      const isEven = rIdx % 2 === 0;
-      return new TableRow({
+  prereqList.forEach((reqText) => {
+    docChildren.push(
+      new Paragraph({
+        spacing: { after: 60 },
         children: [
-          new TableCell({
-            width: { size: 26, type: WidthType.PERCENTAGE },
-            shading: { fill: isEven ? 'F8FAFC' : 'FFFFFF' },
-            borders: tableBordersAll,
-            margins: { top: 80, bottom: 80, left: 100, right: 100 },
-            children: [
-              new Paragraph({
-                children: [
-                  new TextRun({
-                    text: row[0],
-                    bold: true,
-                    size: 17,
-                    color: '334155',
-                  }),
-                ],
-              }),
-            ],
-          }),
-          new TableCell({
-            width: { size: 37, type: WidthType.PERCENTAGE },
-            shading: { fill: isEven ? 'F8FAFC' : 'FFFFFF' },
-            borders: tableBordersAll,
-            margins: { top: 80, bottom: 80, left: 100, right: 100 },
-            children: [
-              new Paragraph({
-                children: [
-                  new TextRun({
-                    text: row[1],
-                    size: 18,
-                    color: '475569',
-                  }),
-                ],
-              }),
-            ],
-          }),
-          new TableCell({
-            width: { size: 37, type: WidthType.PERCENTAGE },
-            shading: { fill: isEven ? 'F8FAFC' : 'FFFFFF' },
-            borders: tableBordersAll,
-            margins: { top: 80, bottom: 80, left: 100, right: 100 },
-            children: [
-              new Paragraph({
-                children: [
-                  new TextRun({
-                    text: row[2],
-                    size: 18,
-                    color: '475569',
-                  }),
-                ],
-              }),
-            ],
-          }),
+          new TextRun({ text: '▪  ', bold: true, color: '2563EB', size: 20 }),
+          new TextRun({ text: reqText, size: 20, color: '334155' }),
         ],
-      });
-    }),
-  ];
+      })
+    );
+  });
 
-  docChildren.push(
-    new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      rows: scenDocxRows,
-    })
-  );
+  docChildren.push(new Paragraph({ spacing: { after: 100 } }));
 
-  docChildren.push(new Paragraph({ spacing: { after: 120 } }));
-
-  // Section 1.3 Parámetros de Referencia SAP
+  // Section 1.3 Ficha Técnica del Procedimiento
   docChildren.push(
     new Paragraph({
       heading: HeadingLevel.HEADING_2,
       spacing: { before: 80, after: 60 },
       children: [
         new TextRun({
-          text: '1.3 Parámetros de Referencia y Datos Maestros SAP',
+          text: '1.3 Ficha Técnica del Procedimiento',
           bold: true,
           color: '183B6C',
           size: 22,
@@ -848,13 +760,14 @@ export async function exportToDocxWithTemplateStructure(
     })
   );
 
-  const paramRowsData = [
-    ['Sociedad', 'SGCL', 'Canal de Distribución', '10 – Venta Directa'],
-    ['Organización de Ventas', '6100 – Solcrom', 'Sector', '00 – General'],
-    ['Moneda Base', 'CLP / USD', 'Punto de Expedición', '6101 – Almacén Central'],
+  const fichaRowsData: Array<[string, string, string, string]> = [
+    ['Proyecto Asociado', project?.name || 'Procedimiento Operativo', 'Código Proceso', manual.code || project?.code || 'MAN-PROC-001'],
+    ['Cliente / Entidad', clientName, 'Categoría / Sistema', manual.category || project?.category || (isSap ? 'SAP ERP' : 'Sistema Empresarial')],
+    ['Audiencia Objetivo', manual.targetAudience || 'Usuarios finales y colaboradores', 'Tiempo Estimado', `${manual.estimatedMinutes || 5} min (Nivel ${manual.difficulty || 'Intermedio'})`],
+    ['Responsable / Autor', authorName, 'Pasos Estructurados', `${manual.steps.length} pasos procedimentales`],
   ];
 
-  const paramTableRows: TableRow[] = paramRowsData.map((pRow) => {
+  const fichaTableRows: TableRow[] = fichaRowsData.map((fRow) => {
     return new TableRow({
       children: [
         new TableCell({
@@ -862,28 +775,28 @@ export async function exportToDocxWithTemplateStructure(
           shading: { fill: 'F1F5F9' },
           borders: tableBordersAll,
           margins: { top: 70, bottom: 70, left: 100, right: 100 },
-          children: [new Paragraph({ children: [new TextRun({ text: pRow[0], bold: true, size: 17, color: '334155' })] })],
+          children: [new Paragraph({ children: [new TextRun({ text: fRow[0], bold: true, size: 17, color: '334155' })] })],
         }),
         new TableCell({
           width: { size: 25, type: WidthType.PERCENTAGE },
           shading: { fill: 'FFFFFF' },
           borders: tableBordersAll,
           margins: { top: 70, bottom: 70, left: 100, right: 100 },
-          children: [new Paragraph({ children: [new TextRun({ text: pRow[1], size: 18, color: '0F172A' })] })],
+          children: [new Paragraph({ children: [new TextRun({ text: fRow[1], size: 18, color: '0F172A' })] })],
         }),
         new TableCell({
           width: { size: 25, type: WidthType.PERCENTAGE },
           shading: { fill: 'F1F5F9' },
           borders: tableBordersAll,
           margins: { top: 70, bottom: 70, left: 100, right: 100 },
-          children: [new Paragraph({ children: [new TextRun({ text: pRow[2], bold: true, size: 17, color: '334155' })] })],
+          children: [new Paragraph({ children: [new TextRun({ text: fRow[2], bold: true, size: 17, color: '334155' })] })],
         }),
         new TableCell({
           width: { size: 25, type: WidthType.PERCENTAGE },
           shading: { fill: 'FFFFFF' },
           borders: tableBordersAll,
           margins: { top: 70, bottom: 70, left: 100, right: 100 },
-          children: [new Paragraph({ children: [new TextRun({ text: pRow[3], size: 18, color: '0F172A' })] })],
+          children: [new Paragraph({ children: [new TextRun({ text: fRow[3], size: 18, color: '0F172A' })] })],
         }),
       ],
     });
@@ -892,7 +805,7 @@ export async function exportToDocxWithTemplateStructure(
   docChildren.push(
     new Table({
       width: { size: 100, type: WidthType.PERCENTAGE },
-      rows: paramTableRows,
+      rows: fichaTableRows,
     })
   );
 
@@ -932,7 +845,10 @@ export async function exportToDocxWithTemplateStructure(
     })
   );
 
-  const matrixHeaders = ['#', 'Paso Operativo', 'Transacción', 'Módulo', 'Acción / Campo Clave'];
+  const matrixHeaders = isSap
+    ? ['#', 'Paso Operativo', 'Transacción', 'Módulo', 'Acción / Campo Clave']
+    : ['#', 'Paso Operativo', 'Tipo de Acción', 'Elemento de Interfaz', 'Resultado / Observación'];
+
   const matrixRows: TableRow[] = [
     new TableRow({
       children: [
@@ -944,7 +860,7 @@ export async function exportToDocxWithTemplateStructure(
           children: [new Paragraph({ children: [new TextRun({ text: '#', bold: true, size: 16, color: 'FFFFFF' })] })],
         }),
         new TableCell({
-          width: { size: 40, type: WidthType.PERCENTAGE },
+          width: { size: 36, type: WidthType.PERCENTAGE },
           shading: { fill: '183B6C' },
           borders: tableBordersAll,
           margins: { top: 80, bottom: 80, left: 100, right: 100 },
@@ -955,28 +871,35 @@ export async function exportToDocxWithTemplateStructure(
           shading: { fill: '183B6C' },
           borders: tableBordersAll,
           margins: { top: 80, bottom: 80, left: 100, right: 100 },
-          children: [new Paragraph({ children: [new TextRun({ text: 'Transacción', bold: true, size: 16, color: 'FFFFFF' })] })],
+          children: [new Paragraph({ children: [new TextRun({ text: isSap ? 'Transacción' : 'Tipo de Acción', bold: true, size: 16, color: 'FFFFFF' })] })],
         }),
         new TableCell({
-          width: { size: 14, type: WidthType.PERCENTAGE },
+          width: { size: 18, type: WidthType.PERCENTAGE },
           shading: { fill: '183B6C' },
           borders: tableBordersAll,
           margins: { top: 80, bottom: 80, left: 80, right: 80 },
-          children: [new Paragraph({ children: [new TextRun({ text: 'Módulo', bold: true, size: 16, color: 'FFFFFF' })] })],
+          children: [new Paragraph({ children: [new TextRun({ text: isSap ? 'Módulo' : 'Elemento / Interfaz', bold: true, size: 16, color: 'FFFFFF' })] })],
         }),
         new TableCell({
           width: { size: 20, type: WidthType.PERCENTAGE },
           shading: { fill: '183B6C' },
           borders: tableBordersAll,
           margins: { top: 80, bottom: 80, left: 100, right: 100 },
-          children: [new Paragraph({ children: [new TextRun({ text: 'Acción / Campo', bold: true, size: 16, color: 'FFFFFF' })] })],
+          children: [new Paragraph({ children: [new TextRun({ text: isSap ? 'Acción / Campo' : 'Resultado Esperado', bold: true, size: 16, color: 'FFFFFF' })] })],
         }),
       ],
     }),
     ...manual.steps.map((st, sIdx) => {
       const isEven = sIdx % 2 === 0;
-      const sapTx = st.sapTransaction || (manual.title.includes('SAP') ? 'SAP GUI' : 'Web/App');
-      const sapMod = st.sapModule || 'SD · MM';
+      const col3Text = isSap
+        ? (st.sapTransaction || 'GUI')
+        : getActionTypeSpanish(st.actionType);
+      const col4Text = isSap
+        ? (st.sapModule || 'General')
+        : (st.targetElement || 'Interfaz / Pantalla');
+      const col5Text = isSap
+        ? `${getActionTypeSpanish(st.actionType)}${st.targetElement ? `: ${st.targetElement}` : ''}`
+        : (st.expectedResult || st.description.slice(0, 95));
 
       return new TableRow({
         children: [
@@ -999,7 +922,7 @@ export async function exportToDocxWithTemplateStructure(
             ],
           }),
           new TableCell({
-            width: { size: 40, type: WidthType.PERCENTAGE },
+            width: { size: 36, type: WidthType.PERCENTAGE },
             shading: { fill: isEven ? 'F8FAFC' : 'FFFFFF' },
             borders: tableBordersAll,
             margins: { top: 70, bottom: 70, left: 100, right: 100 },
@@ -1025,7 +948,7 @@ export async function exportToDocxWithTemplateStructure(
               new Paragraph({
                 children: [
                   new TextRun({
-                    text: sapTx,
+                    text: col3Text,
                     bold: true,
                     size: 16,
                     color: '183B6C',
@@ -1035,7 +958,7 @@ export async function exportToDocxWithTemplateStructure(
             ],
           }),
           new TableCell({
-            width: { size: 14, type: WidthType.PERCENTAGE },
+            width: { size: 18, type: WidthType.PERCENTAGE },
             shading: { fill: isEven ? 'F8FAFC' : 'FFFFFF' },
             borders: tableBordersAll,
             margins: { top: 70, bottom: 70, left: 80, right: 80 },
@@ -1043,7 +966,7 @@ export async function exportToDocxWithTemplateStructure(
               new Paragraph({
                 children: [
                   new TextRun({
-                    text: sapMod,
+                    text: col4Text,
                     size: 16,
                     color: '475569',
                   }),
@@ -1060,8 +983,8 @@ export async function exportToDocxWithTemplateStructure(
               new Paragraph({
                 children: [
                   new TextRun({
-                    text: `${getActionTypeSpanish(st.actionType)}${st.targetElement ? `: ${st.targetElement}` : ''}`,
-                    size: 16,
+                    text: col5Text,
+                    size: 15,
                     color: '64748B',
                   }),
                 ],
@@ -1097,8 +1020,9 @@ export async function exportToDocxWithTemplateStructure(
       docChildren.push(new Paragraph({ children: [new PageBreak()] }));
     }
 
-    const sapTx = step.sapTransaction || (manual.title.includes('SAP') ? 'ME22N / MIRO / SAP GUI' : 'SISTEMA');
-    const sapMod = step.sapModule || 'SD · MM';
+    const stepKickerText = isSap
+      ? `PASO ${i + 1 < 10 ? '0' : ''}${i + 1} DE ${manual.steps.length < 10 ? '0' : ''}${manual.steps.length}   ·   TRANSACCIÓN: ${step.sapTransaction || 'SISTEMA'}${step.sapModule ? `   ·   MÓDULO: ${step.sapModule}` : ''}`
+      : `PASO ${i + 1 < 10 ? '0' : ''}${i + 1} DE ${manual.steps.length < 10 ? '0' : ''}${manual.steps.length}   ·   ACCIÓN: ${getActionTypeSpanish(step.actionType)}${step.targetElement ? `   ·   ELEMENTO: ${step.targetElement}` : ''}`;
 
     // Step Navy Blue Header Box (#183B6C)
     docChildren.push(
@@ -1116,7 +1040,7 @@ export async function exportToDocxWithTemplateStructure(
                     spacing: { after: 40 },
                     children: [
                       new TextRun({
-                        text: `PASO ${i + 1 < 10 ? '0' : ''}${i + 1} DE ${manual.steps.length < 10 ? '0' : ''}${manual.steps.length}   ·   TRANSACCIÓN: ${sapTx}   ·   MÓDULO: ${sapMod}`,
+                        text: stepKickerText,
                         bold: true,
                         color: '93C5FD', // light blue
                         size: 17,
@@ -1244,7 +1168,7 @@ export async function exportToDocxWithTemplateStructure(
     if (step.tip) {
       docChildren.push(
         createDocxCallout(
-          '✦ CONSEJO DE EXPERTO SAP',
+          isSap ? '✦ CONSEJO DE EXPERTO SAP' : '✦ CONSEJO DE EXPERTO',
           step.tip,
           '10B981', // emerald
           'ECFDF5',
@@ -1258,7 +1182,7 @@ export async function exportToDocxWithTemplateStructure(
     if (step.warning) {
       docChildren.push(
         createDocxCallout(
-          '⚠ PRECAUCIÓN / ATENCIÓN SAP',
+          isSap ? '⚠ PRECAUCIÓN / ATENCIÓN SAP' : '⚠ PRECAUCIÓN / ATENCIÓN OPERATIVA',
           step.warning,
           'F59E0B', // amber
           'FFFBEB',
@@ -1360,7 +1284,7 @@ export async function exportToDocxWithTemplateStructure(
   }
 
   // =========================================================================
-  // --- 6. SECCIÓN 4: RESOLUCIÓN DE PROBLEMAS Y ERRORES SAP ---
+  // --- 6. SECCIÓN 4: RESOLUCIÓN DE PROBLEMAS Y PREGUNTAS FRECUENTES ---
   // =========================================================================
   docChildren.push(new Paragraph({ children: [new PageBreak()] }));
 
@@ -1370,7 +1294,7 @@ export async function exportToDocxWithTemplateStructure(
       spacing: { before: 80, after: 60 },
       children: [
         new TextRun({
-          text: '4. RESOLUCIÓN DE PROBLEMAS Y ERRORES SAP',
+          text: isSap ? '4. RESOLUCIÓN DE PROBLEMAS Y ERRORES SAP' : '4. RESOLUCIÓN DE PROBLEMAS Y PREGUNTAS FRECUENTES',
           bold: true,
           color: '183B6C',
           size: 28,
@@ -1397,16 +1321,16 @@ export async function exportToDocxWithTemplateStructure(
       ? manual.troubleshooting
       : [
           {
-            problem: 'Error en determinación de precio o condición obligatoria faltante',
-            solution: 'Verificar en la pestaña de Condiciones del pedido (VK11/ME22N) que el esquema de cálculo contenga el precio base y recargos.',
+            problem: 'El sistema no permite avanzar o muestra campos requeridos pendientes',
+            solution: 'Validar que todos los campos obligatorios del formulario o pantalla estén completos antes de continuar.',
           },
           {
-            problem: 'Bloqueo por verificación de crédito en entrega (VKM3)',
-            solution: 'Notificar al área de Crédito y Cobranzas para liberar el documento de venta en caso de superación del límite asignado.',
+            problem: 'Permisos o autorizaciones insuficientes para la acción solicitada',
+            solution: 'Comprobar con el administrador del sistema que el usuario tenga asignado el rol operativo correspondiente.',
           },
           {
-            problem: 'Material sin lote asignado o stock insuficiente en centro',
-            solution: 'Corroborar en la MMBE la disponibilidad física de stock en el centro 6100 o solicitar reposición de almacén.',
+            problem: 'Los datos o elementos en pantalla no se actualizan tras la confirmación',
+            solution: 'Verificar la conexión de red y refrescar la vista del sistema para confirmar el estado de la operación.',
           },
         ];
 
@@ -1418,7 +1342,7 @@ export async function exportToDocxWithTemplateStructure(
           shading: { fill: '183B6C' },
           borders: tableBordersAll,
           margins: { top: 90, bottom: 90, left: 100, right: 100 },
-          children: [new Paragraph({ children: [new TextRun({ text: 'PROBLEMA O SÍNTOMA EN SAP', bold: true, size: 16, color: 'FFFFFF' })] })],
+          children: [new Paragraph({ children: [new TextRun({ text: isSap ? 'PROBLEMA O SÍNTOMA EN SAP' : 'PROBLEMA O INCIDENCIA', bold: true, size: 16, color: 'FFFFFF' })] })],
         }),
         new TableCell({
           width: { size: 65, type: WidthType.PERCENTAGE },
@@ -1504,11 +1428,10 @@ export async function exportToDocxWithTemplateStructure(
     manual.summaryChecklist && manual.summaryChecklist.length > 0
       ? manual.summaryChecklist
       : [
-          'Verificar que el cliente cuente con código activo y sin bloqueos comerciales en SGCL.',
-          'Comprobar que las posiciones del pedido contengan el centro expedidor 6100 y almacén asignado.',
-          'Validar que la entrega de salida refleje el número de documento generado correctamente.',
-          'Confirmar que la contabilización de mercancías actualice el estatus del flujo de documentos.',
-          'Archivar la documentación física y electrónica según el estándar de auditoría interna de Weber.',
+          'Verificar que todos los pasos procedimentales se hayan ejecutado en la secuencia descrita.',
+          'Comprobar que los campos y valores ingresados correspondan a la información validada.',
+          'Confirmar que el sistema emita el mensaje o número de documento de confirmación exitosa.',
+          'Registrar o archivar la evidencia de la operación según los estándares de la organización.',
         ];
 
   checklistItems.forEach((chk) => {
@@ -1596,7 +1519,11 @@ export async function exportToDocxWithTemplateStructure(
                             alignment: AlignmentType.RIGHT,
                             children: [
                               new TextRun({
-                                text: 'MANUAL DE USUARIO SAP',
+                                text: isSap
+                                  ? 'MANUAL DE USUARIO SAP'
+                                  : (manualCategory
+                                      ? manualCategory.toUpperCase()
+                                      : 'MANUAL DE USUARIO'),
                                 size: 15,
                                 bold: true,
                                 color: '64748B',
@@ -2059,7 +1986,16 @@ export async function exportProjectDossierDocx(
       const step = manual.steps[s];
       docChildren.push(new Paragraph({ children: [new PageBreak()] }));
 
-      const sapTx = step.sapTransaction || (manual.title.includes('SAP') ? 'SAP GUI' : 'SISTEMA');
+      const isManualSap = Boolean(
+        manual.title.toUpperCase().includes('SAP') ||
+        (manual.category && manual.category.toUpperCase().includes('SAP')) ||
+        (project.category && project.category.toUpperCase().includes('SAP')) ||
+        step.sapTransaction
+      );
+
+      const stepHeaderSub = isManualSap
+        ? `PASO ${s + 1} DE ${manual.steps.length}   ·   TRANSACCIÓN: ${step.sapTransaction || 'SISTEMA'}`
+        : `PASO ${s + 1} DE ${manual.steps.length}   ·   ACCIÓN: ${getActionTypeSpanish(step.actionType)}${step.targetElement ? `   ·   ELEMENTO: ${step.targetElement}` : ''}`;
 
       docChildren.push(
         new Table({
@@ -2076,7 +2012,7 @@ export async function exportProjectDossierDocx(
                       spacing: { after: 40 },
                       children: [
                         new TextRun({
-                          text: `PASO ${s + 1} DE ${manual.steps.length}   ·   TRANSACCIÓN: ${sapTx}`,
+                          text: stepHeaderSub,
                           bold: true,
                           color: '93C5FD',
                           size: 16,
@@ -2121,7 +2057,7 @@ export async function exportProjectDossierDocx(
       }
 
       if (step.tip) {
-        docChildren.push(createDocxCallout('✦ CONSEJO SAP', step.tip, '10B981', 'ECFDF5', '047857'));
+        docChildren.push(createDocxCallout(isManualSap ? '✦ CONSEJO SAP' : '✦ CONSEJO DE EXPERTO', step.tip, '10B981', 'ECFDF5', '047857'));
         docChildren.push(new Paragraph({ spacing: { after: 80 } }));
       }
 

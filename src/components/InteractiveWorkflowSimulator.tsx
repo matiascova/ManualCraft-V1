@@ -13,6 +13,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { UserManual, ManualStep } from '../types/manual';
+import { DictationButton } from './DictationButton';
 
 interface CapturedAction {
   id: string;
@@ -305,9 +306,17 @@ export const InteractiveWorkflowSimulator: React.FC<InteractiveWorkflowSimulator
 
                 {/* Search input with Enter detection */}
                 <div className="p-3 bg-indigo-50/60 rounded-xl border border-indigo-100">
-                  <label className="text-xs font-bold text-indigo-950 block mb-1">
-                    🔍 Búsqueda Rápida en Catálogo (Presiona [Enter] al escribir)
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-bold text-indigo-950">
+                      🔍 Búsqueda Rápida en Catálogo (Presiona [Enter] al escribir)
+                    </label>
+                    <DictationButton
+                      value={searchQuery}
+                      onChange={setSearchQuery}
+                      title="Dictar búsqueda por voz"
+                      size="xs"
+                    />
+                  </div>
                   <input
                     type="text"
                     value={searchQuery}
@@ -321,9 +330,17 @@ export const InteractiveWorkflowSimulator: React.FC<InteractiveWorkflowSimulator
                 {/* Form fields for input completion */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="text-xs font-bold text-slate-700 block mb-1">
-                      Razón Social / Cliente *
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-bold text-slate-700">
+                        Razón Social / Cliente *
+                      </label>
+                      <DictationButton
+                        value={clientName}
+                        onChange={setClientName}
+                        title="Dictar cliente por voz"
+                        size="xs"
+                      />
+                    </div>
                     <input
                       type="text"
                       value={clientName}
@@ -339,9 +356,17 @@ export const InteractiveWorkflowSimulator: React.FC<InteractiveWorkflowSimulator
                   </div>
 
                   <div>
-                    <label className="text-xs font-bold text-slate-700 block mb-1">
-                      Correo Electrónico *
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-bold text-slate-700">
+                        Correo Electrónico *
+                      </label>
+                      <DictationButton
+                        value={clientEmail}
+                        onChange={setClientEmail}
+                        title="Dictar correo por voz"
+                        size="xs"
+                      />
+                    </div>
                     <input
                       type="email"
                       value={clientEmail}

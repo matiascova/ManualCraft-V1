@@ -37,6 +37,7 @@ import {
 import { Project } from '../types/project';
 import { OrganizationBranding } from '../types/branding';
 import { getEffectiveInstructorContent } from '../utils/instructorUtils';
+import { DictationButton } from './DictationButton';
 
 interface ManualViewProps {
   manual: UserManual;
@@ -380,15 +381,23 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
           </div>
 
           {/* Quick Search */}
-          <div className="relative mb-3">
+          <div className="relative mb-3 flex items-center">
             <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Buscar en el manual..."
-              className="w-full text-xs pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              className="w-full text-xs pl-8 pr-7 py-1.5 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
             />
+            <div className="absolute right-1.5">
+              <DictationButton
+                value={searchQuery}
+                onChange={setSearchQuery}
+                title="Dictar búsqueda por voz"
+                size="xs"
+              />
+            </div>
           </div>
 
           <nav className="flex flex-col gap-1">
@@ -776,9 +785,17 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
                               </span>
                             </div>
                           </div>
-                          <span className="text-[10px] bg-purple-200 text-purple-800 font-bold px-2 py-0.5 rounded-full">
-                            Edición en Vivo
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <DictationButton
+                              value={editingInstructorText}
+                              onChange={setEditingInstructorText}
+                              title="Dictar explicación del instructor por voz"
+                              size="xs"
+                            />
+                            <span className="text-[10px] bg-purple-200 text-purple-800 font-bold px-2 py-0.5 rounded-full">
+                              Edición en Vivo
+                            </span>
+                          </div>
                         </div>
 
                         <textarea
@@ -1220,13 +1237,21 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
 
                       {editingTranscriptIdx === idx ? (
                         <div className="flex flex-col gap-2">
-                          <input
-                            type="text"
-                            value={editingTranscriptText}
-                            onChange={(e) => setEditingTranscriptText(e.target.value)}
-                            className="w-full text-xs p-2 bg-white border border-purple-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                            autoFocus
-                          />
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              value={editingTranscriptText}
+                              onChange={(e) => setEditingTranscriptText(e.target.value)}
+                              className="flex-1 text-xs p-2 bg-white border border-purple-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                              autoFocus
+                            />
+                            <DictationButton
+                              value={editingTranscriptText}
+                              onChange={setEditingTranscriptText}
+                              title="Dictar corrección por voz"
+                              size="xs"
+                            />
+                          </div>
                           <div className="flex items-center gap-2 self-end">
                             <button
                               type="button"
@@ -1258,6 +1283,23 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
                 ))
               ) : manual.fullTranscriptionText ? (
                 <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-600">
+                      Texto Completo de la Transcripción
+                    </span>
+                    <DictationButton
+                      value={manual.fullTranscriptionText}
+                      onChange={(val) => {
+                        onUpdateManual({
+                          ...manual,
+                          fullTranscriptionText: val,
+                          updatedAt: new Date().toISOString(),
+                        });
+                      }}
+                      title="Dictar en transcripción completa"
+                      size="xs"
+                    />
+                  </div>
                   <textarea
                     rows={8}
                     value={manual.fullTranscriptionText}
@@ -1271,7 +1313,7 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
                     className="p-3 bg-slate-50 rounded-xl border border-slate-200 font-mono text-xs text-slate-700 leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-purple-500"
                   />
                   <span className="text-[10px] text-slate-400">
-                    💡 Puedes editar el texto completo de la transcripción directamente.
+                    💡 Puedes dictar o escribir para editar el texto completo de la transcripción directamente.
                   </span>
                 </div>
               ) : (

@@ -39,6 +39,7 @@ import { extractFramesFromVideo } from '../utils/videoExtractor';
 import { screenRecorder } from '../utils/screenRecorder';
 import { screenActionDetector, AutoCapturedSnapshot } from '../utils/motionDetector';
 import { speechTranscriptionService, TranscriptionStatus } from '../utils/speechTranscription';
+import { DictationButton } from './DictationButton';
 
 const DRAFT_STORAGE_KEY = 'manualcraft_create_manual_draft_v1';
 
@@ -550,7 +551,7 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
         }
       }
 
-      generated.projectId = selectedProjectId || 'prj-weber-sap';
+      generated.projectId = selectedProjectId || activeProjectId || projects[0]?.id || undefined;
       onManualCreated(generated);
       onClose();
     } catch (err: any) {
@@ -638,7 +639,7 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
       instructorTranscript: instructorTranscripts,
       fullTranscriptionText,
       pedagogicalApproach,
-      projectId: selectedProjectId || 'prj-weber-sap',
+      projectId: selectedProjectId || activeProjectId || projects[0]?.id || undefined,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       version: '1.0',
@@ -806,9 +807,17 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
             )}
 
             <div>
-              <label className="text-xs font-bold uppercase text-slate-600 block mb-1">
-                Título o Tarea a Documentar *
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-bold uppercase text-slate-600">
+                  Título o Tarea a Documentar *
+                </label>
+                <DictationButton
+                  value={topic}
+                  onChange={setTopic}
+                  title="Dictar título por voz"
+                  size="xs"
+                />
+              </div>
               <input
                 type="text"
                 value={topic}
@@ -818,9 +827,17 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
               />
             </div>
             <div>
-              <label className="text-xs font-bold uppercase text-slate-600 block mb-1">
-                Público Objetivo
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-bold uppercase text-slate-600">
+                  Público Objetivo
+                </label>
+                <DictationButton
+                  value={targetAudience}
+                  onChange={setTargetAudience}
+                  title="Dictar público objetivo por voz"
+                  size="xs"
+                />
+              </div>
               <input
                 type="text"
                 value={targetAudience}
@@ -830,9 +847,17 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
               />
             </div>
             <div className="md:col-span-2">
-              <label className="text-xs font-bold uppercase text-slate-600 block mb-1">
-                Notas / Contexto Adicional (Opcional)
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-bold uppercase text-slate-600">
+                  Notas / Contexto Adicional (Opcional)
+                </label>
+                <DictationButton
+                  value={context}
+                  onChange={setContext}
+                  title="Dictar contexto por voz"
+                  size="xs"
+                />
+              </div>
               <input
                 type="text"
                 value={context}
@@ -1315,13 +1340,19 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
                             </span>
 
                             {editingTranscriptId === t.id ? (
-                              <div className="flex items-center gap-2 flex-1">
+                              <div className="flex items-center gap-1.5 flex-1">
                                 <input
                                   type="text"
                                   value={editingTranscriptText}
                                   onChange={(e) => setEditingTranscriptText(e.target.value)}
                                   className="flex-1 text-xs px-2.5 py-1 border border-purple-300 rounded focus:outline-none focus:ring-1 focus:ring-purple-500"
                                   autoFocus
+                                />
+                                <DictationButton
+                                  value={editingTranscriptText}
+                                  onChange={setEditingTranscriptText}
+                                  title="Dictar corrección por voz"
+                                  size="xs"
                                 />
                                 <button
                                   type="button"

@@ -1,5 +1,5 @@
 import { jsPDF } from 'jspdf';
-import { UserManual } from '../types/manual';
+import { UserManual, getActionTypeSpanish } from '../types/manual';
 import { Project } from '../types/project';
 import { OrganizationBranding } from '../types/branding';
 import { renderAnnotatedScreenshotForPdf } from './exportUtils';
@@ -251,6 +251,13 @@ export async function exportToPdfWithTemplateStructure(
   const effectiveBranding = branding;
   const effectiveClientLogo = project?.clientLogo;
   const effectiveClientName = project?.clientName;
+
+  const isSap = Boolean(
+    (manual.title && manual.title.toUpperCase().includes('SAP')) ||
+    (manual.category && manual.category.toUpperCase().includes('SAP')) ||
+    (project?.category && project.category.toUpperCase().includes('SAP')) ||
+    manual.steps.some((s) => s.sapTransaction)
+  );
 
   // Measure natural dimensions of logos to eliminate any stretching or distortion
   const [ourLogoDim, clientLogoDim] = await Promise.all([
@@ -599,33 +606,38 @@ export async function exportToPdfWithTemplateStructure(
   doc.setFontSize(8.5);
   doc.setTextColor(51, 65, 85);
   doc.text(
-    'La siguiente tabla resume la secuencia completa del proceso, el módulo SAP involucrado y la transacción a utilizar en cada paso.',
+    isSap
+      ? 'La siguiente tabla resume la secuencia completa del proceso, el módulo SAP y la transacción a utilizar en cada paso.'
+      : 'La siguiente tabla resume la secuencia cronológica de pasos, acciones e interacciones registradas en el sistema.',
     marginX,
     currentY
   );
   currentY += 6;
 
   // Process Flow Table Header
-  const flowColW = [10, 68, 30, 18, 52];
+  const flowColW = isSap ? [10, 68, 30, 18, 52] : [10, 68, 28, 32, 40];
   const flowH = 7.5;
 
-  doc.setFillColor(navyColor[0], navyColor[1], navyColor[2]);
-  doc.rect(marginX, currentY, contentWidth, flowH, 'F');
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.5);
-  doc.setTextColor(255, 255, 255);
+  const renderFlowHeader = (targetY: number) => {
+    doc.setFillColor(navyColor[0], navyColor[1], navyColor[2]);
+    doc.rect(marginX, targetY, contentWidth, flowH, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(255, 255, 255);
 
-  let fX = marginX;
-  doc.text('#', fX + 3.5, currentY + 4.8);
-  fX += flowColW[0];
-  doc.text('Paso', fX + 2.5, currentY + 4.8);
-  fX += flowColW[1];
-  doc.text('Transacción', fX + 2.5, currentY + 4.8);
-  fX += flowColW[2];
-  doc.text('Módulo', fX + 2.5, currentY + 4.8);
-  fX += flowColW[3];
-  doc.text('Observación', fX + 2.5, currentY + 4.8);
+    let fX = marginX;
+    doc.text('#', fX + 3.5, targetY + 4.8);
+    fX += flowColW[0];
+    doc.text('Paso', fX + 2.5, targetY + 4.8);
+    fX += flowColW[1];
+    doc.text(isSap ? 'Transacción' : 'Acción', fX + 2.5, targetY + 4.8);
+    fX += flowColW[2];
+    doc.text(isSap ? 'Módulo' : 'Elemento / Interfaz', fX + 2.5, targetY + 4.8);
+    fX += flowColW[3];
+    doc.text(isSap ? 'Observación' : 'Resultado Esperado', fX + 2.5, targetY + 4.8);
+  };
 
+  renderFlowHeader(currentY);
   currentY += flowH;
 
   // Build sequence matrix from manual.steps
@@ -634,22 +646,7 @@ export async function exportToPdfWithTemplateStructure(
     if (currentY + flowH > maxY - 15) {
       doc.addPage();
       currentY = 25;
-      // Re-render table header on new page
-      doc.setFillColor(navyColor[0], navyColor[1], navyColor[2]);
-      doc.rect(marginX, currentY, contentWidth, flowH, 'F');
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7.5);
-      doc.setTextColor(255, 255, 255);
-      let fX2 = marginX;
-      doc.text('#', fX2 + 3.5, currentY + 4.8);
-      fX2 += flowColW[0];
-      doc.text('Paso', fX2 + 2.5, currentY + 4.8);
-      fX2 += flowColW[1];
-      doc.text('Transacción', fX2 + 2.5, currentY + 4.8);
-      fX2 += flowColW[2];
-      doc.text('Módulo', fX2 + 2.5, currentY + 4.8);
-      fX2 += flowColW[3];
-      doc.text('Observación', fX2 + 2.5, currentY + 4.8);
+      renderFlowHeader(currentY);
       currentY += flowH;
     }
 
@@ -673,46 +670,62 @@ export async function exportToPdfWithTemplateStructure(
     const stepShortTitle = doc.splitTextToSize(step.title, flowColW[1] - 4)[0];
     doc.text(stepShortTitle, curColX + 2, currentY + 4.8);
 
-    // Transaction Code
     curColX += flowColW[1];
-    let txCode = 'VA01';
-    if (step.description.includes('MM02') || step.title.includes('maestro')) txCode = 'MM02 / MM03';
-    else if (step.description.includes('ME11')) txCode = 'ME11';
-    else if (step.description.includes('ME58') || step.description.includes('ME21N')) txCode = 'ME58 / ME21N';
-    else if (step.description.includes('MIGO')) txCode = 'MIGO';
-    else if (step.description.includes('MIRO')) txCode = 'MIRO';
-    else if (step.description.includes('VL10A')) txCode = 'VL10A';
-    else if (step.description.includes('VF04')) txCode = 'VF04';
-    else if (step.description.includes('ZMMT0033') || step.title.includes('ZMMT0033')) txCode = 'ZMMT0033';
-    else if (step.description.includes('ZSD_T0001_CL')) txCode = 'ZSD_T0001_CL';
-    else txCode = step.targetElement ? step.targetElement.substring(0, 14) : 'SAP GUI';
 
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7.5);
-    doc.setTextColor(24, 59, 108);
-    doc.text(txCode, curColX + 2, currentY + 4.8);
+    if (isSap) {
+      // Transaction Code
+      const txCode = step.sapTransaction || 'GUI';
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(24, 59, 108);
+      doc.text(txCode, curColX + 2, currentY + 4.8);
 
-    // Module Badge
-    curColX += flowColW[2];
-    const isSD = ['VA01', 'VL10A', 'VF04', 'ZSD_T0001_CL'].some((t) => txCode.includes(t));
-    const modStr = isSD ? 'SD' : 'MM';
-    const modColor: [number, number, number] = isSD ? [37, 99, 235] : [5, 150, 105];
+      // Module Badge
+      curColX += flowColW[2];
+      const modStr = step.sapModule || 'General';
+      doc.setFillColor(37, 99, 235);
+      doc.roundedRect(curColX + 2, currentY + 1.5, 12, 4.5, 0.8, 0.8, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(255, 255, 255);
+      doc.text(modStr.slice(0, 5), curColX + 8, currentY + 4.6, { align: 'center' });
 
-    doc.setFillColor(modColor[0], modColor[1], modColor[2]);
-    doc.roundedRect(curColX + 2, currentY + 1.5, 11, 4.5, 0.8, 0.8, 'F');
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(6.5);
-    doc.setTextColor(255, 255, 255);
-    doc.text(modStr, curColX + 7.5, currentY + 4.6, { align: 'center' });
+      // Observación
+      curColX += flowColW[3];
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.setTextColor(71, 85, 105);
+      const obsText = step.expectedResult || step.description;
+      const shortObs = doc.splitTextToSize(obsText, flowColW[4] - 4)[0];
+      doc.text(shortObs, curColX + 2, currentY + 4.8);
+    } else {
+      // Action Type Badge
+      const actionName = getActionTypeSpanish(step.actionType);
+      doc.setFillColor(37, 99, 235);
+      doc.roundedRect(curColX + 1.5, currentY + 1.5, flowColW[2] - 3, 4.5, 0.8, 0.8, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.2);
+      doc.setTextColor(255, 255, 255);
+      doc.text(actionName, curColX + flowColW[2] / 2, currentY + 4.6, { align: 'center' });
 
-    // Observación
-    curColX += flowColW[3];
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7);
-    doc.setTextColor(71, 85, 105);
-    const obsText = step.expectedResult || step.description;
-    const shortObs = doc.splitTextToSize(obsText, flowColW[4] - 4)[0];
-    doc.text(shortObs, curColX + 2, currentY + 4.8);
+      // Target Element / Screen
+      curColX += flowColW[2];
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.2);
+      doc.setTextColor(24, 59, 108);
+      const elemText = step.targetElement || 'Interfaz';
+      const shortElem = doc.splitTextToSize(elemText, flowColW[3] - 4)[0];
+      doc.text(shortElem, curColX + 2, currentY + 4.8);
+
+      // Expected Result
+      curColX += flowColW[3];
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.setTextColor(71, 85, 105);
+      const obsText = step.expectedResult || step.description;
+      const shortObs = doc.splitTextToSize(obsText, flowColW[4] - 4)[0];
+      doc.text(shortObs, curColX + 2, currentY + 4.8);
+    }
 
     currentY += flowH;
   });
@@ -723,7 +736,9 @@ export async function exportToPdfWithTemplateStructure(
   doc.setFontSize(7.5);
   doc.setTextColor(100, 116, 139);
   doc.text(
-    'Nota: las transacciones indicadas corresponden a la parametrización estándar y personalizada en SAP S/4HANA.',
+    isSap
+      ? 'Nota: las transacciones indicadas corresponden a la parametrización estándar y personalizada en SAP S/4HANA.'
+      : 'Nota: la matriz resume la secuencia de interacciones y resultados registrados durante la ejecución del proceso.',
     marginX,
     currentY
   );
@@ -762,43 +777,61 @@ export async function exportToPdfWithTemplateStructure(
     doc.line(marginX, currentY + 2.5, marginX + contentWidth, currentY + 2.5);
     currentY += 8;
 
-    // 2. TRANSACTION RIBBON STRIP (Matching Template Style)
-    // Dark Navy badge: "TRANSACCIÓN"
-    doc.setFillColor(navyColor[0], navyColor[1], navyColor[2]);
-    doc.rect(marginX, currentY, 26, 6, 'F');
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7.5);
-    doc.setTextColor(255, 255, 255);
-    doc.text('TRANSACCIÓN', marginX + 13, currentY + 4.2, { align: 'center' });
+    // 2. TRANSACTION / ACTION RIBBON STRIP (Matching Template Style)
+    if (isSap) {
+      // Dark Navy badge: "TRANSACCIÓN"
+      doc.setFillColor(navyColor[0], navyColor[1], navyColor[2]);
+      doc.rect(marginX, currentY, 26, 6, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(255, 255, 255);
+      doc.text('TRANSACCIÓN', marginX + 13, currentY + 4.2, { align: 'center' });
 
-    // Transaction Code Badge
-    let txTag = 'VA01';
-    if (step.description.includes('MM02') || step.title.includes('maestro')) txTag = 'MM02';
-    else if (step.description.includes('ME11')) txTag = 'ME11';
-    else if (step.description.includes('ME58') || step.description.includes('ME21N')) txTag = 'ME58';
-    else if (step.description.includes('MIGO')) txTag = 'MIGO';
-    else if (step.description.includes('MIRO')) txTag = 'MIRO';
-    else if (step.description.includes('VL10A')) txTag = 'VL10A';
-    else if (step.description.includes('VF04')) txTag = 'VF04';
-    else if (step.description.includes('ZMMT0033') || step.title.includes('ZMMT0033')) txTag = 'ZMMT0033';
-    else if (step.description.includes('ZSD_T0001_CL')) txTag = 'ZSD_T0001_CL';
-    else txTag = (step.actionType || 'GUI').toUpperCase();
+      // Transaction Code Badge
+      const txTag = step.sapTransaction || 'GUI';
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      const txTagW = doc.getTextWidth(txTag) + 8;
+      doc.setFillColor(239, 246, 255); // #EFF6FF
+      doc.setDrawColor(191, 219, 254);
+      doc.roundedRect(marginX + 28, currentY, txTagW, 6, 0.8, 0.8, 'FD');
+      doc.setTextColor(29, 78, 216);
+      doc.text(txTag, marginX + 28 + txTagW / 2, currentY + 4.2, { align: 'center' });
 
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    const txTagW = doc.getTextWidth(txTag) + 8;
-    doc.setFillColor(239, 246, 255); // #EFF6FF
-    doc.setDrawColor(191, 219, 254);
-    doc.roundedRect(marginX + 28, currentY, txTagW, 6, 0.8, 0.8, 'FD');
-    doc.setTextColor(29, 78, 216);
-    doc.text(txTag, marginX + 28 + txTagW / 2, currentY + 4.2, { align: 'center' });
+      // Transaction description text to the right
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(71, 85, 105);
+      const txDesc = `${step.targetElement || step.title}${step.sapModule ? ` · Módulo ${step.sapModule}` : ''}`;
+      doc.text(txDesc, marginX + 30 + txTagW, currentY + 4.2);
+    } else {
+      // Dark Navy badge: "ACCIÓN"
+      const actionBadgeW = 20;
+      doc.setFillColor(navyColor[0], navyColor[1], navyColor[2]);
+      doc.rect(marginX, currentY, actionBadgeW, 6, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(255, 255, 255);
+      doc.text('ACCIÓN', marginX + actionBadgeW / 2, currentY + 4.2, { align: 'center' });
 
-    // Transaction description text to the right
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(71, 85, 105);
-    const txDesc = `${step.targetElement || step.title} · Módulo MM / SD`;
-    doc.text(txDesc, marginX + 30 + txTagW, currentY + 4.2);
+      // Action Name Badge
+      const actionName = getActionTypeSpanish(step.actionType);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      const actTagW = doc.getTextWidth(actionName) + 8;
+      doc.setFillColor(239, 246, 255);
+      doc.setDrawColor(191, 219, 254);
+      doc.roundedRect(marginX + actionBadgeW + 2, currentY, actTagW, 6, 0.8, 0.8, 'FD');
+      doc.setTextColor(29, 78, 216);
+      doc.text(actionName, marginX + actionBadgeW + 2 + actTagW / 2, currentY + 4.2, { align: 'center' });
+
+      // Element text to the right
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(71, 85, 105);
+      const elemDesc = `${step.targetElement || step.title} · Procedimiento Operativo`;
+      doc.text(elemDesc, marginX + actionBadgeW + 4 + actTagW, currentY + 4.2);
+    }
 
     currentY += 10;
 
@@ -856,8 +889,7 @@ export async function exportToPdfWithTemplateStructure(
       // Centered Figure Caption (Matching Template: "Figura X. [Descripción]")
       doc.setFont('helvetica', 'italic');
       doc.setFontSize(7.5);
-      doc.setTextColor(100, 116, 139);
-      const figCaption = `Figura ${figureCounter}. ${step.title} (${step.targetElement || txTag}).`;
+      const figCaption = `Figura ${figureCounter}. ${step.title}${step.targetElement ? ` (${step.targetElement})` : ''}.`;
       doc.text(figCaption, marginX + contentWidth / 2, currentY, { align: 'center' });
       currentY += 8;
       figureCounter++;
@@ -1181,7 +1213,7 @@ export async function exportToPdfWithTemplateStructure(
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8.5);
     doc.setTextColor(30, 41, 59);
-    const centerTitle = `Manual de Usuario SAP · ${manual.title}`;
+    const centerTitle = isSap ? `Manual de Usuario SAP · ${manual.title}` : `Manual de Procedimiento · ${manual.title}`;
     const shortCenterTitle = doc.splitTextToSize(centerTitle, 110)[0];
     doc.text(shortCenterTitle, marginX + contentWidth / 2, 16.5, { align: 'center' });
 
@@ -1197,8 +1229,11 @@ export async function exportToPdfWithTemplateStructure(
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7.5);
     doc.setTextColor(100, 116, 139);
+    const partnerName = branding?.secondaryName || 'HSBT';
+    const partnerSlogan = branding?.secondarySlogan || 'Compromiso y Calidad';
+    const clientFooter = project?.clientName || manual.author || 'Documentación Operativa';
     doc.text(
-      'HSBT · Compromiso y Calidad | Weber Chile – SD · MM',
+      `${partnerName} · ${partnerSlogan} | ${clientFooter}`,
       marginX,
       pageHeight - 9.5
     );
@@ -1219,7 +1254,7 @@ export async function exportToPdfWithTemplateStructure(
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '');
 
-  doc.save(`${safeName || 'manual-usuario-sap'}.pdf`);
+  doc.save(`${safeName || (isSap ? 'manual-usuario-sap' : 'manual-procedimiento')}.pdf`);
 }
 
 /**
@@ -1357,8 +1392,8 @@ export async function exportProjectDossierPdf(
 
       const metaRows: [string, string][] = [
         ['Cliente / Organización', project.clientName],
-        ['Código de Proyecto', project.code || 'PRJ-2026-WEBER'],
-        ['Área / Módulos', project.category || 'Supply Chain, SAP SD · MM · Comex'],
+        ['Código de Proyecto', project.code || 'PRJ-CORP-01'],
+        ['Área / Módulos', project.category || 'Gestión Operativa y Procesos'],
         ['Versión de Solución', `Versión ${project.version || '1.0'}`],
         ['Estado del Proyecto', project.status || 'Aprobado'],
         ['Consultor Líder / Autor', project.author || 'Equipo de Procesos & Consultoría'],

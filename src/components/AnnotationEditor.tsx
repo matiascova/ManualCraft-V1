@@ -20,6 +20,7 @@ import {
   Crosshair,
   Sliders,
 } from 'lucide-react';
+import { DictationButton } from './DictationButton';
 
 interface AnnotationEditorProps {
   imageSrc: string;
@@ -681,22 +682,30 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                     <Type className="w-3 h-3 text-indigo-600" />
                     Texto de la Etiqueta
                   </label>
-                  {activeAnnotation.labelPosition === 'custom' && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        updateActive({
-                          labelPosition: 'top',
-                          labelOffsetX: 0,
-                          labelOffsetY: 0,
-                        })
-                      }
-                      className="text-[10px] text-indigo-600 hover:underline flex items-center gap-0.5"
-                      title="Volver a posición automática"
-                    >
-                      <RotateCcw className="w-2.5 h-2.5" /> Auto
-                    </button>
-                  )}
+                  <div className="flex items-center gap-1">
+                    <DictationButton
+                      value={activeAnnotation.label || ''}
+                      onChange={(val) => updateActive({ label: val })}
+                      title="Dictar etiqueta por voz"
+                      size="xs"
+                    />
+                    {activeAnnotation.labelPosition === 'custom' && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateActive({
+                            labelPosition: 'top',
+                            labelOffsetX: 0,
+                            labelOffsetY: 0,
+                          })
+                        }
+                        className="text-[10px] text-indigo-600 hover:underline flex items-center gap-0.5"
+                        title="Volver a posición automática"
+                      >
+                        <RotateCcw className="w-2.5 h-2.5" /> Auto
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <input
                   type="text"

@@ -13,6 +13,7 @@ import {
   Target,
   MessageSquareQuote,
 } from 'lucide-react';
+import { DictationButton } from './DictationButton';
 
 interface StepEditorModalProps {
   step: ManualStep;
@@ -169,9 +170,17 @@ export const StepEditorModal: React.FC<StepEditorModalProps> = ({
             {/* Row 1: Title & Action Type */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 shrink-0">
               <div className="sm:col-span-2">
-                <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                  Título de la Acción *
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[11px] font-bold text-slate-700">
+                    Título de la Acción *
+                  </label>
+                  <DictationButton
+                    value={formData.title}
+                    onChange={(val) => setFormData((prev) => ({ ...prev, title: val }))}
+                    title="Dictar título por voz"
+                    size="xs"
+                  />
+                </div>
                 <input
                   type="text"
                   value={formData.title}
@@ -204,9 +213,19 @@ export const StepEditorModal: React.FC<StepEditorModalProps> = ({
             {/* Row 2: Target Element & Expected Result */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 shrink-0">
               <div>
-                <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                  Elemento Objetivo en Pantalla
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[11px] font-bold text-slate-700">
+                    Elemento Objetivo en Pantalla
+                  </label>
+                  <DictationButton
+                    value={formData.targetElement || ''}
+                    onChange={(val) =>
+                      setFormData((prev) => ({ ...prev, targetElement: val }))
+                    }
+                    title="Dictar elemento objetivo por voz"
+                    size="xs"
+                  />
+                </div>
                 <input
                   type="text"
                   value={formData.targetElement || ''}
@@ -217,9 +236,19 @@ export const StepEditorModal: React.FC<StepEditorModalProps> = ({
               </div>
 
               <div>
-                <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                  Resultado Esperado
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[11px] font-bold text-slate-700">
+                    Resultado Esperado
+                  </label>
+                  <DictationButton
+                    value={formData.expectedResult || ''}
+                    onChange={(val) =>
+                      setFormData((prev) => ({ ...prev, expectedResult: val }))
+                    }
+                    title="Dictar resultado esperado por voz"
+                    size="xs"
+                  />
+                </div>
                 <input
                   type="text"
                   value={formData.expectedResult || ''}
@@ -232,9 +261,19 @@ export const StepEditorModal: React.FC<StepEditorModalProps> = ({
 
             {/* Row 3: Description */}
             <div className="flex flex-col shrink-0">
-              <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                Descripción Detallada *
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[11px] font-bold text-slate-700">
+                  Descripción Detallada *
+                </label>
+                <DictationButton
+                  value={formData.description}
+                  onChange={(val) =>
+                    setFormData((prev) => ({ ...prev, description: val }))
+                  }
+                  title="Dictar descripción detallada por voz"
+                  size="xs"
+                />
+              </div>
               <textarea
                 rows={3}
                 value={formData.description}
@@ -246,9 +285,19 @@ export const StepEditorModal: React.FC<StepEditorModalProps> = ({
 
             {/* Row 4: Propósito y Justificación Pedagógica (Modelo 4C/ID) */}
             <div className="bg-blue-50/60 border border-blue-200 rounded-xl p-2.5 shrink-0">
-              <div className="flex items-center gap-1.5 mb-1 text-blue-900 font-bold text-[11px]">
-                <Target className="w-3.5 h-3.5 text-blue-600" />
-                <span>Propósito & Justificación Funcional (¿Por qué se realiza este paso?)</span>
+              <div className="flex items-center justify-between mb-1 text-blue-900 font-bold text-[11px]">
+                <div className="flex items-center gap-1.5">
+                  <Target className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Propósito & Justificación Funcional (¿Por qué se realiza este paso?)</span>
+                </div>
+                <DictationButton
+                  value={formData.purpose || ''}
+                  onChange={(val) =>
+                    setFormData((prev) => ({ ...prev, purpose: val }))
+                  }
+                  title="Dictar propósito por voz"
+                  size="xs"
+                />
               </div>
               <input
                 type="text"
@@ -275,9 +324,23 @@ export const StepEditorModal: React.FC<StepEditorModalProps> = ({
                     </span>
                   </div>
                 </div>
-                <span className="text-[10px] bg-purple-200/90 text-purple-900 font-bold px-2 py-0.5 rounded-full border border-purple-300">
-                  Visible en PDF & Word
-                </span>
+                <div className="flex items-center gap-2">
+                  <DictationButton
+                    value={formData.instructorAudioQuote || formData.instructorNotes || ''}
+                    onChange={(val) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        instructorAudioQuote: val,
+                        instructorNotes: val,
+                      }))
+                    }
+                    title="Dictar explicación del instructor por voz"
+                    size="xs"
+                  />
+                  <span className="text-[10px] bg-purple-200/90 text-purple-900 font-bold px-2 py-0.5 rounded-full border border-purple-300">
+                    Visible en PDF & Word
+                  </span>
+                </div>
               </div>
 
               <textarea
@@ -318,10 +381,18 @@ export const StepEditorModal: React.FC<StepEditorModalProps> = ({
             {/* Row 6: Consejos Pro y Advertencias (2 columns) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 shrink-0">
               <div className="bg-emerald-50/60 border border-emerald-200 rounded-xl p-2.5">
-                <label className="text-[11px] font-bold text-emerald-900 flex items-center gap-1.5 mb-1">
-                  <Lightbulb className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Consejo Pro</span>
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[11px] font-bold text-emerald-900 flex items-center gap-1.5">
+                    <Lightbulb className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Consejo Pro</span>
+                  </label>
+                  <DictationButton
+                    value={formData.tip || ''}
+                    onChange={(val) => setFormData((prev) => ({ ...prev, tip: val }))}
+                    title="Dictar consejo pro por voz"
+                    size="xs"
+                  />
+                </div>
                 <input
                   type="text"
                   value={formData.tip || ''}
@@ -332,10 +403,18 @@ export const StepEditorModal: React.FC<StepEditorModalProps> = ({
               </div>
 
               <div className="bg-amber-50/60 border border-amber-200 rounded-xl p-2.5">
-                <label className="text-[11px] font-bold text-amber-900 flex items-center gap-1.5 mb-1">
-                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-                  <span>Advertencia / Precaución</span>
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[11px] font-bold text-amber-900 flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Advertencia / Precaución</span>
+                  </label>
+                  <DictationButton
+                    value={formData.warning || ''}
+                    onChange={(val) => setFormData((prev) => ({ ...prev, warning: val }))}
+                    title="Dictar advertencia por voz"
+                    size="xs"
+                  />
+                </div>
                 <input
                   type="text"
                   value={formData.warning || ''}

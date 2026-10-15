@@ -139,11 +139,16 @@ Idioma de respuesta: ${language === 'es' ? 'Español' : language}.
 ${approachGuideline}
 ${transcriptBlock}
 
+REGLA FUNDAMENTAL DE FIDELIDAD ESTRICTA A LA GRABACIÓN (PROHIBICIÓN DE ALUCINAR O COPIAR DE PLANTILLAS):
+1. CERO INVENCIÓN: Basa TODO el contenido exclusivamente en lo que se observa visualmente en las capturas de pantalla y lo que explica el instructor en el audio.
+2. NO ASUMAS SAP NI OTRO ERP A MENOS QUE SEA EVIDENTE: Si la aplicación mostrada es una web, portal interno, sistema administrativo, CRM u otra herramienta que no sea SAP, NO menciones transacciones de SAP (como VA01, MM02, MIRO, ME21N, BANS, Solcrom, etc.) ni inventes códigos de transacción ajenos a la grabación.
+3. Utiliza los nombres de campos, botones, secciones y terminología real que se leen en la pantalla capturada y en el audio del instructor.
+
 CAPA DE ANÁLISIS FUNCIONAL E INTENCIÓN PEDAGÓGICA (MODELO 4C/ID):
 No te limites a describir la acción física pasiva. Cada paso debe estructurarse con:
-1. TÍTULO ACCIONABLE (Orientado a metas con verbo en imperativo): Ej. "Ingresar el código de transacción en la barra de comandos", "Validar los totales de facturación", "Guardar y confirmar la orden".
-2. PROPÓSITO Y JUSTIFICACIÓN ('purpose' - El "Por qué"): Explica la intención funcional de negocio detrás de este paso (Ej. "Garantiza que el documento quede imputado al centro de costos correcto y previene discrepancias fiscales en el cierre contable").
-3. DESCRIPCIÓN CLARA: Instrucciones amables, paso a paso, enriquecidas con la terminología de negocio y las indicaciones del instructor.
+1. TÍTULO ACCIONABLE (Orientado a metas con verbo en imperativo): Ej. "Completar el formulario de registro", "Seleccionar la opción de exportar", "Confirmar y guardar los cambios".
+2. PROPÓSITO Y JUSTIFICACIÓN ('purpose' - El "Por qué"): Explica la intención funcional de negocio detrás de este paso en el contexto del proceso grabado.
+3. DESCRIPCIÓN CLARA: Instrucciones amables, paso a paso, enriquecidas con la terminología real de la aplicación y las indicaciones del instructor.
 4. ELEMENTO DE ATENCIÓN: Nombre exacto del botón, selector o campo y coordenadas estimadas (hotspotX, hotspotY de 0 a 100).
 5. RESULTADO ESPERADO ('expectedResult'): Qué estado o confirmación visual comprueba que el paso fue exitoso.
 
@@ -158,14 +163,14 @@ Si identificas datos sensibles reales o confidenciales como:
 Genera en 'sensitiveDataRegions' las coordenadas aproximadas de la caja que contiene ese dato:
 (x, y del centro en porcentaje 0-100, width y height en porcentaje de la pantalla) para aplicar difuminado automático (blur) de protección.
 
-Además, genera:
-- Un título atractivo para el manual
-- Un subtítulo explicativo
+Además, genera basándote ÚNICAMENTE en el flujo analizado:
+- Un título atractivo y preciso para el manual
+- Un subtítulo conciso
 - Resumen general (overview) enriquecido con el propósito explicado por el instructor
 - Tiempo estimado en minutos
 - Nivel de dificultad ('Principiante' | 'Intermedio' | 'Avanzado')
-- Lista de requisitos previos (prerequisites)
-- Lista de preguntas frecuentes o resolución de problemas (troubleshooting: problem & solution)
+- Lista de requisitos previos coherentes con el proceso grabado (prerequisites)
+- Lista de preguntas frecuentes o resolución de problemas reales pertinentes a este flujo (troubleshooting: problem & solution)
 - Checklist de verificación final (summaryChecklist)
 
 Asegúrate de responder estrictamente en el formato JSON estructurado solicitado.`;

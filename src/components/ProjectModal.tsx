@@ -21,6 +21,7 @@ import {
   GLOBAL_TECH_LOGO,
 } from '../data/sampleProjects';
 import { OrganizationBranding } from '../types/branding';
+import { DictationButton } from './DictationButton';
 
 interface ProjectModalProps {
   isOpen: boolean;
@@ -215,9 +216,17 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
               <div className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="sm:col-span-2">
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Nombre del Proyecto <span className="text-red-500">*</span>
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-bold text-slate-700">
+                        Nombre del Proyecto <span className="text-red-500">*</span>
+                      </label>
+                      <DictationButton
+                        value={name}
+                        onChange={setName}
+                        title="Dictar nombre del proyecto por voz"
+                        size="xs"
+                      />
+                    </div>
                     <input
                       type="text"
                       value={name}
@@ -229,9 +238,17 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Nombre del Cliente / Empresa <span className="text-red-500">*</span>
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-bold text-slate-700">
+                        Nombre del Cliente / Empresa <span className="text-red-500">*</span>
+                      </label>
+                      <DictationButton
+                        value={clientName}
+                        onChange={setClientName}
+                        title="Dictar nombre del cliente por voz"
+                        size="xs"
+                      />
+                    </div>
                     <div className="relative">
                       <Building2 className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
                       <input
@@ -246,9 +263,17 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Código del Proyecto (Identificador)
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-bold text-slate-700">
+                        Código del Proyecto (Identificador)
+                      </label>
+                      <DictationButton
+                        value={code}
+                        onChange={setCode}
+                        title="Dictar código del proyecto por voz"
+                        size="xs"
+                      />
+                    </div>
                     <input
                       type="text"
                       value={code}
@@ -278,9 +303,17 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Área / Categoría
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-bold text-slate-700">
+                        Área / Categoría
+                      </label>
+                      <DictationButton
+                        value={category}
+                        onChange={setCategory}
+                        title="Dictar área / categoría por voz"
+                        size="xs"
+                      />
+                    </div>
                     <input
                       type="text"
                       value={category}
@@ -291,9 +324,17 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Versión de la Solución
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-bold text-slate-700">
+                        Versión de la Solución
+                      </label>
+                      <DictationButton
+                        value={version}
+                        onChange={setVersion}
+                        title="Dictar versión por voz"
+                        size="xs"
+                      />
+                    </div>
                     <input
                       type="text"
                       value={version}
@@ -305,9 +346,17 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Descripción &amp; Propósito del Proyecto
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-bold text-slate-700">
+                      Descripción &amp; Propósito del Proyecto
+                    </label>
+                    <DictationButton
+                      value={description}
+                      onChange={setDescription}
+                      title="Dictar descripción del proyecto por voz"
+                      size="xs"
+                    />
+                  </div>
                   <textarea
                     rows={2}
                     value={description}
@@ -319,9 +368,17 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Consultor / Autor Responsable
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-bold text-slate-700">
+                        Consultor / Autor Responsable
+                      </label>
+                      <DictationButton
+                        value={author}
+                        onChange={setAuthor}
+                        title="Dictar autor por voz"
+                        size="xs"
+                      />
+                    </div>
                     <input
                       type="text"
                       value={author}
@@ -332,9 +389,17 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Audiencia Objetivo
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-bold text-slate-700">
+                        Audiencia Objetivo
+                      </label>
+                      <DictationButton
+                        value={targetAudience}
+                        onChange={setTargetAudience}
+                        title="Dictar audiencia objetivo por voz"
+                        size="xs"
+                      />
+                    </div>
                     <input
                       type="text"
                       value={targetAudience}
