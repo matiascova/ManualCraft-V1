@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   Upload,
   Video,
@@ -33,6 +33,10 @@ import {
   ShieldCheck,
   GraduationCap,
   Target,
+  Maximize2,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
 } from 'lucide-react';
 import { VideoFrameCandidate, UserManual, InstructorTranscriptSegment } from '../types/manual';
 import { Project } from '../types/project';
@@ -115,6 +119,103 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const transcriptScrollRef = useRef<HTMLDivElement>(null);
+
+  // Fullscreen Frame Viewer Lightbox state
+  const [fullscreenViewer, setFullscreenViewer] = useState<{
+    isOpen: boolean;
+    currentIndex: number;
+    source: 'snapshots' | 'extracted' | 'screenshots';
+  }>({
+    isOpen: false,
+    currentIndex: 0,
+    source: 'snapshots',
+  });
+
+  // Active items array based on source
+  const currentViewerItems: Array<{
+    id: string;
+    dataUrl: string;
+    label: string;
+    timestamp?: number;
+    reason?: string;
+    selected?: boolean;
+  }> = useMemo(() => {
+    if (fullscreenViewer.source === 'snapshots') {
+      return autoSnapshots.map((s, idx) => ({
+        id: s.id,
+        dataUrl: s.dataUrl,
+        label: s.label || `Fotograma #${idx + 1}`,
+        timestamp: s.timestamp,
+        reason: s.reason,
+      }));
+    }
+    if (fullscreenViewer.source === 'extracted') {
+      return extractedFrames.map((f, idx) => ({
+        id: f.id,
+        dataUrl: f.dataUrl,
+        label: f.label || `Fotograma #${idx + 1}`,
+        timestamp: f.timestamp,
+        selected: f.selected,
+      }));
+    }
+    if (fullscreenViewer.source === 'screenshots') {
+      return screenshots.map((s, idx) => ({
+        id: s.id,
+        dataUrl: s.dataUrl,
+        label: s.name || `Captura #${idx + 1}`,
+        timestamp: undefined,
+      }));
+    }
+    return [];
+  }, [fullscreenViewer.source, autoSnapshots, extractedFrames, screenshots]);
+
+  const currentViewerItem = currentViewerItems[fullscreenViewer.currentIndex] || null;
+
+  // Keyboard navigation for Fullscreen Viewer
+  useEffect(() => {
+    if (!fullscreenViewer.isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setFullscreenViewer((prev) => ({ ...prev, isOpen: false }));
+      } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+        setFullscreenViewer((prev) => ({
+          ...prev,
+          currentIndex: (prev.currentIndex + 1) % (currentViewerItems.length || 1),
+        }));
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+        setFullscreenViewer((prev) => ({
+          ...prev,
+          currentIndex:
+            (prev.currentIndex - 1 + (currentViewerItems.length || 1)) % (currentViewerItems.length || 1),
+        }));
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [fullscreenViewer.isOpen, currentViewerItems.length]);
+
+  const handleDeleteViewerItem = (id: string) => {
+    if (fullscreenViewer.source === 'snapshots') {
+      setAutoSnapshots((prev) => prev.filter((s) => s.id !== id));
+      setExtractedFrames((prev) => prev.filter((f) => f.id !== id));
+    } else if (fullscreenViewer.source === 'extracted') {
+      setExtractedFrames((prev) => prev.filter((f) => f.id !== id));
+    } else if (fullscreenViewer.source === 'screenshots') {
+      removeScreenshot(id);
+    }
+    setFullscreenViewer((prev) => {
+      const nextLength = currentViewerItems.length - 1;
+      if (nextLength <= 0) {
+        return { ...prev, isOpen: false, currentIndex: 0 };
+      }
+      return {
+        ...prev,
+        currentIndex: Math.min(prev.currentIndex, nextLength - 1),
+      };
+    });
+  };
 
   // Scroll transcript to bottom when new item arrives
   useEffect(() => {
@@ -1410,55 +1511,80 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
                 {autoSnapshots.length > 0 && !isRecording && (
                   <div>
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
-                      <span className="text-xs font-bold uppercase tracking-wider text-slate-500 block">
-                        Secuencia Capturada ({autoSnapshots.length} capturas)
-                      </span>
-                      {videoFile && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold uppercase tracking-wider text-slate-700 block">
+                          Secuencia Capturada ({autoSnapshots.length} capturas)
+                        </span>
+                        <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-medium hidden sm:inline">
+                          Clic para ampliar
+                        </span>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        {/* Botón habilitado en el área marcada en rojo para ver a pantalla completa */}
                         <button
                           type="button"
-                          onClick={async () => {
-                            if (videoFile) {
-                              setIsExtracting(true);
-                              try {
-                                const extra = await extractFramesFromVideo(videoFile, {
-                                  maxFrames: 12,
-                                  intervalSeconds: 3,
-                                });
-                                const mappedExtra: AutoCapturedSnapshot[] = extra.map((ef, i) => ({
-                                  id: ef.id,
-                                  timestamp: ef.timestamp,
-                                  dataUrl: ef.dataUrl,
-                                  reason: 'change_detected',
-                                  label: `Fotograma adicional (${Math.round(ef.timestamp)}s)`,
-                                  differenceScore: 1,
-                                }));
-                                setAutoSnapshots((prev) => [...prev, ...mappedExtra]);
-                                setExtractedFrames((prev) => [...prev, ...extra]);
-                              } catch (err) {
-                                console.error('Error extracting extra frames:', err);
-                              } finally {
-                                setIsExtracting(false);
-                              }
-                            }
-                          }}
-                          disabled={isExtracting}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 transition-colors self-start sm:self-auto disabled:opacity-50"
+                          onClick={() => setFullscreenViewer({ isOpen: true, currentIndex: 0, source: 'snapshots' })}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm border border-indigo-700 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                          title="Abrir visor en pantalla completa para inspeccionar todos los fotogramas en alta resolución"
                         >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>
-                            {isExtracting ? 'Extrayendo...' : 'Extraer más fotogramas del video grabado'}
-                          </span>
+                          <Maximize2 className="w-3.5 h-3.5" />
+                          <span>Ver a Pantalla Completa</span>
                         </button>
-                      )}
+
+                        {videoFile && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (videoFile) {
+                                setIsExtracting(true);
+                                try {
+                                  const extra = await extractFramesFromVideo(videoFile, {
+                                    maxFrames: 12,
+                                    intervalSeconds: 3,
+                                  });
+                                  const mappedExtra: AutoCapturedSnapshot[] = extra.map((ef, i) => ({
+                                    id: ef.id,
+                                    timestamp: ef.timestamp,
+                                    dataUrl: ef.dataUrl,
+                                    reason: 'change_detected',
+                                    label: `Fotograma adicional (${Math.round(ef.timestamp)}s)`,
+                                    differenceScore: 1,
+                                  }));
+                                  setAutoSnapshots((prev) => [...prev, ...mappedExtra]);
+                                  setExtractedFrames((prev) => [...prev, ...extra]);
+                                } catch (err) {
+                                  console.error('Error extracting extra frames:', err);
+                                } finally {
+                                  setIsExtracting(false);
+                                }
+                              }
+                            }}
+                            disabled={isExtracting}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 transition-colors self-start sm:self-auto disabled:opacity-50"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>
+                              {isExtracting ? 'Extrayendo...' : 'Extraer más fotogramas del video grabado'}
+                            </span>
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-3">
                       {autoSnapshots.map((snap, idx) => (
                         <div
                           key={snap.id}
-                          className="relative rounded-lg border border-slate-200 overflow-hidden bg-slate-900 shadow-xs"
+                          onClick={() => setFullscreenViewer({ isOpen: true, currentIndex: idx, source: 'snapshots' })}
+                          className="relative rounded-lg border border-slate-200 overflow-hidden bg-slate-900 shadow-xs cursor-pointer group hover:ring-2 hover:ring-indigo-500 hover:border-indigo-500 transition-all"
+                          title={`Fotograma #${idx + 1} - Clic para ver en pantalla completa`}
                         >
-                          <img src={snap.dataUrl} alt={snap.label} className="w-full h-24 object-cover" />
-                          <span className="absolute top-1.5 left-1.5 bg-indigo-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow">
+                          <img src={snap.dataUrl} alt={snap.label} className="w-full h-24 object-cover group-hover:scale-105 transition-transform" />
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1 text-white text-[11px] font-semibold">
+                            <Maximize2 className="w-4 h-4 text-white drop-shadow" />
+                            <span>Ampliar</span>
+                          </div>
+                          <span className="absolute top-1.5 left-1.5 bg-indigo-600/90 backdrop-blur-xs text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow z-10 max-w-[90%] truncate">
                             {idx + 1}. {snap.label}
                           </span>
                         </div>
@@ -1505,12 +1631,23 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
                       <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
                         Secuencia de Pasos ({screenshots.length})
                       </span>
-                      <button
-                        onClick={() => setScreenshots([])}
-                        className="text-xs text-red-600 hover:underline"
-                      >
-                        Limpiar todas
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setFullscreenViewer({ isOpen: true, currentIndex: 0, source: 'screenshots' })}
+                          className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm border border-indigo-700 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                          title="Ver y navegar todas las capturas a pantalla completa"
+                        >
+                          <Maximize2 className="w-3.5 h-3.5" />
+                          <span>Ver a Pantalla Completa</span>
+                        </button>
+                        <button
+                          onClick={() => setScreenshots([])}
+                          className="text-xs text-red-600 hover:underline"
+                        >
+                          Limpiar todas
+                        </button>
+                      </div>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-2.5">
                       {screenshots.map((s, idx) => (
@@ -1598,6 +1735,15 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
                         Fotogramas Extraídos ({extractedFrames.filter((f) => f.selected).length} de{' '}
                         {extractedFrames.length} seleccionados)
                       </span>
+                      <button
+                        type="button"
+                        onClick={() => setFullscreenViewer({ isOpen: true, currentIndex: 0, source: 'extracted' })}
+                        className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm border border-indigo-700 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                        title="Ver fotogramas extraídos a pantalla completa"
+                      >
+                        <Maximize2 className="w-3.5 h-3.5" />
+                        <span>Ver a Pantalla Completa</span>
+                      </button>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-3">
                       {extractedFrames.map((frame, idx) => (
@@ -1735,6 +1881,147 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* FULLSCREEN FRAME VIEWER LIGHTBOX */}
+      {fullscreenViewer.isOpen && currentViewerItem && (
+        <div
+          className="fixed inset-0 z-[70] bg-slate-950/95 backdrop-blur-md flex flex-col justify-between p-3 sm:p-5 select-none animate-in fade-in duration-200"
+          onClick={() => setFullscreenViewer((prev) => ({ ...prev, isOpen: false }))}
+        >
+          {/* Top Control Bar */}
+          <div
+            className="flex items-center justify-between gap-3 text-white shrink-0 z-10 pb-2 border-b border-slate-800/80"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3">
+              <span className="px-3 py-1 bg-indigo-600 text-white font-mono font-bold text-xs rounded-full shadow-xs">
+                Fotograma {fullscreenViewer.currentIndex + 1} de {currentViewerItems.length}
+              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-slate-200 truncate max-w-sm sm:max-w-md">
+                  {currentViewerItem.label}
+                </span>
+                {currentViewerItem.timestamp !== undefined && (
+                  <span className="text-xs text-indigo-400 font-mono bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                    ⏱️ {speechTranscriptionService.formatTime(currentViewerItem.timestamp)}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Middle shortcut hints */}
+            <div className="hidden lg:flex items-center gap-2 text-xs text-slate-400 bg-slate-900/80 px-3 py-1 rounded-full border border-slate-800">
+              <span className="flex items-center gap-1">
+                <kbd className="px-1.5 py-0.5 bg-slate-800 text-slate-300 rounded border border-slate-700 font-mono text-[10px]">←</kbd>
+                <kbd className="px-1.5 py-0.5 bg-slate-800 text-slate-300 rounded border border-slate-700 font-mono text-[10px]">→</kbd>
+                <span>Navegar</span>
+              </span>
+              <span>·</span>
+              <span className="flex items-center gap-1">
+                <kbd className="px-1.5 py-0.5 bg-slate-800 text-slate-300 rounded border border-slate-700 font-mono text-[10px]">ESC</kbd>
+                <span>Cerrar</span>
+              </span>
+            </div>
+
+            {/* Right action buttons */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleDeleteViewerItem(currentViewerItem.id)}
+                className="px-2.5 py-1.5 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-semibold"
+                title="Descartar este fotograma de la secuencia"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span className="hidden sm:inline">Descartar</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setFullscreenViewer((prev) => ({ ...prev, isOpen: false }))}
+                className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+                title="Cerrar visor a pantalla completa (ESC)"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+          </div>
+
+          {/* Main Stage with Large High-Res Image & Floating Chevrons */}
+          <div
+            className="flex-1 flex items-center justify-between gap-3 p-2 min-h-0 relative my-2"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Left Chevron Button */}
+            <button
+              type="button"
+              onClick={() =>
+                setFullscreenViewer((prev) => ({
+                  ...prev,
+                  currentIndex:
+                    (prev.currentIndex - 1 + currentViewerItems.length) % currentViewerItems.length,
+                }))
+              }
+              className="p-3 sm:p-4 rounded-full bg-slate-900/80 hover:bg-indigo-600 text-white shadow-2xl border border-slate-700 transition-all hover:scale-110 active:scale-95 shrink-0 z-20 group"
+              title="Fotograma anterior (←)"
+            >
+              <ChevronLeft className="w-6 h-6 sm:w-8 sm:h-8 group-hover:-translate-x-0.5 transition-transform" />
+            </button>
+
+            {/* High-Resolution Frame Display */}
+            <div className="flex-1 h-full flex items-center justify-center p-1 sm:p-2 min-h-0 overflow-hidden">
+              <img
+                src={currentViewerItem.dataUrl}
+                alt={currentViewerItem.label}
+                className="max-h-[72vh] max-w-[88vw] w-auto h-auto object-contain rounded-xl shadow-2xl border border-slate-800/90 bg-slate-900"
+              />
+            </div>
+
+            {/* Right Chevron Button */}
+            <button
+              type="button"
+              onClick={() =>
+                setFullscreenViewer((prev) => ({
+                  ...prev,
+                  currentIndex: (prev.currentIndex + 1) % currentViewerItems.length,
+                }))
+              }
+              className="p-3 sm:p-4 rounded-full bg-slate-900/80 hover:bg-indigo-600 text-white shadow-2xl border border-slate-700 transition-all hover:scale-110 active:scale-95 shrink-0 z-20 group"
+              title="Siguiente fotograma (→)"
+            >
+              <ChevronRight className="w-6 h-6 sm:w-8 sm:h-8 group-hover:translate-x-0.5 transition-transform" />
+            </button>
+          </div>
+
+          {/* Bottom Filmstrip Carousel */}
+          <div
+            className="h-18 pt-2 border-t border-slate-800/80 flex items-center justify-center gap-2 overflow-x-auto scrollbar-thin px-2 shrink-0 z-10"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {currentViewerItems.map((item, idx) => {
+              const isActive = idx === fullscreenViewer.currentIndex;
+              return (
+                <button
+                  key={item.id || idx}
+                  type="button"
+                  onClick={() => setFullscreenViewer((prev) => ({ ...prev, currentIndex: idx }))}
+                  className={`relative rounded-md overflow-hidden transition-all shrink-0 border ${
+                    isActive
+                      ? 'ring-2 ring-indigo-500 border-indigo-400 scale-105 shadow-lg opacity-100'
+                      : 'border-slate-700/80 opacity-45 hover:opacity-90 hover:border-slate-500'
+                  }`}
+                  style={{ width: '76px', height: '46px' }}
+                  title={`Fotograma #${idx + 1}`}
+                >
+                  <img src={item.dataUrl} alt={`Thumbnail ${idx + 1}`} className="w-full h-full object-cover" />
+                  <span className="absolute bottom-0.5 right-0.5 bg-black/80 text-white text-[9px] font-mono px-1 rounded">
+                    #{idx + 1}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
