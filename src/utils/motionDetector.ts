@@ -500,9 +500,19 @@ export function cropTaskbarFromDataUrl(dataUrl: string, ratio = 0.052): Promise<
       }
 
       ctx.drawImage(img, 0, 0, w, targetH, 0, 0, w, targetH);
-      resolve(canvas.toDataURL('image/jpeg', 0.92));
+      const result = canvas.toDataURL('image/jpeg', 0.92);
+      // Immediately release GPU surface buffer
+      canvas.width = 0;
+      canvas.height = 0;
+      img.onload = null;
+      img.onerror = null;
+      resolve(result);
     };
-    img.onerror = () => resolve(dataUrl);
+    img.onerror = () => {
+      img.onload = null;
+      img.onerror = null;
+      resolve(dataUrl);
+    };
     img.src = dataUrl;
   });
 }
@@ -535,9 +545,10 @@ export function blurTaskbarOnDataUrl(dataUrl: string, ratio = 0.052): Promise<st
 
       // Apply guaranteed frosted blur to taskbar area
       ctx.save();
+      let miniCanvas: HTMLCanvasElement | null = null;
       try {
         // Step 1: Pixel dispersion via downscale-upscale for universal blur
-        const miniCanvas = document.createElement('canvas');
+        miniCanvas = document.createElement('canvas');
         miniCanvas.width = Math.max(20, Math.round(w / 12));
         miniCanvas.height = Math.max(4, Math.round(tbH / 12));
         const miniCtx = miniCanvas.getContext('2d');
@@ -570,9 +581,25 @@ export function blurTaskbarOnDataUrl(dataUrl: string, ratio = 0.052): Promise<st
       }
       ctx.restore();
 
-      resolve(canvas.toDataURL('image/jpeg', 0.92));
+      const result = canvas.toDataURL('image/jpeg', 0.92);
+
+      // Immediate release of all GPU surface memory
+      if (miniCanvas) {
+        miniCanvas.width = 0;
+        miniCanvas.height = 0;
+      }
+      canvas.width = 0;
+      canvas.height = 0;
+      img.onload = null;
+      img.onerror = null;
+
+      resolve(result);
     };
-    img.onerror = () => resolve(dataUrl);
+    img.onerror = () => {
+      img.onload = null;
+      img.onerror = null;
+      resolve(dataUrl);
+    };
     img.src = dataUrl;
   });
 }

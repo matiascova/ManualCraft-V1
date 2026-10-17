@@ -54,16 +54,65 @@ function getAiClient(): GoogleGenAI | null {
   });
 }
 
-// Endpoint: Healthcheck
+// High-throughput concurrency limiter to protect against thundering herd & API quota exhaustion
+class AsyncSemaphore {
+  private capacity: number;
+  private running = 0;
+  private queue: (() => void)[] = [];
+
+  constructor(capacity: number) {
+    this.capacity = capacity;
+  }
+
+  async acquire(): Promise<() => void> {
+    if (this.running < this.capacity) {
+      this.running++;
+      return () => this.release();
+    }
+    return new Promise((resolve) => {
+      this.queue.push(() => {
+        this.running++;
+        resolve(() => this.release());
+      });
+    });
+  }
+
+  private release() {
+    this.running--;
+    const next = this.queue.shift();
+    if (next) {
+      next();
+    }
+  }
+
+  get stats() {
+    return { running: this.running, queued: this.queue.length, capacity: this.capacity };
+  }
+}
+
+// Limits simultaneous heavy Gemini multimodal calls to 4, queuing excess callers cleanly
+const aiSemaphore = new AsyncSemaphore(4);
+
+// Endpoint: Healthcheck with Container Telemetry
 app.get('/api/health', (req: Request, res: Response) => {
+  const mem = process.memoryUsage();
+  res.setHeader('Cache-Control', 'no-cache, no-store');
   res.json({
     status: 'ok',
+    uptimeSec: Math.round(process.uptime()),
     hasApiKey: Boolean(process.env.GEMINI_API_KEY),
+    aiConcurrency: aiSemaphore.stats,
+    memoryMb: {
+      rss: Math.round(mem.rss / (1024 * 1024)),
+      heapUsed: Math.round(mem.heapUsed / (1024 * 1024)),
+      heapTotal: Math.round(mem.heapTotal / (1024 * 1024)),
+    },
   });
 });
 
 // Endpoint: Generate Manual from Screenshots / Video frames
 app.post('/api/generate-manual', async (req: Request, res: Response) => {
+  const release = await aiSemaphore.acquire();
   try {
     const {
       topic = '',
@@ -551,11 +600,14 @@ Asegúrate de responder estrictamente en el formato JSON estructurado solicitado
     res.status(500).json({
       error: error.message || 'Error al procesar el manual con inteligencia artificial',
     });
+  } finally {
+    release();
   }
 });
 
 // Endpoint: AI Enhance / Rewrite a Single Step
 app.post('/api/enhance-step', async (req: Request, res: Response) => {
+  const release = await aiSemaphore.acquire();
   try {
     const { step, instruction, context } = req.body;
 
@@ -603,6 +655,8 @@ Responde en formato JSON con la versión mejorada del paso.`;
   } catch (error: any) {
     console.error('Error enhancing step:', error);
     res.status(500).json({ error: error.message || 'Error al mejorar el paso' });
+  } finally {
+    release();
   }
 });
 
@@ -651,6 +705,10 @@ async function startServer() {
   const server = app.listen(Number(PORT), '0.0.0.0', () => {
     console.log(`ManualCraft AI server running on http://0.0.0.0:${PORT}`);
   });
+
+  // Tune keep-alive timeouts for GCP / AWS / Cloudflare reverse proxy resilience
+  server.keepAliveTimeout = 65000;
+  server.headersTimeout = 66000;
 
   // Graceful shutdown handling for container orchestrators (Cloud Run, Kubernetes)
   const shutdown = () => {

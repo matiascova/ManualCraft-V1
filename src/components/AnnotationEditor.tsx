@@ -44,6 +44,11 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   onChange,
   onClose,
 }) => {
+  const [localAnnotations, setLocalAnnotations] = useState<VisualAnnotation[]>(annotations);
+  const localAnnotationsRef = useRef<VisualAnnotation[]>(annotations);
+  localAnnotationsRef.current = localAnnotations;
+  const rafRef = useRef<number | null>(null);
+
   // Always select first or active annotation
   const [selectedId, setSelectedId] = useState<string | null>(
     annotations[0]?.id || null
@@ -64,43 +69,53 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   const imgRef = useRef<HTMLImageElement>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
 
+  // Sync from props when not dragging
+  useEffect(() => {
+    if (!isDraggingAnnotation && !isDraggingLabel && !isResizing) {
+      setLocalAnnotations(annotations);
+    }
+  }, [annotations, isDraggingAnnotation, isDraggingLabel, isResizing]);
+
   // Always resolve an active annotation if annotations exist
   const activeAnnotation: VisualAnnotation | null =
-    annotations.find((a) => a.id === selectedId) ||
-    (annotations.length > 0 ? annotations[annotations.length - 1] : null);
+    localAnnotations.find((a) => a.id === selectedId) ||
+    (localAnnotations.length > 0 ? localAnnotations[localAnnotations.length - 1] : null);
 
   // Keep selectedId synchronized
   useEffect(() => {
-    if (annotations.length > 0) {
-      if (!selectedId || !annotations.some((a) => a.id === selectedId)) {
-        setSelectedId(annotations[annotations.length - 1].id);
+    if (localAnnotations.length > 0) {
+      if (!selectedId || !localAnnotations.some((a) => a.id === selectedId)) {
+        setSelectedId(localAnnotations[localAnnotations.length - 1].id);
       }
     } else {
       setSelectedId(null);
     }
-  }, [annotations, selectedId]);
+  }, [localAnnotations, selectedId]);
 
   // Update active annotation
   const updateActive = useCallback(
-    (partial: Partial<VisualAnnotation>) => {
+    (partial: Partial<VisualAnnotation>, commitImmediate = true) => {
       const targetId = activeAnnotation?.id || selectedId;
       if (!targetId) return;
-      const updated = annotations.map((a) =>
+      const updated = localAnnotationsRef.current.map((a) =>
         a.id === targetId ? { ...a, ...partial } : a
       );
-      onChange(updated);
+      setLocalAnnotations(updated);
+      if (commitImmediate) {
+        onChange(updated);
+      }
     },
-    [annotations, activeAnnotation, selectedId, onChange]
+    [activeAnnotation, selectedId, onChange]
   );
 
   // Explicit function to add a new annotation via button
   const handleAddNewAnnotation = (shapeOverride?: 'circle' | 'rect' | 'blur') => {
     const shape = shapeOverride || activeShape;
-    const offset = (annotations.length % 5) * 6;
+    const offset = (localAnnotations.length % 5) * 6;
     const x = Math.min(75, 25 + offset);
     const y = Math.min(75, 20 + offset);
 
-    const labelText = shape === 'blur' ? '' : `Paso ${annotations.length + 1}`;
+    const labelText = shape === 'blur' ? '' : `Paso ${localAnnotations.length + 1}`;
 
     const newAnnotation: VisualAnnotation = {
       id: `ann-${Date.now()}`,
@@ -116,7 +131,8 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       labelOffsetY: 0,
     };
 
-    const updated = [...annotations, newAnnotation];
+    const updated = [...localAnnotations, newAnnotation];
+    setLocalAnnotations(updated);
     onChange(updated);
     setSelectedId(newAnnotation.id);
     setActiveShape(shape);
@@ -132,7 +148,8 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       y: Math.min(90, activeAnnotation.y + 5),
       label: activeAnnotation.label ? `${activeAnnotation.label} (Copia)` : '',
     };
-    const updated = [...annotations, duplicated];
+    const updated = [...localAnnotations, duplicated];
+    setLocalAnnotations(updated);
     onChange(updated);
     setSelectedId(duplicated.id);
   };
@@ -199,7 +216,7 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     setInitialAnnState({ ...ann });
   };
 
-  // Window mouse move & up handlers for smooth dragging
+  // Window mouse move & up handlers for smooth 60 FPS dragging without root re-renders
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!imgRef.current || !dragStart || !initialAnnState) return;
@@ -208,39 +225,62 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       const deltaXPercent = ((e.clientX - dragStart.x) / (rect.width || 1)) * 100;
       const deltaYPercent = ((e.clientY - dragStart.y) / (rect.height || 1)) * 100;
 
-      if (isDraggingAnnotation) {
-        const newX = Math.max(0, Math.min(100, Math.round(initialAnnState.x + deltaXPercent)));
-        const newY = Math.max(0, Math.min(100, Math.round(initialAnnState.y + deltaYPercent)));
-        updateActive({ x: newX, y: newY });
-      } else if (isDraggingLabel) {
-        const deltaXPixels = Math.round(e.clientX - dragStart.x);
-        const deltaYPixels = Math.round(e.clientY - dragStart.y);
-        updateActive({
-          labelPosition: 'custom',
-          labelOffsetX: (initialAnnState.labelOffsetX || 0) + deltaXPixels,
-          labelOffsetY: (initialAnnState.labelOffsetY || 0) + deltaYPixels,
-        });
-      } else if (isResizing) {
-        const newWidth = Math.max(5, Math.min(95, Math.round((initialAnnState.width || 20) + deltaXPercent)));
-        const newHeight = Math.max(4, Math.min(95, Math.round((initialAnnState.height || 12) + deltaYPercent)));
-        updateActive({ width: newWidth, height: newHeight });
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
       }
+
+      rafRef.current = requestAnimationFrame(() => {
+        if (isDraggingAnnotation) {
+          const newX = Math.max(0, Math.min(100, Math.round(initialAnnState.x + deltaXPercent)));
+          const newY = Math.max(0, Math.min(100, Math.round(initialAnnState.y + deltaYPercent)));
+          updateActive({ x: newX, y: newY }, false); // Do not bubble up to App during active drag!
+        } else if (isDraggingLabel) {
+          const deltaXPixels = Math.round(e.clientX - dragStart.x);
+          const deltaYPixels = Math.round(e.clientY - dragStart.y);
+          updateActive(
+            {
+              labelPosition: 'custom',
+              labelOffsetX: (initialAnnState.labelOffsetX || 0) + deltaXPixels,
+              labelOffsetY: (initialAnnState.labelOffsetY || 0) + deltaYPixels,
+            },
+            false
+          );
+        } else if (isResizing) {
+          const newWidth = Math.max(5, Math.min(95, Math.round((initialAnnState.width || 20) + deltaXPercent)));
+          const newHeight = Math.max(4, Math.min(95, Math.round((initialAnnState.height || 12) + deltaYPercent)));
+          updateActive({ width: newWidth, height: newHeight }, false);
+        }
+      });
     };
 
     const handleMouseUp = () => {
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      const wasActive = isDraggingAnnotation || isDraggingLabel || isResizing;
       setIsDraggingAnnotation(false);
       setIsDraggingLabel(false);
       setIsResizing(false);
       setDragStart(null);
       setInitialAnnState(null);
+
+      // Single consolidated commit to parent application state once gesture completes!
+      if (wasActive) {
+        onChange(localAnnotationsRef.current);
+      }
     };
 
     if (isDraggingAnnotation || isDraggingLabel || isResizing) {
-      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mousemove', handleMouseMove, { passive: true });
       window.addEventListener('mouseup', handleMouseUp);
     }
 
     return () => {
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
@@ -251,11 +291,13 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     dragStart,
     initialAnnState,
     updateActive,
+    onChange,
   ]);
 
   const removeSelected = (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    const updated = annotations.filter((a) => a.id !== id);
+    const updated = localAnnotationsRef.current.filter((a) => a.id !== id);
+    setLocalAnnotations(updated);
     onChange(updated);
     if (selectedId === id) {
       setSelectedId(updated[0]?.id || null);
@@ -274,7 +316,7 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedId, annotations]);
+  }, [selectedId, localAnnotations]);
 
   // Compute label style based on position & offset
   const getLabelStyle = (ann: VisualAnnotation): React.CSSProperties => {
@@ -404,9 +446,9 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         {/* Right: Elements selector & Save Action */}
         <div className="flex items-center gap-2 shrink-0">
           {/* Elements Quick Carousel */}
-          {annotations.length > 0 && (
+          {localAnnotations.length > 0 && (
             <div className="hidden xl:flex items-center gap-1 max-w-[240px] overflow-x-auto py-0.5">
-              {annotations.map((ann, idx) => {
+              {localAnnotations.map((ann, idx) => {
                 const isSelected = activeAnnotation?.id === ann.id;
                 return (
                   <button
@@ -472,7 +514,7 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
             />
 
             {/* Render Annotations Overlay */}
-            {annotations.map((ann) => {
+            {localAnnotations.map((ann) => {
               const isSelected = ann.id === selectedId || activeAnnotation?.id === ann.id;
 
               // 1. RECTANGLE

@@ -879,7 +879,9 @@ export async function exportToPdfWithTemplateStructure(
       doc.rect(imgX - 0.5, currentY - 0.5, renderW + 1, renderH + 1);
 
       try {
-        doc.addImage(dataUrl, 'PNG', imgX, currentY, renderW, renderH);
+        const isPng = dataUrl.startsWith('data:image/png');
+        const format = isPng ? 'PNG' : 'JPEG';
+        doc.addImage(dataUrl, format, imgX, currentY, renderW, renderH, undefined, 'FAST');
       } catch (err) {
         console.warn('Failed to embed screenshot:', err);
       }

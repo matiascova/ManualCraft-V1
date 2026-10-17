@@ -115,17 +115,25 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
   };
 
   // Optimizar todas las capturas del manual para ahorrar espacio en PDF eliminando la barra de tareas
+  // Concurrencia controlada (bloques de 2) y pausas de micro-tarea para permitir recolección de basura (GC)
   const handleBatchCropTaskbarInManual = async () => {
     if (isBatchOptimizing) return;
     setIsBatchOptimizing(true);
     try {
-      const updatedSteps = await Promise.all(
-        manual.steps.map(async (s) => {
-          if (!s.image) return s;
-          const cropped = await cropTaskbarFromDataUrl(s.image, 0.052);
-          return { ...s, image: cropped };
-        })
-      );
+      const updatedSteps = [...manual.steps];
+      const chunkSize = 2;
+      for (let i = 0; i < updatedSteps.length; i += chunkSize) {
+        const slice = updatedSteps.slice(i, i + chunkSize);
+        await Promise.all(
+          slice.map(async (s, sliceIdx) => {
+            if (!s.image) return;
+            const cropped = await cropTaskbarFromDataUrl(s.image, 0.052);
+            updatedSteps[i + sliceIdx] = { ...s, image: cropped };
+          })
+        );
+        // Ceder el hilo principal para que el recolector de basura libere los búferes de imagen intermedios
+        await new Promise((resolve) => setTimeout(resolve, 15));
+      }
       onUpdateManual({
         ...manual,
         steps: updatedSteps,
@@ -139,17 +147,25 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
   };
 
   // Dejar borrosa la barra de tareas en todas las capturas del manual para ocultar iconos de aplicaciones
+  // Concurrencia controlada para evitar picos de memoria RAM en manuales extensos
   const handleBatchBlurTaskbarInManual = async () => {
     if (isBatchOptimizing) return;
     setIsBatchOptimizing(true);
     try {
-      const updatedSteps = await Promise.all(
-        manual.steps.map(async (s) => {
-          if (!s.image) return s;
-          const blurred = await blurTaskbarOnDataUrl(s.image, 0.052);
-          return { ...s, image: blurred };
-        })
-      );
+      const updatedSteps = [...manual.steps];
+      const chunkSize = 2;
+      for (let i = 0; i < updatedSteps.length; i += chunkSize) {
+        const slice = updatedSteps.slice(i, i + chunkSize);
+        await Promise.all(
+          slice.map(async (s, sliceIdx) => {
+            if (!s.image) return;
+            const blurred = await blurTaskbarOnDataUrl(s.image, 0.052);
+            updatedSteps[i + sliceIdx] = { ...s, image: blurred };
+          })
+        );
+        // Ceder el hilo principal para evitar saturación de memoria en GPU/VRAM
+        await new Promise((resolve) => setTimeout(resolve, 15));
+      }
       onUpdateManual({
         ...manual,
         steps: updatedSteps,

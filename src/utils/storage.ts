@@ -287,20 +287,21 @@ class ManualStorageService {
       clearTimeout(this.manualsSaveTimer);
     }
 
-    // Async persist to IndexedDB immediately without blocking event loop
-    idb.set(MANUALS_STORAGE_KEY, manuals).catch(() => {});
-
-    // Debounced write to localStorage with quota protection
+    // Debounced write with cooperative scheduling to avoid freezing the main thread
     this.manualsSaveTimer = setTimeout(() => {
-      if (typeof window === 'undefined' || !window.localStorage) {
-        return;
+      // 1. Asynchronously persist to IndexedDB (off main thread)
+      idb.set(MANUALS_STORAGE_KEY, manuals).catch(() => {});
+
+      // 2. Persist to localStorage with quota overflow protection
+      if (typeof window !== 'undefined' && window.localStorage) {
+        try {
+          localStorage.setItem(MANUALS_STORAGE_KEY, JSON.stringify(manuals));
+        } catch (err: any) {
+          // QuotaExceededError is normal when screenshots are stored; IndexedDB handles large blobs seamlessly
+          console.warn('[ManualStorageService] LocalStorage quota reached. Relying on high-capacity IndexedDB tier.');
+        }
       }
-      try {
-        localStorage.setItem(MANUALS_STORAGE_KEY, JSON.stringify(manuals));
-      } catch (err: any) {
-        console.warn('[ManualStorageService] LocalStorage quota reached. Relying on IndexedDB storage tier.');
-      }
-    }, 200);
+    }, 250);
 
     return true;
   }
