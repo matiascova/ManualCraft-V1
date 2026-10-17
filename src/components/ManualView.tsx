@@ -34,11 +34,16 @@ import {
   FolderKanban,
   Settings,
   Save,
+  Crop,
+  Scissors,
+  EyeOff,
 } from 'lucide-react';
 import { Project } from '../types/project';
 import { OrganizationBranding } from '../types/branding';
 import { getEffectiveInstructorContent } from '../utils/instructorUtils';
 import { DictationButton } from './DictationButton';
+import { ImageCropModal } from './ImageCropModal';
+import { cropTaskbarFromDataUrl, blurTaskbarOnDataUrl } from '../utils/motionDetector';
 
 interface ManualViewProps {
   manual: UserManual;
@@ -81,6 +86,81 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
   const [editingInstructorText, setEditingInstructorText] = useState('');
   const [editingTranscriptIdx, setEditingTranscriptIdx] = useState<number | null>(null);
   const [editingTranscriptText, setEditingTranscriptText] = useState('');
+  const [cropStep, setCropStep] = useState<ManualStep | null>(null);
+
+  const handleApplyStepCrop = (croppedDataUrl: string) => {
+    if (!cropStep) return;
+    const updatedSteps = manual.steps.map((s) =>
+      s.id === cropStep.id ? { ...s, image: croppedDataUrl } : s
+    );
+    onUpdateManual({
+      ...manual,
+      steps: updatedSteps,
+      updatedAt: new Date().toISOString(),
+    });
+    setCropStep(null);
+  };
+
+  const [isBatchOptimizing, setIsBatchOptimizing] = useState(false);
+
+  const handleApplyStepCropDirect = (stepId: string, newImageDataUrl: string) => {
+    const updatedSteps = manual.steps.map((s) =>
+      s.id === stepId ? { ...s, image: newImageDataUrl } : s
+    );
+    onUpdateManual({
+      ...manual,
+      steps: updatedSteps,
+      updatedAt: new Date().toISOString(),
+    });
+  };
+
+  // Optimizar todas las capturas del manual para ahorrar espacio en PDF eliminando la barra de tareas
+  const handleBatchCropTaskbarInManual = async () => {
+    if (isBatchOptimizing) return;
+    setIsBatchOptimizing(true);
+    try {
+      const updatedSteps = await Promise.all(
+        manual.steps.map(async (s) => {
+          if (!s.image) return s;
+          const cropped = await cropTaskbarFromDataUrl(s.image, 0.052);
+          return { ...s, image: cropped };
+        })
+      );
+      onUpdateManual({
+        ...manual,
+        steps: updatedSteps,
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error('Error batch cropping taskbar:', e);
+    } finally {
+      setIsBatchOptimizing(false);
+    }
+  };
+
+  // Dejar borrosa la barra de tareas en todas las capturas del manual para ocultar iconos de aplicaciones
+  const handleBatchBlurTaskbarInManual = async () => {
+    if (isBatchOptimizing) return;
+    setIsBatchOptimizing(true);
+    try {
+      const updatedSteps = await Promise.all(
+        manual.steps.map(async (s) => {
+          if (!s.image) return s;
+          const blurred = await blurTaskbarOnDataUrl(s.image, 0.052);
+          return { ...s, image: blurred };
+        })
+      );
+      onUpdateManual({
+        ...manual,
+        steps: updatedSteps,
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error('Error batch blurring taskbar:', e);
+    } finally {
+      setIsBatchOptimizing(false);
+    }
+  };
 
   const filteredSteps = useMemo(() => {
     if (!searchQuery.trim()) return manual.steps;
@@ -343,6 +423,30 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
             <Download className="w-4 h-4 text-indigo-600" />
             <span>Exportar (PDF / Word)</span>
           </button>
+
+          {/* Botones para Optimizar Capturas en PDF (Quitar o Difuminar Barra) */}
+          <div className="flex items-center gap-1.5 bg-slate-100/90 p-1 rounded-xl border border-slate-200">
+            <button
+              type="button"
+              onClick={handleBatchCropTaskbarInManual}
+              disabled={isBatchOptimizing}
+              className="inline-flex items-center gap-1.5 py-1.5 px-2.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-semibold text-xs rounded-lg shadow-2xs transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50"
+              title="Recorta automáticamente la barra de tareas (~5% inferior) en todos los pasos del manual para usar menos espacio en el PDF"
+            >
+              <Scissors className="w-3.5 h-3.5 text-amber-600" />
+              <span>{isBatchOptimizing ? 'Procesando...' : 'Quitar barra (Todos)'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleBatchBlurTaskbarInManual}
+              disabled={isBatchOptimizing}
+              className="inline-flex items-center gap-1.5 py-1.5 px-2.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-semibold text-xs rounded-lg shadow-2xs transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50"
+              title="Aplica un efecto borroso sobre la barra de tareas en todos los pasos para ocultar los iconos de aplicaciones abiertas"
+            >
+              <EyeOff className="w-3.5 h-3.5 text-slate-600" />
+              <span>Difuminar barra</span>
+            </button>
+          </div>
 
           {onRegenerateRecording && (
             <button
@@ -696,14 +800,46 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
                       <span>Editar</span>
                     </button>
                     {step.image && (
-                      <button
-                        onClick={() => onAnnotateStep(step)}
-                        className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors text-xs font-medium flex items-center gap-1"
-                        title="Editar puntos de enfoque y anotaciones visuales"
-                      >
-                        <Crosshair className="w-3.5 h-3.5 text-red-500" />
-                        <span>Enfoque</span>
-                      </button>
+                      <>
+                        <button
+                          onClick={() => setCropStep(step)}
+                          className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-colors text-xs font-medium flex items-center gap-1"
+                          title="Editar tamaño y recortar captura para enfocar la acción y usar menos espacio en el PDF"
+                        >
+                          <Crop className="w-3.5 h-3.5 text-indigo-600" />
+                          <span>Recortar</span>
+                        </button>
+                        <button
+                          onClick={async () => {
+                            const cropped = await cropTaskbarFromDataUrl(step.image!, 0.052);
+                            handleApplyStepCropDirect(step.id, cropped);
+                          }}
+                          className="p-1.5 text-slate-500 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors text-xs font-medium flex items-center gap-1"
+                          title="Quitar automáticamente la barra de tareas (~5% inferior) para usar menos espacio en el PDF"
+                        >
+                          <Scissors className="w-3.5 h-3.5 text-amber-600" />
+                          <span className="hidden xl:inline">Quitar Barra</span>
+                        </button>
+                        <button
+                          onClick={async () => {
+                            const blurred = await blurTaskbarOnDataUrl(step.image!, 0.052);
+                            handleApplyStepCropDirect(step.id, blurred);
+                          }}
+                          className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors text-xs font-medium flex items-center gap-1"
+                          title="Dejar borrosa la barra de tareas para ocultar los iconos de las aplicaciones abiertas"
+                        >
+                          <EyeOff className="w-3.5 h-3.5 text-slate-600" />
+                          <span className="hidden xl:inline">Difuminar</span>
+                        </button>
+                        <button
+                          onClick={() => onAnnotateStep(step)}
+                          className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors text-xs font-medium flex items-center gap-1"
+                          title="Editar puntos de enfoque y anotaciones visuales"
+                        >
+                          <Crosshair className="w-3.5 h-3.5 text-red-500" />
+                          <span>Enfoque</span>
+                        </button>
+                      </>
                     )}
                     <button
                       onClick={() => moveStep(idx, 'up')}
@@ -1437,6 +1573,17 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal de Recorte y Edición de Tamaño de Captura */}
+      {cropStep && cropStep.image && (
+        <ImageCropModal
+          isOpen={!!cropStep}
+          imageSrc={cropStep.image}
+          imageTitle={`Paso ${cropStep.stepNumber}: ${cropStep.title}`}
+          onApplyCrop={handleApplyStepCrop}
+          onClose={() => setCropStep(null)}
+        />
       )}
     </div>
   );

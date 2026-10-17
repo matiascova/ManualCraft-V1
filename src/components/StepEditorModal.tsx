@@ -12,8 +12,13 @@ import {
   Mic,
   Target,
   MessageSquareQuote,
+  Crop,
+  Scissors,
+  EyeOff,
 } from 'lucide-react';
 import { DictationButton } from './DictationButton';
+import { ImageCropModal } from './ImageCropModal';
+import { cropTaskbarFromDataUrl, blurTaskbarOnDataUrl } from '../utils/motionDetector';
 
 interface StepEditorModalProps {
   step: ManualStep;
@@ -47,6 +52,13 @@ export const StepEditorModal: React.FC<StepEditorModalProps> = ({
   const [aiInstruction, setAiInstruction] = useState('');
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [aiMessage, setAiMessage] = useState<string | null>(null);
+  const [isCropModalOpen, setIsCropModalOpen] = useState(false);
+
+  const handleApplyStepCrop = (croppedDataUrl: string) => {
+    const updated = { ...formData, image: croppedDataUrl };
+    setFormData(updated);
+    onSave(updated);
+  };
 
   if (!isOpen) return null;
 
@@ -439,17 +451,57 @@ export const StepEditorModal: React.FC<StepEditorModalProps> = ({
               </div>
 
               {formData.image && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    onSave(formData);
-                    onOpenAnnotationEditor();
-                  }}
-                  className="py-1.5 px-3 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98]"
-                >
-                  <Crosshair className="w-3.5 h-3.5 text-white" />
-                  Abrir Editor de Enfoque
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsCropModalOpen(true)}
+                    className="py-1.5 px-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-semibold rounded-lg flex items-center gap-1 shadow-2xs transition-all hover:scale-[1.02] active:scale-[0.98]"
+                    title="Editar tamaño y recortar esta captura para enfocar la acción y usar menos espacio en el PDF"
+                  >
+                    <Crop className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Recortar</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!formData.image) return;
+                      const cropped = await cropTaskbarFromDataUrl(formData.image, 0.052);
+                      handleApplyStepCrop(cropped);
+                    }}
+                    className="py-1.5 px-2 bg-white hover:bg-amber-50 text-slate-700 hover:text-amber-800 border border-slate-300 text-xs font-semibold rounded-lg flex items-center gap-1 shadow-2xs transition-all"
+                    title="Quitar automáticamente la barra de tareas de Windows (~5% inferior) para usar menos espacio en el PDF"
+                  >
+                    <Scissors className="w-3.5 h-3.5 text-amber-600" />
+                    <span className="hidden sm:inline">Quitar Barra</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!formData.image) return;
+                      const blurred = await blurTaskbarOnDataUrl(formData.image, 0.052);
+                      handleApplyStepCrop(blurred);
+                    }}
+                    className="py-1.5 px-2 bg-white hover:bg-slate-100 text-slate-700 hover:text-slate-900 border border-slate-300 text-xs font-semibold rounded-lg flex items-center gap-1 shadow-2xs transition-all"
+                    title="Dejar borrosa la barra de tareas para ocultar los iconos de las aplicaciones abiertas"
+                  >
+                    <EyeOff className="w-3.5 h-3.5 text-slate-600" />
+                    <span className="hidden sm:inline">Difuminar</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSave(formData);
+                      onOpenAnnotationEditor();
+                    }}
+                    className="py-1.5 px-3 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98]"
+                  >
+                    <Crosshair className="w-3.5 h-3.5 text-white" />
+                    Abrir Editor de Enfoque
+                  </button>
+                </div>
               )}
             </div>
 
@@ -518,6 +570,17 @@ export const StepEditorModal: React.FC<StepEditorModalProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Image Cropper & Resizer Modal */}
+      {formData.image && (
+        <ImageCropModal
+          isOpen={isCropModalOpen}
+          imageSrc={formData.image}
+          imageTitle={formData.title}
+          onApplyCrop={handleApplyStepCrop}
+          onClose={() => setIsCropModalOpen(false)}
+        />
+      )}
     </div>
   );
 };

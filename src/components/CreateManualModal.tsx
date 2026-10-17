@@ -37,14 +37,23 @@ import {
   ChevronLeft,
   ChevronRight,
   Eye,
+  Crop,
+  Scissors,
+  EyeOff,
 } from 'lucide-react';
 import { VideoFrameCandidate, UserManual, InstructorTranscriptSegment } from '../types/manual';
 import { Project } from '../types/project';
 import { extractFramesFromVideo } from '../utils/videoExtractor';
 import { screenRecorder } from '../utils/screenRecorder';
-import { screenActionDetector, AutoCapturedSnapshot } from '../utils/motionDetector';
+import {
+  screenActionDetector,
+  AutoCapturedSnapshot,
+  cropTaskbarFromDataUrl,
+  blurTaskbarOnDataUrl,
+} from '../utils/motionDetector';
 import { speechTranscriptionService, TranscriptionStatus } from '../utils/speechTranscription';
 import { DictationButton } from './DictationButton';
+import { ImageCropModal } from './ImageCropModal';
 
 const DRAFT_STORAGE_KEY = 'manualcraft_create_manual_draft_v1';
 
@@ -139,6 +148,29 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
     manualId: string;
   } | null>(null);
 
+  // Taskbar privacy & clean screenshot mode ('crop' | 'blur' | 'none')
+  const [taskbarProtection, setTaskbarProtection] = useState<'crop' | 'blur' | 'none'>('crop');
+
+  // Cropper Modal State
+  const [cropModal, setCropModal] = useState<{
+    isOpen: boolean;
+    imageSrc: string;
+    imageTitle?: string;
+    targetId: string;
+    source: 'snapshots' | 'extracted' | 'screenshots';
+  }>({
+    isOpen: false,
+    imageSrc: '',
+    imageTitle: '',
+    targetId: '',
+    source: 'snapshots',
+  });
+
+  // Keep screenActionDetector synchronized with taskbar protection setting
+  useEffect(() => {
+    screenActionDetector.setTaskbarProtection(taskbarProtection);
+  }, [taskbarProtection]);
+
   // Active items array based on source
   const currentViewerItems: Array<{
     id: string;
@@ -223,6 +255,105 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
         currentIndex: Math.min(prev.currentIndex, nextLength - 1),
       };
     });
+  };
+
+  // Apply cropped image to corresponding target
+  const handleApplyCrop = (croppedDataUrl: string) => {
+    if (!cropModal.targetId) return;
+
+    if (cropModal.source === 'snapshots') {
+      setAutoSnapshots((prev) =>
+        prev.map((s) => (s.id === cropModal.targetId ? { ...s, dataUrl: croppedDataUrl } : s))
+      );
+      setExtractedFrames((prev) =>
+        prev.map((f) => (f.id === cropModal.targetId ? { ...f, dataUrl: croppedDataUrl } : f))
+      );
+    } else if (cropModal.source === 'extracted') {
+      setExtractedFrames((prev) =>
+        prev.map((f) => (f.id === cropModal.targetId ? { ...f, dataUrl: croppedDataUrl } : f))
+      );
+    } else if (cropModal.source === 'screenshots') {
+      setScreenshots((prev) =>
+        prev.map((s) => (s.id === cropModal.targetId ? { ...s, dataUrl: croppedDataUrl } : s))
+      );
+    }
+  };
+
+  // 1-Click batch actions to crop or blur taskbar across all captured frames
+  const handleBatchCropTaskbar = async () => {
+    if (autoSnapshots.length > 0) {
+      const updated = await Promise.all(
+        autoSnapshots.map(async (s) => ({
+          ...s,
+          dataUrl: await cropTaskbarFromDataUrl(s.dataUrl),
+        }))
+      );
+      setAutoSnapshots(updated);
+      setExtractedFrames((prev) =>
+        prev.map((f) => {
+          const match = updated.find((u) => u.id === f.id);
+          return match ? { ...f, dataUrl: match.dataUrl } : f;
+        })
+      );
+    }
+
+    if (screenshots.length > 0) {
+      const updated = await Promise.all(
+        screenshots.map(async (s) => ({
+          ...s,
+          dataUrl: await cropTaskbarFromDataUrl(s.dataUrl),
+        }))
+      );
+      setScreenshots(updated);
+    }
+
+    if (extractedFrames.length > 0 && autoSnapshots.length === 0) {
+      const updated = await Promise.all(
+        extractedFrames.map(async (f) => ({
+          ...f,
+          dataUrl: await cropTaskbarFromDataUrl(f.dataUrl),
+        }))
+      );
+      setExtractedFrames(updated);
+    }
+  };
+
+  const handleBatchBlurTaskbar = async () => {
+    if (autoSnapshots.length > 0) {
+      const updated = await Promise.all(
+        autoSnapshots.map(async (s) => ({
+          ...s,
+          dataUrl: await blurTaskbarOnDataUrl(s.dataUrl),
+        }))
+      );
+      setAutoSnapshots(updated);
+      setExtractedFrames((prev) =>
+        prev.map((f) => {
+          const match = updated.find((u) => u.id === f.id);
+          return match ? { ...f, dataUrl: match.dataUrl } : f;
+        })
+      );
+    }
+
+    if (screenshots.length > 0) {
+      const updated = await Promise.all(
+        screenshots.map(async (s) => ({
+          ...s,
+          dataUrl: await blurTaskbarOnDataUrl(s.dataUrl),
+        }))
+      );
+      setScreenshots(updated);
+    }
+
+    if (extractedFrames.length > 0 && autoSnapshots.length === 0) {
+      const updated = await Promise.all(
+        extractedFrames.map(async (f) => ({
+          ...f,
+          dataUrl: await blurTaskbarOnDataUrl(f.dataUrl),
+        }))
+      );
+      setExtractedFrames(updated);
+    }
   };
 
   // Scroll transcript to bottom when new item arrives
@@ -1259,6 +1390,60 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
               </span>
             </div>
 
+            {/* Taskbar Privacy & Screenshot Protection (Windows) */}
+            <div className="bg-white p-2 border border-slate-200/90 rounded-lg shrink-0 shadow-2xs">
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                  <Scissors className="w-3 h-3 text-amber-600" />
+                  <span>Barra de Tareas (Windows / OS)</span>
+                </label>
+                <span className="text-[9px] font-bold text-amber-800 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
+                  {taskbarProtection === 'crop' ? '✂️ No registrar' : taskbarProtection === 'blur' ? '💧 Dejar borrosa' : 'Completa'}
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-1">
+                <button
+                  type="button"
+                  onClick={() => setTaskbarProtection('crop')}
+                  className={`py-1 px-1 text-xs rounded border text-center transition-all ${
+                    taskbarProtection === 'crop'
+                      ? 'bg-amber-400 text-amber-950 border-amber-500 shadow-2xs font-extrabold'
+                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 font-medium'
+                  }`}
+                  title="No registrar la barra de tareas en la captura de pantallas (la recorta automáticamente)"
+                >
+                  <div className="font-bold text-[10.5px] leading-tight">No Registrar</div>
+                  <div className="text-[8px] opacity-85 leading-tight">Recortar (Recom.)</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTaskbarProtection('blur')}
+                  className={`py-1 px-1 text-xs rounded border text-center transition-all ${
+                    taskbarProtection === 'blur'
+                      ? 'bg-amber-400 text-amber-950 border-amber-500 shadow-2xs font-extrabold'
+                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 font-medium'
+                  }`}
+                  title="Dejar borrosa la barra de tareas para que no se vean los iconos de las aplicaciones abiertas"
+                >
+                  <div className="font-bold text-[10.5px] leading-tight">Dejar Borrosa</div>
+                  <div className="text-[8px] opacity-85 leading-tight">Ocultar Iconos</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTaskbarProtection('none')}
+                  className={`py-1 px-1 text-xs rounded border text-center transition-all ${
+                    taskbarProtection === 'none'
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs font-extrabold'
+                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 font-medium'
+                  }`}
+                  title="Mantiene la pantalla completa incluyendo la barra inferior"
+                >
+                  <div className="font-bold text-[10.5px] leading-tight">Completa</div>
+                  <div className="text-[8px] opacity-85 leading-tight">Sin filtrar</div>
+                </button>
+              </div>
+            </div>
+
             {/* Bottom info note */}
             <div className="flex items-center justify-between text-[10px] text-slate-500 pt-1 shrink-0">
               <span className="flex items-center gap-1 text-indigo-700 font-medium">
@@ -1775,6 +1960,27 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
                           <span>Ver a Pantalla Completa</span>
                         </button>
 
+                        {/* Acciones Rápidas de Barra de Tareas */}
+                        <button
+                          type="button"
+                          onClick={handleBatchCropTaskbar}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 rounded-lg border border-slate-300 shadow-2xs transition-colors"
+                          title="Recorta automáticamente la barra de tareas de Windows (~5% inferior) en todas las capturas"
+                        >
+                          <Scissors className="w-3.5 h-3.5 text-amber-600" />
+                          <span>Recortar barra en todas</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleBatchBlurTaskbar}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 rounded-lg border border-slate-300 shadow-2xs transition-colors"
+                          title="Aplica difuminado a la barra de tareas de Windows en todas las capturas para proteger iconos de apps"
+                        >
+                          <EyeOff className="w-3.5 h-3.5 text-slate-500" />
+                          <span>Difuminar barra</span>
+                        </button>
+
                         {videoFile && (
                           <button
                             type="button"
@@ -1808,7 +2014,7 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
                           >
                             <Plus className="w-3.5 h-3.5" />
                             <span>
-                              {isExtracting ? 'Extrayendo...' : 'Extraer más fotogramas del video grabado'}
+                              {isExtracting ? 'Extrayendo...' : 'Extraer más fotogramas'}
                             </span>
                           </button>
                         )}
@@ -1827,9 +2033,41 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
                             <Maximize2 className="w-4 h-4 text-white drop-shadow" />
                             <span>Ampliar</span>
                           </div>
-                          <span className="absolute top-1.5 left-1.5 bg-indigo-600/90 backdrop-blur-xs text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow z-10 max-w-[90%] truncate">
+                          <span className="absolute top-1.5 left-1.5 bg-indigo-600/90 backdrop-blur-xs text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow z-10 max-w-[70%] truncate">
                             {idx + 1}. {snap.label}
                           </span>
+
+                          {/* Quick Crop & Delete Action Buttons */}
+                          <div className="absolute top-1.5 right-1.5 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-20">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCropModal({
+                                  isOpen: true,
+                                  imageSrc: snap.dataUrl,
+                                  imageTitle: snap.label,
+                                  targetId: snap.id,
+                                  source: 'snapshots',
+                                });
+                              }}
+                              className="p-1 bg-white/95 hover:bg-white text-slate-700 hover:text-indigo-600 rounded shadow-xs transition-colors"
+                              title="Editar tamaño y recortar esta captura"
+                            >
+                              <Crop className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteViewerItem(snap.id);
+                              }}
+                              className="p-1 bg-white/95 hover:bg-white text-slate-700 hover:text-red-600 rounded shadow-xs transition-colors"
+                              title="Eliminar captura"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1874,7 +2112,7 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
                       <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
                         Secuencia de Pasos ({screenshots.length})
                       </span>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <button
                           type="button"
                           onClick={handleSaveDraftManual}
@@ -1893,9 +2131,30 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
                           <Maximize2 className="w-3.5 h-3.5" />
                           <span>Ver a Pantalla Completa</span>
                         </button>
+
+                        {/* Batch Taskbar Privacy Buttons */}
+                        <button
+                          type="button"
+                          onClick={handleBatchCropTaskbar}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 rounded-lg border border-slate-300 shadow-2xs transition-colors"
+                          title="Recorta automáticamente la barra de tareas de Windows (~5% inferior) en todas las capturas"
+                        >
+                          <Scissors className="w-3.5 h-3.5 text-amber-600" />
+                          <span>Recortar barra en todas</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleBatchBlurTaskbar}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 rounded-lg border border-slate-300 shadow-2xs transition-colors"
+                          title="Aplica difuminado a la barra de tareas en todas las capturas para proteger iconos de apps"
+                        >
+                          <EyeOff className="w-3.5 h-3.5 text-slate-500" />
+                          <span>Difuminar barra</span>
+                        </button>
+
                         <button
                           onClick={() => setScreenshots([])}
-                          className="text-xs text-red-600 hover:underline"
+                          className="text-xs text-red-600 hover:underline ml-1"
                         >
                           Limpiar todas
                         </button>
@@ -1905,22 +2164,51 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
                       {screenshots.map((s, idx) => (
                         <div
                           key={s.id}
-                          className="relative rounded-lg border border-slate-200 overflow-hidden group bg-slate-900"
+                          onClick={() => setFullscreenViewer({ isOpen: true, currentIndex: idx, source: 'screenshots' })}
+                          className="relative rounded-lg border border-slate-200 overflow-hidden group bg-slate-900 cursor-pointer hover:ring-2 hover:ring-indigo-500 hover:border-indigo-500 transition-all shadow-xs"
+                          title={`Captura #${idx + 1} - Clic para ampliar`}
                         >
                           <img
                             src={s.dataUrl}
                             alt={s.name}
-                            className="w-full h-20 object-cover group-hover:opacity-80 transition-opacity"
+                            className="w-full h-20 object-cover group-hover:scale-105 transition-transform"
                           />
-                          <div className="absolute top-1 left-1 bg-indigo-600 text-white text-[9.5px] font-bold px-1.5 py-0.5 rounded shadow">
+                          <div className="absolute top-1 left-1 bg-indigo-600/90 text-white text-[9.5px] font-bold px-1.5 py-0.5 rounded shadow z-10">
                             #{idx + 1}
                           </div>
-                          <button
-                            onClick={() => removeScreenshot(s.id)}
-                            className="absolute top-1 right-1 p-1 bg-red-600 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
+
+                          {/* Action Buttons: Crop & Delete */}
+                          <div className="absolute top-1 right-1 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-20">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCropModal({
+                                  isOpen: true,
+                                  imageSrc: s.dataUrl,
+                                  imageTitle: s.name,
+                                  targetId: s.id,
+                                  source: 'screenshots',
+                                });
+                              }}
+                              className="p-1 bg-white/95 hover:bg-white text-slate-700 hover:text-indigo-600 rounded shadow-xs transition-colors"
+                              title="Editar tamaño y recortar esta captura para ahorrar espacio en el PDF"
+                            >
+                              <Crop className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removeScreenshot(s.id);
+                              }}
+                              className="p-1 bg-white/95 hover:bg-white text-slate-700 hover:text-red-600 rounded shadow-xs transition-colors"
+                              title="Eliminar captura"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+
                           <div className="p-1 bg-white text-[10px] font-medium text-slate-700 truncate">
                             {s.name}
                           </div>
@@ -1987,7 +2275,7 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
                         Fotogramas Extraídos ({extractedFrames.filter((f) => f.selected).length} de{' '}
                         {extractedFrames.length} seleccionados)
                       </span>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <button
                           type="button"
                           onClick={handleSaveDraftManual}
@@ -2006,6 +2294,26 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
                           <Maximize2 className="w-3.5 h-3.5" />
                           <span>Ver a Pantalla Completa</span>
                         </button>
+
+                        {/* Batch Taskbar Privacy Buttons */}
+                        <button
+                          type="button"
+                          onClick={handleBatchCropTaskbar}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 rounded-lg border border-slate-300 shadow-2xs transition-colors"
+                          title="Recorta automáticamente la barra de tareas de Windows (~5% inferior) en todos los fotogramas"
+                        >
+                          <Scissors className="w-3.5 h-3.5 text-amber-600" />
+                          <span>Recortar barra en todas</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleBatchBlurTaskbar}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 rounded-lg border border-slate-300 shadow-2xs transition-colors"
+                          title="Aplica difuminado a la barra de tareas en todos los fotogramas para proteger iconos"
+                        >
+                          <EyeOff className="w-3.5 h-3.5 text-slate-500" />
+                          <span>Difuminar barra</span>
+                        </button>
                       </div>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-3">
@@ -2013,7 +2321,7 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
                         <div
                           key={frame.id}
                           onClick={() => toggleFrameSelection(frame.id)}
-                          className={`relative rounded-lg border-2 overflow-hidden cursor-pointer transition-all ${
+                          className={`relative rounded-lg border-2 overflow-hidden cursor-pointer transition-all group ${
                             frame.selected
                               ? 'border-indigo-600 shadow-md ring-2 ring-indigo-200'
                               : 'border-slate-200 opacity-60'
@@ -2022,9 +2330,9 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
                           <img
                             src={frame.dataUrl}
                             alt={`Frame ${idx + 1}`}
-                            className="w-full h-24 object-cover"
+                            className="w-full h-24 object-cover group-hover:scale-105 transition-transform"
                           />
-                          <div className="absolute top-1.5 left-1.5">
+                          <div className="absolute top-1.5 left-1.5 z-10">
                             <span
                               className={`text-[10px] font-bold px-1.5 py-0.5 rounded shadow ${
                                 frame.selected ? 'bg-indigo-600 text-white' : 'bg-slate-700 text-white'
@@ -2033,9 +2341,28 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
                               {frame.label || `#${idx + 1}`}
                             </span>
                           </div>
-                          <div className="absolute top-1.5 right-1.5">
+
+                          {/* Quick Crop and Select overlay */}
+                          <div className="absolute top-1.5 right-1.5 flex items-center gap-1 z-20">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCropModal({
+                                  isOpen: true,
+                                  imageSrc: frame.dataUrl,
+                                  imageTitle: frame.label || `Fotograma #${idx + 1}`,
+                                  targetId: frame.id,
+                                  source: 'extracted',
+                                });
+                              }}
+                              className="p-1 bg-white/95 hover:bg-white text-slate-700 hover:text-indigo-600 rounded shadow-xs transition-colors opacity-0 group-hover:opacity-100"
+                              title="Editar tamaño y recortar este fotograma"
+                            >
+                              <Crop className="w-3.5 h-3.5" />
+                            </button>
                             {frame.selected ? (
-                              <CheckCircle2 className="w-4 h-4 text-indigo-600 bg-white rounded-full" />
+                              <CheckCircle2 className="w-4 h-4 text-indigo-600 bg-white rounded-full shadow" />
                             ) : null}
                           </div>
                         </div>
@@ -2204,6 +2531,53 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
 
             {/* Right action buttons */}
             <div className="flex items-center gap-2">
+              {/* Botón Recortar / Editar Tamaño */}
+              <button
+                type="button"
+                onClick={() =>
+                  setCropModal({
+                    isOpen: true,
+                    imageSrc: currentViewerItem.dataUrl,
+                    imageTitle: currentViewerItem.label,
+                    targetId: currentViewerItem.id,
+                    source: fullscreenViewer.source,
+                  })
+                }
+                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center gap-1.5 text-xs font-bold"
+                title="Editar tamaño y recortar esta captura para el manual y PDF"
+              >
+                <Crop className="w-3.5 h-3.5" />
+                <span>Recortar</span>
+              </button>
+
+              {/* Botón 1-clic Quitar Barra de Tareas */}
+              <button
+                type="button"
+                onClick={async () => {
+                  const cropped = await cropTaskbarFromDataUrl(currentViewerItem.dataUrl);
+                  handleApplyCrop(cropped);
+                }}
+                className="px-2.5 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
+                title="Elimina automáticamente los iconos de la barra de tareas de Windows (~5% inferior)"
+              >
+                <Scissors className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">Quitar Barra</span>
+              </button>
+
+              {/* Botón 1-clic Difuminar Barra */}
+              <button
+                type="button"
+                onClick={async () => {
+                  const blurred = await blurTaskbarOnDataUrl(currentViewerItem.dataUrl);
+                  handleApplyCrop(blurred);
+                }}
+                className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
+                title="Difumina la barra de tareas de Windows para que no se vean los iconos de aplicaciones abiertas"
+              >
+                <EyeOff className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">Difuminar Barra</span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => handleDeleteViewerItem(currentViewerItem.id)}
@@ -2301,6 +2675,15 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
           </div>
         </div>
       )}
+
+      {/* Interactive Image Cropper & Resizer Modal */}
+      <ImageCropModal
+        isOpen={cropModal.isOpen}
+        imageSrc={cropModal.imageSrc}
+        imageTitle={cropModal.imageTitle}
+        onApplyCrop={(croppedDataUrl) => handleApplyCrop(croppedDataUrl)}
+        onClose={() => setCropModal((prev) => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 };

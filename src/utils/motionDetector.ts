@@ -41,6 +41,13 @@ export class ScreenActionDetector {
   public maxTimeWithoutCaptureMs = 8000; // Max 8s on active screen before taking an anchor snapshot
   private lastSubtleActivityTime = 0;
 
+  // Taskbar privacy & clean screenshot mode ('crop' | 'blur' | 'none')
+  public taskbarProtection: 'crop' | 'blur' | 'none' = 'crop';
+
+  public setTaskbarProtection(mode: 'crop' | 'blur' | 'none') {
+    this.taskbarProtection = mode;
+  }
+
   public start(
     stream: MediaStream,
     onSnapshot: (snapshot: AutoCapturedSnapshot) => void
@@ -147,14 +154,77 @@ export class ScreenActionDetector {
     if (!this.video || !this.video.videoWidth) return;
 
     const fullCanvas = document.createElement('canvas');
-    const width = Math.min(1280, this.video.videoWidth);
-    const height = Math.round(width * (this.video.videoHeight / this.video.videoWidth));
-    fullCanvas.width = width;
-    fullCanvas.height = height;
     const fullCtx = fullCanvas.getContext('2d');
     if (!fullCtx) return;
 
-    fullCtx.drawImage(this.video, 0, 0, width, height);
+    const maxWidth = 1280;
+    const origW = this.video.videoWidth;
+    const origH = this.video.videoHeight;
+    const width = Math.min(maxWidth, origW);
+    const height = Math.round(width * (origH / origW));
+
+    // Standard taskbar ratio: bottom ~5.2% of height (Windows 10/11 taskbar ~48-56px)
+    const taskbarRatio = 0.052;
+
+    if (this.taskbarProtection === 'crop') {
+      // 1. Excluir completamente la barra de tareas de la captura
+      const croppedSrcH = Math.round(origH * (1 - taskbarRatio));
+      const targetH = Math.round(width * (croppedSrcH / origW));
+      fullCanvas.width = width;
+      fullCanvas.height = targetH;
+      fullCtx.drawImage(
+        this.video,
+        0, 0, origW, croppedSrcH,
+        0, 0, width, targetH
+      );
+    } else if (this.taskbarProtection === 'blur') {
+      // 2. Registrar la pantalla pero dejar la barra de tareas borrosa para no ver iconos
+      fullCanvas.width = width;
+      fullCanvas.height = height;
+      fullCtx.drawImage(this.video, 0, 0, width, height);
+
+      const tbHeight = Math.max(38, Math.round(height * taskbarRatio));
+      const tbY = height - tbHeight;
+
+      try {
+        fullCtx.save();
+        // Downscale-upscale pixel dispersion for guaranteed blur across all environments
+        const miniCanvas = document.createElement('canvas');
+        miniCanvas.width = Math.max(20, Math.round(width / 12));
+        miniCanvas.height = Math.max(4, Math.round(tbHeight / 12));
+        const miniCtx = miniCanvas.getContext('2d');
+        if (miniCtx) {
+          miniCtx.drawImage(fullCanvas, 0, tbY, width, tbHeight, 0, 0, miniCanvas.width, miniCanvas.height);
+          fullCtx.imageSmoothingEnabled = true;
+          fullCtx.imageSmoothingQuality = 'high';
+          fullCtx.drawImage(miniCanvas, 0, 0, miniCanvas.width, miniCanvas.height, 0, tbY, width, tbHeight);
+        }
+        // Additional filter blur if supported
+        if ('filter' in fullCtx) {
+          fullCtx.filter = 'blur(16px)';
+          fullCtx.drawImage(fullCanvas, 0, tbY, width, tbHeight, 0, tbY, width, tbHeight);
+          fullCtx.filter = 'none';
+        }
+        // Frosted privacy translucent overlay to completely mask icons
+        fullCtx.fillStyle = 'rgba(235, 240, 248, 0.65)';
+        fullCtx.fillRect(0, tbY, width, tbHeight);
+        fullCtx.strokeStyle = 'rgba(203, 213, 225, 0.8)';
+        fullCtx.lineWidth = 1;
+        fullCtx.beginPath();
+        fullCtx.moveTo(0, tbY);
+        fullCtx.lineTo(width, tbY);
+        fullCtx.stroke();
+        fullCtx.restore();
+      } catch (e) {
+        fullCtx.fillStyle = '#1e293b';
+        fullCtx.fillRect(0, tbY, width, tbHeight);
+      }
+    } else {
+      fullCanvas.width = width;
+      fullCanvas.height = height;
+      fullCtx.drawImage(this.video, 0, 0, width, height);
+    }
+
     const dataUrl = fullCanvas.toDataURL('image/jpeg', 0.88);
 
     // Promptly release canvas memory
@@ -329,3 +399,104 @@ export class ScreenActionDetector {
 }
 
 export const screenActionDetector = new ScreenActionDetector();
+
+/**
+ * Utility to crop the bottom taskbar from any image dataUrl
+ * Ensures Windows 10/11 taskbar icons are not included in the screenshot
+ */
+export function cropTaskbarFromDataUrl(dataUrl: string, ratio = 0.052): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const w = img.naturalWidth || 1280;
+      const h = img.naturalHeight || 720;
+      const targetH = Math.max(10, Math.round(h * (1 - ratio)));
+
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = targetH;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        resolve(dataUrl);
+        return;
+      }
+
+      ctx.drawImage(img, 0, 0, w, targetH, 0, 0, w, targetH);
+      resolve(canvas.toDataURL('image/jpeg', 0.92));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
+/**
+ * Utility to blur the bottom taskbar on any image dataUrl
+ * Blurs the taskbar so application icons and system tray cannot be identified
+ */
+export function blurTaskbarOnDataUrl(dataUrl: string, ratio = 0.052): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const w = img.naturalWidth || 1280;
+      const h = img.naturalHeight || 720;
+      const tbH = Math.max(38, Math.round(h * ratio));
+      const tbY = h - tbH;
+
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        resolve(dataUrl);
+        return;
+      }
+
+      // Draw base image
+      ctx.drawImage(img, 0, 0, w, h);
+
+      // Apply guaranteed frosted blur to taskbar area
+      ctx.save();
+      try {
+        // Step 1: Pixel dispersion via downscale-upscale for universal blur
+        const miniCanvas = document.createElement('canvas');
+        miniCanvas.width = Math.max(20, Math.round(w / 12));
+        miniCanvas.height = Math.max(4, Math.round(tbH / 12));
+        const miniCtx = miniCanvas.getContext('2d');
+        if (miniCtx) {
+          miniCtx.drawImage(canvas, 0, tbY, w, tbH, 0, 0, miniCanvas.width, miniCanvas.height);
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          ctx.drawImage(miniCanvas, 0, 0, miniCanvas.width, miniCanvas.height, 0, tbY, w, tbH);
+        }
+
+        // Step 2: Canvas filter blur
+        if ('filter' in ctx) {
+          ctx.filter = 'blur(16px)';
+          ctx.drawImage(canvas, 0, tbY, w, tbH, 0, tbY, w, tbH);
+          ctx.filter = 'none';
+        }
+
+        // Step 3: Frosted translucent privacy tint
+        ctx.fillStyle = 'rgba(235, 240, 248, 0.65)';
+        ctx.fillRect(0, tbY, w, tbH);
+        ctx.strokeStyle = 'rgba(203, 213, 225, 0.8)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(0, tbY);
+        ctx.lineTo(w, tbY);
+        ctx.stroke();
+      } catch (e) {
+        ctx.fillStyle = '#1e293b';
+        ctx.fillRect(0, tbY, w, tbH);
+      }
+      ctx.restore();
+
+      resolve(canvas.toDataURL('image/jpeg', 0.92));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
