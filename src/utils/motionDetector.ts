@@ -23,6 +23,10 @@ export class ScreenActionDetector {
   // Frame comparators
   private previousImageData: ImageData | null = null;
   private baselineImageData: ImageData | null = null; // Image data at the moment of the last snapshot
+  private initialScreenImageData: ImageData | null = null; // Reference frame of initial screen
+  private lastCapturedImageData: ImageData | null = null; // Exact image data of the last emitted snapshot
+  private hasLeftInitialScreen = false;
+  private initialCaptureDone = false;
 
   private intervalId: any = null;
   private isDetecting = false;
@@ -30,15 +34,15 @@ export class ScreenActionDetector {
   private pendingCaptureTimeout: any = null;
   private onSnapshotCallback: ((snapshot: AutoCapturedSnapshot) => void) | null = null;
 
-  // Grid dimensions for localized micro-interaction detection
+  // Fine-grained grid dimensions for localized micro-interaction detection (table rows, checkboxes, dialogs)
   private readonly sampleWidth = 160;
   private readonly sampleHeight = 90;
-  private readonly gridCols = 8;
-  private readonly gridRows = 6;
+  private readonly gridCols = 12;
+  private readonly gridRows = 9;
 
   // Thresholds
-  public minCooldownMs = 800; // Allow consecutive actions without spam
-  public maxTimeWithoutCaptureMs = 8000; // Max 8s on active screen before taking an anchor snapshot
+  public minCooldownMs = 650; // Responsive cooldown between distinct actions
+  public maxTimeWithoutCaptureMs = 9000; // Max time on active work screen before taking an anchor snapshot
   private lastSubtleActivityTime = 0;
 
   // Taskbar privacy & clean screenshot mode ('crop' | 'blur' | 'none')
@@ -57,6 +61,9 @@ export class ScreenActionDetector {
     this.isDetecting = true;
     this.lastCaptureTime = Date.now();
     this.lastSubtleActivityTime = Date.now();
+    this.hasLeftInitialScreen = false;
+    this.initialCaptureDone = false;
+    this.lastCapturedImageData = null;
 
     this.video = document.createElement('video');
     this.video.srcObject = stream;
@@ -69,14 +76,17 @@ export class ScreenActionDetector {
     this.canvas.height = this.sampleHeight;
     this.ctx = this.canvas.getContext('2d', { willReadFrequently: true });
 
-    // Compare frames every 200ms for high responsiveness
+    // Compare frames every 180ms for high responsiveness
     this.intervalId = setInterval(() => {
       this.checkFrame();
-    }, 200);
+    }, 180);
 
-    // Initial capture at second 0
+    // Initial capture at second 0 (strictly once)
     setTimeout(() => {
-      this.captureNow('change_detected', 'Pantalla Inicial');
+      if (this.isDetecting && !this.initialCaptureDone) {
+        this.captureNow('change_detected', 'Pantalla Inicial');
+        this.initialCaptureDone = true;
+      }
     }, 450);
   }
 
@@ -113,36 +123,67 @@ export class ScreenActionDetector {
     }
     this.previousImageData = null;
     this.baselineImageData = null;
+    this.initialScreenImageData = null;
+    this.lastCapturedImageData = null;
     this.onSnapshotCallback = null;
   }
 
   /**
+   * Procedural action keywords in Spanish for business/ERP processes
+   */
+  private static readonly ACTION_KEYWORDS = [
+    'marcar', 'marcamos', 'marca', 'grabar', 'grabamos', 'graba', 'guardar', 'guardamos',
+    'confirmar', 'confirmacion', 'confirmación', 'seleccionar', 'seleccionamos', 'indicar',
+    'ingresar', 'ingresamos', 'entrar', 'entramos', 'factura', 'facturas', 'provision', 'provisión',
+    'embarque', 'solicitud', 'posicion', 'posición', 'tomar', 'tomamos', 'enter', 'clic',
+    'verificar', 'verificamos', 'revisar', 'revisamos', 'miro', 'virus', 'orden de compra'
+  ];
+
+  /**
    * Called when the instructor speaks a sentence in the recording.
-   * If there has been visual activity on the screen since the last capture,
-   * snaps the screen state synchronized with this spoken explanation.
+   * Smart Control:
+   * 1. Protects the initial screen: ignores speech during intro talk if screen has not changed.
+   * 2. High sensitivity on work screen: detects action keywords and snaps screen at key work moments.
    */
   public notifySpeechSentence(spokenText: string, timestampSec?: number) {
-    if (!this.isDetecting || !this.video || !this.video.videoWidth) return;
+    if (!this.isDetecting || !this.video || !this.video.videoWidth || !this.ctx) return;
     const now = Date.now();
+    const lowerText = (spokenText || '').toLowerCase();
 
-    // If at least 2.5s passed since last capture
-    if (now - this.lastCaptureTime > 2500) {
-      // Check if current screen differs from baseline
+    // Sample current frame
+    this.ctx.drawImage(this.video, 0, 0, this.sampleWidth, this.sampleHeight);
+    const current = this.ctx.getImageData(0, 0, this.sampleWidth, this.sampleHeight);
+
+    // Check if we are still on the initial screen (introductory explanation)
+    if (!this.hasLeftInitialScreen && this.initialScreenImageData) {
+      const diffFromInitial = this.calculateGlobalDiff(this.initialScreenImageData, current);
+      if (diffFromInitial < 0.035) {
+        // User is still explaining the intro on the initial screen; DO NOT capture duplicates!
+        return;
+      } else {
+        // Navigation or significant action has started
+        this.hasLeftInitialScreen = true;
+      }
+    }
+
+    // Check if this spoken sentence indicates a real procedural action
+    const hasActionKeyword = ScreenActionDetector.ACTION_KEYWORDS.some((kw) => lowerText.includes(kw));
+
+    // Dynamic cooldown: allow faster captures (1200ms) if explicit action keyword mentioned
+    const cooldownNeeded = hasActionKeyword ? 1200 : 2500;
+    if (now - this.lastCaptureTime > cooldownNeeded) {
       let diff = 0.05;
-      if (this.ctx && this.baselineImageData) {
-        try {
-          this.ctx.drawImage(this.video, 0, 0, this.sampleWidth, this.sampleHeight);
-          const current = this.ctx.getImageData(0, 0, this.sampleWidth, this.sampleHeight);
-          diff = this.calculateGlobalDiff(this.baselineImageData, current);
-        } catch (e) {
-          diff = 0.05;
-        }
+      if (this.lastCapturedImageData) {
+        diff = this.calculateGlobalDiff(this.lastCapturedImageData, current);
+      } else if (this.baselineImageData) {
+        diff = this.calculateGlobalDiff(this.baselineImageData, current);
       }
 
-      // If there's even slight difference (>0.2%) from baseline or user was talking
-      if (diff > 0.002) {
+      // Check if current screen is not visually identical to the last snapshot
+      if (diff > 0.005 || (hasActionKeyword && diff > 0.0015)) {
         const cleanSnippet = spokenText.length > 55 ? spokenText.slice(0, 52) + '...' : spokenText;
-        this.captureNow('change_detected', `Explicación: "${cleanSnippet}"`);
+        const reasonLabel = hasActionKeyword ? `Acción: "${cleanSnippet}"` : `Explicación: "${cleanSnippet}"`;
+        this.captureNow('change_detected', reasonLabel);
       }
     }
   }
@@ -152,6 +193,27 @@ export class ScreenActionDetector {
     customLabel?: string
   ) {
     if (!this.video || !this.video.videoWidth) return;
+
+    // Grab current sample for deduplication check
+    let currentSample: ImageData | null = null;
+    if (this.ctx) {
+      try {
+        this.ctx.drawImage(this.video, 0, 0, this.sampleWidth, this.sampleHeight);
+        currentSample = this.ctx.getImageData(0, 0, this.sampleWidth, this.sampleHeight);
+      } catch (e) {
+        // continue
+      }
+    }
+
+    // Anti-Spam Deduplication: Check against last captured snapshot
+    if (currentSample && this.lastCapturedImageData) {
+      const diffWithLast = this.calculateGlobalDiff(this.lastCapturedImageData, currentSample);
+      // If difference is under 0.6% and reason is not an explicit user hotkey/manual trigger,
+      // it is a redundant identical frame (e.g. mouse cursor twitch or same static screen).
+      if (diffWithLast < 0.006 && reason !== 'hotkey' && reason !== 'manual_trigger') {
+        return;
+      }
+    }
 
     const fullCanvas = document.createElement('canvas');
     const fullCtx = fullCanvas.getContext('2d');
@@ -235,7 +297,7 @@ export class ScreenActionDetector {
     if (reason === 'click') defaultLabel = 'Clic detectado';
     if (reason === 'enter') defaultLabel = 'Tecla Enter presionada';
     if (reason === 'save') defaultLabel = 'Acción de Guardar';
-    if (reason === 'change_detected') defaultLabel = 'Cambio en pantalla detectado';
+    if (reason === 'change_detected') defaultLabel = 'Actividad en pantalla';
 
     const now = Date.now();
     const snapshot: AutoCapturedSnapshot = {
@@ -250,13 +312,12 @@ export class ScreenActionDetector {
     this.lastCaptureTime = now;
     this.lastSubtleActivityTime = now;
 
-    // Reset baseline comparison image to this newly taken snapshot
-    if (this.ctx) {
-      try {
-        this.ctx.drawImage(this.video, 0, 0, this.sampleWidth, this.sampleHeight);
-        this.baselineImageData = this.ctx.getImageData(0, 0, this.sampleWidth, this.sampleHeight);
-      } catch (e) {
-        // ignore
+    // Track baseline and last snapshot image data
+    if (currentSample) {
+      this.lastCapturedImageData = currentSample;
+      this.baselineImageData = currentSample;
+      if (!this.initialScreenImageData) {
+        this.initialScreenImageData = currentSample;
       }
     }
 
@@ -274,55 +335,71 @@ export class ScreenActionDetector {
     if (!this.baselineImageData) {
       this.baselineImageData = currentImageData;
     }
+    if (!this.initialScreenImageData) {
+      this.initialScreenImageData = currentImageData;
+    }
 
     const now = Date.now();
     const timeSinceLastCapture = now - this.lastCaptureTime;
 
     if (this.previousImageData) {
-      // 1. Motion diff between consecutive 200ms frames (detects if user is currently moving / typing)
+      // 1. Motion diff between consecutive frames
       const instantDiff = this.calculateGlobalDiff(this.previousImageData, currentImageData);
 
       // 2. Accumulated diff compared to baseline (the state at the last captured snapshot)
       const baselineDiff = this.calculateGlobalDiff(this.baselineImageData, currentImageData);
 
-      // 3. Regional / Local grid block analysis (detects local clicks, checkboxes, inputs, dropdowns)
+      // 3. Diff compared to initial screen
+      const initialDiff = this.calculateGlobalDiff(this.initialScreenImageData, currentImageData);
+      if (initialDiff > 0.035) {
+        this.hasLeftInitialScreen = true;
+      }
+
+      // 4. Regional / Local grid block analysis (detects local clicks, checkboxes, inputs, dropdowns)
       const maxBlockBaselineDiff = this.calculateMaxBlockDiff(this.baselineImageData, currentImageData);
       const maxBlockInstantDiff = this.calculateMaxBlockDiff(this.previousImageData, currentImageData);
 
-      if (instantDiff > 0.002 || baselineDiff > 0.003 || maxBlockInstantDiff > 0.03) {
+      if (instantDiff > 0.001 || baselineDiff > 0.002 || maxBlockInstantDiff > 0.02) {
         this.lastSubtleActivityTime = now;
       }
 
-      // Micro-action detection conditions:
-      // Condition A: Significant global change (> 1.2% total screen)
+      // Micro-action detection conditions on work screens:
+      // Condition A: Significant global transition (page/transaction navigation, large table load)
       const hasGlobalChange = baselineDiff > 0.012;
 
-      // Condition B: Localized micro-interaction on the same screen (e.g. typing in a field, selecting a radio button)
-      // Even if the global diff is only 0.3%, a single block having > 6.5% change indicates a clear local action!
-      const hasLocalMicroAction = maxBlockBaselineDiff > 0.065 && baselineDiff > 0.0025;
+      // Condition B: Localized micro-interaction on the SAME screen (e.g. checking a checkbox in a row,
+      // selecting a row, typing in an amount/field, modal alert).
+      // With our 12x9 grid, a small checkbox/button change is > 2.8% of a block!
+      const hasLocalMicroAction = maxBlockBaselineDiff > 0.028 && baselineDiff > 0.0008;
 
-      // Condition C: Sudden burst of action settled (e.g. clicked button or opened menu)
-      const hasInstantAction = maxBlockInstantDiff > 0.08 || instantDiff > 0.015;
+      // Condition C: Sudden burst of action settled (e.g. clicked button or opened popup menu)
+      const hasInstantAction = maxBlockInstantDiff > 0.05 || instantDiff > 0.012;
 
       // If change detected and cooled down
       if ((hasGlobalChange || hasLocalMicroAction || hasInstantAction) && timeSinceLastCapture > this.minCooldownMs) {
-        // Wait 380ms for transition/typing to settle before taking high-res snapshot
+        // Protect initial screen: if we haven't left the initial screen yet and the change is small (<3%), do not capture!
+        if (!this.hasLeftInitialScreen && baselineDiff < 0.035) {
+          this.previousImageData = currentImageData;
+          return;
+        }
+
+        // Wait 340ms for transition/typing to settle before taking high-res snapshot
         if (!this.pendingCaptureTimeout) {
           this.pendingCaptureTimeout = setTimeout(() => {
             if (this.isDetecting && this.video) {
               const actionLabel = hasLocalMicroAction
-                ? 'Interacción en pantalla (campo / selección)'
-                : `Acción detectada (${Math.round(baselineDiff * 100)}% de cambio)`;
+                ? 'Acción en pantalla (selección / campo / confirmación)'
+                : `Cambio en pantalla (${Math.round(baselineDiff * 100)}%)`;
 
               this.captureNow('change_detected', actionLabel);
             }
             this.pendingCaptureTimeout = null;
-          }, 380);
+          }, 340);
         }
       }
 
-      // Condition D: Active screen heartbeat (if the user spent > 8s on the same screen while explaining, and there was activity)
-      if (timeSinceLastCapture > this.maxTimeWithoutCaptureMs && (now - this.lastSubtleActivityTime < 3000)) {
+      // Condition D: Active screen heartbeat ONLY on work screen (never flood initial screen)
+      if (this.hasLeftInitialScreen && timeSinceLastCapture > this.maxTimeWithoutCaptureMs && (now - this.lastSubtleActivityTime < 3000)) {
         if (!this.pendingCaptureTimeout) {
           this.captureNow('change_detected', 'Continuación del procedimiento');
         }
@@ -345,8 +422,8 @@ export class ScreenActionDetector {
       const rDiff = Math.abs(data1[i] - data2[i]);
       const gDiff = Math.abs(data1[i + 1] - data2[i + 1]);
       const bDiff = Math.abs(data1[i + 2] - data2[i + 2]);
-      // Threshold 45 captures subtle UI highlights, text cursors, and radio button state changes
-      if (rDiff + gDiff + bDiff > 45) {
+      // Threshold 38 captures subtle UI highlights, text cursors, and table row selections
+      if (rDiff + gDiff + bDiff > 38) {
         changedPixels++;
       }
     }
@@ -355,16 +432,16 @@ export class ScreenActionDetector {
   }
 
   /**
-   * Divides the frame into an 8x6 grid of 48 spatial blocks and returns
+   * Divides the frame into an 12x9 grid of 108 spatial blocks and returns
    * the maximum percentage change found in any individual block.
-   * This is key to detecting localized actions (like a text input, toggle or radio) on a static screen.
+   * This is key to detecting localized actions (like a checkbox toggle, table row, or button click) on a static screen.
    */
   private calculateMaxBlockDiff(img1: ImageData, img2: ImageData): number {
     const data1 = img1.data;
     const data2 = img2.data;
 
-    const blockW = Math.floor(this.sampleWidth / this.gridCols); // 20px
-    const blockH = Math.floor(this.sampleHeight / this.gridRows); // 15px
+    const blockW = Math.floor(this.sampleWidth / this.gridCols);
+    const blockH = Math.floor(this.sampleHeight / this.gridRows);
     const pixelsPerBlock = blockW * blockH;
 
     const blockChangedCounts = new Array(this.gridCols * this.gridRows).fill(0);
@@ -380,7 +457,7 @@ export class ScreenActionDetector {
         const gDiff = Math.abs(data1[pixelIdx + 1] - data2[pixelIdx + 1]);
         const bDiff = Math.abs(data1[pixelIdx + 2] - data2[pixelIdx + 2]);
 
-        if (rDiff + gDiff + bDiff > 45) {
+        if (rDiff + gDiff + bDiff > 38) {
           blockChangedCounts[blockIndex]++;
         }
       }

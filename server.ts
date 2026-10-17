@@ -90,8 +90,19 @@ app.post('/api/generate-manual', async (req: Request, res: Response) => {
     }
 
     // Build multimodal parts for Gemini
-    // Limit to max 12 frames to prevent timeout and ensure high fidelity
-    const selectedImages = images.slice(0, 12);
+    // Deduplicate consecutive identical frames (e.g. repeated static initial screens)
+    const deduplicatedImages: typeof images = [];
+    for (let i = 0; i < images.length; i++) {
+      const cur = images[i];
+      const prev = deduplicatedImages[deduplicatedImages.length - 1];
+      if (prev && prev.dataUrl === cur.dataUrl) {
+        continue;
+      }
+      deduplicatedImages.push(cur);
+    }
+
+    // Limit to max 14 frames to prevent timeout and ensure high fidelity
+    const selectedImages = deduplicatedImages.slice(0, 14);
 
     const parts: any[] = [];
 
@@ -143,6 +154,19 @@ REGLA FUNDAMENTAL DE FIDELIDAD ESTRICTA A LA GRABACIÓN (PROHIBICIÓN DE ALUCINA
 1. CERO INVENCIÓN: Basa TODO el contenido exclusivamente en lo que se observa visualmente en las capturas de pantalla y lo que explica el instructor en el audio.
 2. NO ASUMAS SAP NI OTRO ERP A MENOS QUE SEA EVIDENTE: Si la aplicación mostrada es una web, portal interno, sistema administrativo, CRM u otra herramienta que no sea SAP, NO menciones transacciones de SAP (como VA01, MM02, MIRO, ME21N, BANS, Solcrom, etc.) ni inventes códigos de transacción ajenos a la grabación.
 3. Utiliza los nombres de campos, botones, secciones y terminología real que se leen en la pantalla capturada y en el audio del instructor.
+
+CONTROL CRÍTICO DE PANTALLAS Y MULTI-ACTIVIDADES EN LA MISMA VENTANA (ANTI-REDUNDANCIA Y COBERTURA COMPLETA):
+1. CONTROL DE PANTALLA INICIAL (CERO PASOS REDUNDANTES):
+   Si el instructor comienza el video hablando o explicando el contexto antes de ejecutar acciones operativas (ej. 00:00 a 00:50 de introducción verbal), la pantalla inicial sólo debe tener como máximo UN paso introductorio ("Acceder al sistema" o "Navegar a la transacción") o asociarse al primer paso operativo. NUNCA crees 3 o 4 pasos repetidos de una pantalla donde no se realizaron actividades.
+2. VARIAS ACTIVIDADES DOCUMENTADAS EN LA MISMA PANTALLA O TABLA:
+   En sistemas de gestión (SAP, ERPs, tablas dinámicas, portales de facturación), es normal que el usuario realice MÚLTIPLES actividades consecutivas en la misma pantalla o tabla (ejemplo: filtrar por solicitud de embarque, verificar columnas de provisión, marcar la casilla de una factura, pulsar Grabar datos, confirmar la ventana modal emergente, seleccionar una segunda factura con provisión $500 y recibida $178, volver a pulsar Grabar, y finalmente revisar el saldo pendiente).
+   DEBES CREAR UN PASO SEPARADO Y EXPLÍCITO PARA CADA UNA DE ESAS ACTIVIDADES REALIZADAS, asociando la captura correspondiente de ese momento y configurando:
+   - 'title' claro y específico para esa acción concreta (ej. "Verificar provisión e importe de la primera factura", "Marcar casilla y grabar datos", "Confirmar registro en ventana emergente", "Seleccionar y grabar segunda factura recibida", "Comprobar saldo restante pendiente de facturación").
+   - 'actionType' exacto (click, select, save, enter, verify, type).
+   - 'targetElement' señalando el botón, celda, casilla o línea exacta operada.
+   - 'hotspotX' y 'hotspotY' apuntando al punto visual de la pantalla donde se efectúa la acción.
+3. ALINEACIÓN TOTAL CON LA TRANSCRIPCIÓN:
+   Cada actividad que el instructor describe en el audio (como ingresar sociedad POLK, indicar solicitud de embarque, cotejar montos de $60 y $120, registrar $140,000, aceptar confirmación, gestionar provisión de $500 / $178 y revisar remanente de $88) DEBE quedar fielmente reflejada en los pasos del manual con sus notas de instructor correspondientes.
 
 CAPA DE ANÁLISIS FUNCIONAL E INTENCIÓN PEDAGÓGICA (MODELO 4C/ID):
 No te limites a describir la acción física pasiva. Cada paso debe estructurarse con:

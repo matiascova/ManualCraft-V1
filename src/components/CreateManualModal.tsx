@@ -43,7 +43,7 @@ import {
 } from 'lucide-react';
 import { VideoFrameCandidate, UserManual, InstructorTranscriptSegment } from '../types/manual';
 import { Project } from '../types/project';
-import { extractFramesFromVideo } from '../utils/videoExtractor';
+import { extractFramesFromVideo, parseTranscriptWithTimestamps } from '../utils/videoExtractor';
 import { screenRecorder } from '../utils/screenRecorder';
 import {
   screenActionDetector,
@@ -107,6 +107,7 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
   const [recordedVideoUrl, setRecordedVideoUrl] = useState<string | null>(null);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [autoSnapshots, setAutoSnapshots] = useState<AutoCapturedSnapshot[]>([]);
+  const autoSnapshotsRef = useRef<AutoCapturedSnapshot[]>([]);
   const [autoDetectEnabled, setAutoDetectEnabled] = useState(true);
   const recordTimerRef = useRef<any>(null);
 
@@ -115,10 +116,24 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
   const [transcriptionStatus, setTranscriptionStatus] = useState<TranscriptionStatus>('inactive');
   const [interimSpeech, setInterimSpeech] = useState('');
   const [instructorTranscripts, setInstructorTranscripts] = useState<InstructorTranscriptSegment[]>([]);
+  const instructorTranscriptsRef = useRef<InstructorTranscriptSegment[]>([]);
   const [micVolume, setMicVolume] = useState(0);
   const [newSpeechInput, setNewSpeechInput] = useState('');
   const [editingTranscriptId, setEditingTranscriptId] = useState<string | null>(null);
   const [editingTranscriptText, setEditingTranscriptText] = useState('');
+
+  // Transcript Import & Screen Sync State
+  const [showImportTranscriptModal, setShowImportTranscriptModal] = useState(false);
+  const [rawTranscriptToImport, setRawTranscriptToImport] = useState('');
+  const [autoSyncOnImport, setAutoSyncOnImport] = useState(true);
+
+  useEffect(() => {
+    autoSnapshotsRef.current = autoSnapshots;
+  }, [autoSnapshots]);
+
+  useEffect(() => {
+    instructorTranscriptsRef.current = instructorTranscripts;
+  }, [instructorTranscripts]);
 
   // AI Generation State
   const [isGenerating, setIsGenerating] = useState(false);
@@ -147,6 +162,9 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
     title: string;
     manualId: string;
   } | null>(null);
+
+  // Sync notification banner
+  const [syncNotification, setSyncNotification] = useState<string | null>(null);
 
   // Taskbar privacy & clean screenshot mode ('crop' | 'blur' | 'none')
   const [taskbarProtection, setTaskbarProtection] = useState<'crop' | 'blur' | 'none'>('crop');
@@ -552,15 +570,19 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
   };
 
   // Handle Video Upload & Frame Extraction
-  const handleVideoSelected = async (file: File) => {
+  const handleVideoSelected = async (file: File, transcriptsOverride?: InstructorTranscriptSegment[]) => {
     setVideoFile(file);
     setIsExtracting(true);
-    setExtractionProgress({ pct: 0, status: 'Cargando video...' });
+    setExtractionProgress({ pct: 0, status: 'Analizando actividad y extrayendo fotogramas...' });
     setErrorMessage(null);
     try {
+      const activeTranscripts = transcriptsOverride || instructorTranscriptsRef.current;
+      const transcriptAnchors = activeTranscripts.map((t) => ({ timestamp: t.timestamp, text: t.text }));
       const frames = await extractFramesFromVideo(file, {
-        maxFrames: 10,
+        maxFrames: 14,
         intervalSeconds: frameInterval,
+        transcriptTimestamps: transcriptAnchors,
+        deduplicateStaticFrames: true,
         onProgress: (pct, status) => {
           setExtractionProgress({ pct, status });
         },
@@ -573,14 +595,95 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
     }
   };
 
+  // Sync Extracted Screens with Instructor Transcript Timestamps
+  const handleSyncScreensWithTranscript = async (transcriptsToUse?: InstructorTranscriptSegment[]) => {
+    const targetTranscripts = transcriptsToUse || instructorTranscripts;
+    if (!videoFile) {
+      setErrorMessage('No hay ningún video grabado o cargado para sincronizar las pantallas. Por favor sube o graba un video.');
+      return;
+    }
+    if (!targetTranscripts || targetTranscripts.length === 0) {
+      setErrorMessage('Por favor agrega o importa una transcripción con marcas de tiempo primero.');
+      return;
+    }
+
+    setIsExtracting(true);
+    setExtractionProgress({ pct: 0, status: 'Sincronizando pantallas activas con la transcripción...' });
+    setErrorMessage(null);
+    try {
+      const transcriptAnchors = targetTranscripts.map((t) => ({ timestamp: t.timestamp, text: t.text }));
+      const frames = await extractFramesFromVideo(videoFile, {
+        maxFrames: 16,
+        transcriptTimestamps: transcriptAnchors,
+        deduplicateStaticFrames: true,
+        onProgress: (pct, status) => {
+          setExtractionProgress({ pct, status });
+        },
+      });
+
+      if (frames.length > 0) {
+        setExtractedFrames(frames);
+        setSyncNotification(
+          `¡Pantallas sincronizadas! Se extrajeron ${frames.length} capturas activas en los momentos exactos de la transcripción, eliminando pantallas iniciales vacías.`
+        );
+        setTimeout(() => setSyncNotification(null), 5000);
+      } else {
+        setErrorMessage('No se pudieron extraer fotogramas del video para los momentos indicados.');
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Error al sincronizar las pantallas con el video');
+    } finally {
+      setIsExtracting(false);
+    }
+  };
+
+  // Import raw transcript with timestamps [mm:ss]
+  const handleImportTranscriptText = async () => {
+    if (!rawTranscriptToImport.trim()) return;
+
+    const parsed = parseTranscriptWithTimestamps(rawTranscriptToImport);
+    let newSegments: InstructorTranscriptSegment[] = [];
+
+    if (parsed.length > 0) {
+      newSegments = parsed.map((item, idx) => ({
+        id: `transcript-imp-${Date.now()}-${idx}`,
+        timestamp: item.timestamp,
+        text: item.text,
+      }));
+    } else {
+      // Fallback: split by line and space every 10s
+      const lines = rawTranscriptToImport.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+      newSegments = lines.map((line, idx) => ({
+        id: `transcript-imp-${Date.now()}-${idx}`,
+        timestamp: idx * 10,
+        text: line,
+      }));
+    }
+
+    setInstructorTranscripts(newSegments);
+    instructorTranscriptsRef.current = newSegments;
+    setShowImportTranscriptModal(false);
+    setRawTranscriptToImport('');
+
+    setSyncNotification(`¡Transcripción importada! Se cargaron ${newSegments.length} frases con sus marcas de tiempo.`);
+    setTimeout(() => setSyncNotification(null), 4000);
+
+    // If auto-sync is enabled and video is available, automatically resync screen frames!
+    if (autoSyncOnImport && videoFile) {
+      await handleSyncScreensWithTranscript(newSegments);
+    }
+  };
+
   // Start Screen Recording with Action Detection & Real-Time MS Teams Style Speech Transcription
   const handleStartRecording = async (appendMode = false) => {
     setErrorMessage(null);
     if (!appendMode) {
       setAutoSnapshots([]);
+      autoSnapshotsRef.current = [];
       setExtractedFrames([]);
       setRecordedVideoUrl(null);
       setInstructorTranscripts([]);
+      instructorTranscriptsRef.current = [];
     }
     setInterimSpeech('');
 
@@ -598,10 +701,13 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
         screenActionDetector.stop();
 
         // Stop speech transcription if active
+        let currentTranscripts = instructorTranscriptsRef.current;
         if (enableInstructorAudio) {
           const finalTranscripts = speechTranscriptionService.stop();
           if (finalTranscripts.length > 0) {
-            setInstructorTranscripts((prev) => (appendMode ? [...prev, ...finalTranscripts] : finalTranscripts));
+            currentTranscripts = appendMode ? [...currentTranscripts, ...finalTranscripts] : finalTranscripts;
+            setInstructorTranscripts(currentTranscripts);
+            instructorTranscriptsRef.current = currentTranscripts;
           }
           setTranscriptionStatus('inactive');
           setMicVolume(0);
@@ -616,9 +722,10 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
         });
         setVideoFile(recordedFile);
 
+        const currentSnapshots = autoSnapshotsRef.current;
         // If we collected auto snapshots, integrate them directly into extractedFrames
-        if (autoSnapshots.length > 0) {
-          const snapshotFrames: VideoFrameCandidate[] = autoSnapshots.map((s, idx) => ({
+        if (currentSnapshots.length > 0) {
+          const snapshotFrames: VideoFrameCandidate[] = currentSnapshots.map((s, idx) => ({
             id: s.id,
             timestamp: s.timestamp,
             dataUrl: s.dataUrl,
@@ -627,7 +734,8 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
           }));
           setExtractedFrames((prev) => (appendMode ? [...prev, ...snapshotFrames] : snapshotFrames));
         } else {
-          await handleVideoSelected(recordedFile);
+          // Fall back to smart video frame extraction using transcript timestamps
+          await handleVideoSelected(recordedFile, currentTranscripts);
         }
       });
 
@@ -637,7 +745,8 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
           {
             onInterim: (txt) => setInterimSpeech(txt),
             onSentence: (segment) => {
-              setInstructorTranscripts((prev) => [...prev, segment]);
+              instructorTranscriptsRef.current.push(segment);
+              setInstructorTranscripts([...instructorTranscriptsRef.current]);
               screenActionDetector.notifySpeechSentence(segment.text, segment.timestamp);
             },
             onStatusChange: (status, msg) => {
@@ -655,7 +764,8 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
       // Hook live action detector
       if (autoDetectEnabled) {
         screenActionDetector.start(stream, (snapshot) => {
-          setAutoSnapshots((prev) => [...prev, snapshot]);
+          autoSnapshotsRef.current.push(snapshot);
+          setAutoSnapshots([...autoSnapshotsRef.current]);
         });
       }
     } catch (err: any) {
@@ -754,7 +864,17 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
         label: s.name,
       }));
     } else {
-      const selected = extractedFrames.filter((f) => f.selected);
+      let candidatePool = extractedFrames;
+      if (candidatePool.length === 0 && autoSnapshots.length > 0) {
+        candidatePool = autoSnapshots.map((s, idx) => ({
+          id: s.id,
+          timestamp: s.timestamp,
+          dataUrl: s.dataUrl,
+          selected: true,
+          label: s.label || `Acción ${idx + 1}`,
+        }));
+      }
+      const selected = candidatePool.filter((f) => f.selected);
       if (selected.length === 0) {
         setErrorMessage('Por favor selecciona al menos un fotograma o acción capturada.');
         return;
@@ -1204,6 +1324,23 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             </div>
+          </div>
+        )}
+
+        {/* Sync Success Banner */}
+        {syncNotification && (
+          <div className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white px-4 py-2.5 text-xs font-semibold flex items-center justify-between shadow-xs">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-100 shrink-0" />
+              <span>{syncNotification}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSyncNotification(null)}
+              className="p-1 text-emerald-100 hover:text-white rounded transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
         )}
 
@@ -1811,40 +1948,85 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
                 </div>
 
                 {/* POST-RECORDING REVIEW: TRANSCRIBED INSTRUCTOR SPEECH SECTION */}
-                {instructorTranscripts.length > 0 && !isRecording && (
+                {!isRecording && (
                   <div className="bg-gradient-to-br from-purple-50/70 to-indigo-50/50 rounded-xl p-5 border border-purple-200 flex flex-col gap-3 shadow-xs">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-purple-200/80 pb-3">
+                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-purple-200/80 pb-3">
                       <div className="flex items-center gap-2">
                         <div className="w-8 h-8 rounded-lg bg-purple-600 text-white flex items-center justify-center font-bold">
                           <MessageSquareQuote className="w-4 h-4" />
                         </div>
                         <div>
                           <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                            <span>Transcripción del Instructor Capturada (Estilo MS Teams)</span>
+                            <span>Transcripción y Minuta del Paso a Paso (Instructor)</span>
                             <span className="text-[11px] bg-purple-200/80 text-purple-800 font-bold px-2 py-0.5 rounded-full">
-                              {instructorTranscripts.length} frases
+                              {instructorTranscripts.length} {instructorTranscripts.length === 1 ? 'frase' : 'frases'}
                             </span>
                           </h4>
                           <p className="text-xs text-purple-900/80">
-                            Esta transcripción será analizada por Gemini AI para enriquecer las instrucciones, títulos, advertencias y consejos del manual.
+                            Gemini AI utiliza esta transcripción para crear los pasos exactos y extraer pantallas sincronizadas con cada actividad.
                           </p>
                         </div>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const phrase = prompt('Escribe la indicación o consejo que dio el instructor:');
-                          if (phrase && phrase.trim()) {
-                            handleAddInstructorSpeechPhrase(phrase.trim());
-                          }
-                        }}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-purple-50 text-purple-700 font-semibold text-xs rounded-lg border border-purple-300 shadow-2xs transition-colors self-start sm:self-auto"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Añadir indicación hablada</span>
-                      </button>
+                      <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
+                        {/* Botón Sincronizar Pantallas con Transcripción */}
+                        {videoFile && instructorTranscripts.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => handleSyncScreensWithTranscript()}
+                            disabled={isExtracting}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg shadow-xs transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
+                            title="Extrae fotogramas en los momentos exactos de la transcripción, eliminando pantallas iniciales inactivas y capturando todas las acciones en la pantalla de trabajo"
+                          >
+                            <RefreshCw className={`w-3.5 h-3.5 ${isExtracting ? 'animate-spin' : ''}`} />
+                            <span>Sincronizar pantallas con transcripción</span>
+                          </button>
+                        )}
+
+                        {/* Botón Pegar Transcripción con Tiempos */}
+                        <button
+                          type="button"
+                          onClick={() => setShowImportTranscriptModal(true)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-purple-50 text-purple-700 font-semibold text-xs rounded-lg border border-purple-300 shadow-2xs transition-colors"
+                          title="Pega una transcripción existente con tiempos [mm:ss] para alinear las capturas"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          <span>Pegar Transcripción [mm:ss]</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const phrase = prompt('Escribe la indicación o consejo que dio el instructor:');
+                            if (phrase && phrase.trim()) {
+                              handleAddInstructorSpeechPhrase(phrase.trim());
+                            }
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-100/70 hover:bg-purple-200/80 text-purple-800 font-semibold text-xs rounded-lg border border-purple-200 shadow-2xs transition-colors"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Añadir frase</span>
+                        </button>
+                      </div>
                     </div>
+
+                    {instructorTranscripts.length === 0 ? (
+                      <div className="py-4 px-3 bg-white/70 rounded-lg border border-dashed border-purple-200 text-center flex flex-col items-center gap-2">
+                        <Subtitles className="w-6 h-6 text-purple-400" />
+                        <p className="text-xs text-slate-600 max-w-md">
+                          ¿Tienes una transcripción o minuta paso a paso de lo que se realizó en el video?
+                          Pégala para que la IA extraiga las pantallas activas y genere los pasos correspondientes.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setShowImportTranscriptModal(true)}
+                          className="mt-1 inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-lg shadow-xs transition-colors"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          <span>Pegar Transcripción Paso a Paso</span>
+                        </button>
+                      </div>
+                    ) : null}
 
                     {/* Timeline List of Instructor Phrases */}
                     <div className="max-h-56 overflow-y-auto flex flex-col gap-2 pr-1">
@@ -2672,6 +2854,130 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
                 </button>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Importar Transcripción con Tiempos [mm:ss] */}
+      {showImportTranscriptModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="px-6 py-4 bg-gradient-to-r from-purple-700 to-indigo-700 text-white flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center font-bold">
+                  <FileText className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base leading-tight">Pegar Transcripción / Minuta con Tiempos</h3>
+                  <p className="text-xs text-purple-200">
+                    Alinea cada momento de la explicación verbal con las pantallas del video
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowImportTranscriptModal(false)}
+                className="p-1.5 rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 overflow-y-auto flex flex-col gap-4">
+              <div className="bg-purple-50 border border-purple-200 rounded-xl p-3.5 text-xs text-purple-950 flex flex-col gap-1.5">
+                <p className="font-bold flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-purple-600" />
+                  <span>Formato compatible: [mm:ss] o [hh:mm:ss] seguido del texto</span>
+                </p>
+                <p className="text-purple-900/80">
+                  El sistema detectará automáticamente cada marca de tiempo y extraerá las capturas activas en esos momentos exactos del video, evitando fotos redundantes de la pantalla inicial.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-700">
+                    Texto de la transcripción paso a paso:
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRawTranscriptToImport(
+`[00:09] vamos a crear un manual para
+[00:16] hacer la distribución de las facturas recibidas en relación a las
+[00:27] provisiones realizadas en la orden de compra para los costos indirectos para ello vamos a entrar a la z mmt 0033
+[00:51] en la sociedad vamos a indicar la sociedad polk Si queremos verificar varias presionamos enter Si queremos verificar alguna instrucción de embarque en particular podemos ingresar la solicitud o el embarque en este caso Vamos a ingresar la solicitud
+[00:56] y como resultado nos va a traer que tenemos
+[01:00] asociado con ese número de embarque
+[01:02] estas facturas
+[01:09] las cuales están relacionadas con esta orden de compra y esta posición
+[01:22] en esta columna nosotros podemos ver la provisión donde tenemos 60 dólares en cada uno con un total de $120 y en esta columna podemos ver el número
+[01:36] o el importe que corresponde a la cantidad en este caso 140,000 como ese está dentro de los parámetros que corresponden marcamos esa factura y grabamos los datos
+[01:39] nos pide la confirmación
+[01:52] ahora esa factura ya está disponible en el portal para que sean aprobadas y transformadas en contabilizaciones en la factura miro
+[02:05] esta particularmente al parecer tiene un error no nos llegó el importe de la factura en teoría pero está así acá tenemos una provisión de $500
+[02:16] y ya hemos recibido una factura por 178 por tanto vamos a tomar esto y vamos a grabar los datos
+[02:28] esa factura también ya ha pasado al portal de actualizaciones para que se transforme en una factura en la transacción virus
+[02:40] finalmente en la parte de abajo relacionado con esa misma solicitud tenemos estos 88 dólares que aún están a la espera de una factura están relacionadas con ese concepto`
+                      );
+                    }}
+                    className="text-[11px] text-purple-700 hover:text-purple-900 font-semibold underline"
+                  >
+                    Cargar transcripción de ZMMT0033 (ejemplo del usuario)
+                  </button>
+                </div>
+
+                <textarea
+                  value={rawTranscriptToImport}
+                  onChange={(e) => setRawTranscriptToImport(e.target.value)}
+                  placeholder={`[00:09] vamos a crear un manual para...\n[00:27] para ello vamos a entrar a la z mmt 0033\n[00:51] en la sociedad vamos a indicar la sociedad polk...\n[01:36] marcamos esa factura y grabamos los datos\n[01:39] nos pide la confirmación`}
+                  rows={10}
+                  className="w-full text-xs font-mono p-3 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-slate-50/50"
+                />
+              </div>
+
+              {videoFile && (
+                <label className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200 cursor-pointer hover:bg-slate-100/60 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={autoSyncOnImport}
+                    onChange={(e) => setAutoSyncOnImport(e.target.checked)}
+                    className="w-4 h-4 text-purple-600 rounded border-slate-300 focus:ring-purple-500"
+                  />
+                  <div className="flex flex-col">
+                    <span className="text-xs font-bold text-slate-800">
+                      Sincronizar y re-extraer automáticamente las capturas del video
+                    </span>
+                    <span className="text-[11px] text-slate-500">
+                      Elimina las fotos duplicadas de la pantalla inicial y genera una captura activa por cada acción documentada.
+                    </span>
+                  </div>
+                </label>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setShowImportTranscriptModal(false)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 transition-colors"
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="button"
+                onClick={handleImportTranscriptText}
+                disabled={!rawTranscriptToImport.trim()}
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white font-bold text-xs rounded-xl shadow-md transition-all hover:scale-[1.02] active:scale-[0.98]"
+              >
+                <Check className="w-4 h-4" />
+                <span>Importar y Procesar Transcripción</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
