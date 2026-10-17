@@ -131,6 +131,14 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
     source: 'snapshots',
   });
 
+  // Saved draft notification state
+  const [draftSavedNotice, setDraftSavedNotice] = useState<{
+    show: boolean;
+    count: number;
+    title: string;
+    manualId: string;
+  } | null>(null);
+
   // Active items array based on source
   const currentViewerItems: Array<{
     id: string;
@@ -243,12 +251,43 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
       setTargetAudience(existingManual.targetAudience || 'Usuarios finales y colaboradores');
       setActiveTab('record');
       setSaveMode('update');
-      // If manual had an existing instructor transcript, pre-populate if needed
+      if (existingManual.pedagogicalApproach) {
+        setPedagogicalApproach(existingManual.pedagogicalApproach);
+      }
+      if (existingManual.projectId) {
+        setSelectedProjectId(existingManual.projectId);
+      }
+      // If manual had an existing instructor transcript, pre-populate
       if (existingManual.instructorTranscript && existingManual.instructorTranscript.length > 0) {
         setInstructorTranscripts(existingManual.instructorTranscript);
       }
+      // If manual had existing steps with images, load them as snapshots and candidate frames so the user doesn't lose them!
+      if (existingManual.steps && existingManual.steps.length > 0) {
+        const loadedSnaps: AutoCapturedSnapshot[] = existingManual.steps
+          .filter((s) => s.image)
+          .map((s, idx) => ({
+            id: s.id || `snap-prev-${idx}`,
+            timestamp: s.timestamp || idx * 3,
+            dataUrl: s.image!,
+            reason: 'manual_trigger',
+            label: s.title || `Paso ${s.stepNumber || idx + 1}`,
+            differenceScore: 1,
+          }));
+        if (loadedSnaps.length > 0) {
+          setAutoSnapshots(loadedSnaps);
+          setExtractedFrames(
+            loadedSnaps.map((sn) => ({
+              id: sn.id,
+              timestamp: sn.timestamp,
+              dataUrl: sn.dataUrl,
+              selected: true,
+              label: sn.label,
+            }))
+          );
+        }
+      }
     } else {
-      // Try to recover draft data so the user never loses what they typed
+      // Try to recover draft data so the user never loses what they typed or recorded
       try {
         const saved = sessionStorage.getItem(DRAFT_STORAGE_KEY);
         if (saved) {
@@ -257,6 +296,20 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
           if (parsed.context && !context) setContext(parsed.context);
           if (parsed.targetAudience && (!targetAudience || targetAudience === 'Usuarios finales y colaboradores')) {
             setTargetAudience(parsed.targetAudience);
+          }
+          if (parsed.pedagogicalApproach) setPedagogicalApproach(parsed.pedagogicalApproach);
+          if (parsed.selectedProjectId) setSelectedProjectId(parsed.selectedProjectId);
+          if (Array.isArray(parsed.instructorTranscripts) && parsed.instructorTranscripts.length > 0) {
+            setInstructorTranscripts(parsed.instructorTranscripts);
+          }
+          if (Array.isArray(parsed.autoSnapshots) && parsed.autoSnapshots.length > 0) {
+            setAutoSnapshots(parsed.autoSnapshots);
+          }
+          if (Array.isArray(parsed.screenshots) && parsed.screenshots.length > 0) {
+            setScreenshots(parsed.screenshots);
+          }
+          if (Array.isArray(parsed.extractedFrames) && parsed.extractedFrames.length > 0) {
+            setExtractedFrames(parsed.extractedFrames);
           }
         }
       } catch (e) {
@@ -268,19 +321,29 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
     }
   }, [isOpen, existingManual]);
 
-  // Persist draft to sessionStorage so user never loses what was filled
+  // Persist draft to sessionStorage so user never loses what was filled or recorded
   useEffect(() => {
-    if (!existingManual && (topic || context)) {
+    if (!existingManual && (topic || context || autoSnapshots.length > 0 || instructorTranscripts.length > 0 || screenshots.length > 0)) {
       try {
         sessionStorage.setItem(
           DRAFT_STORAGE_KEY,
-          JSON.stringify({ topic, context, targetAudience })
+          JSON.stringify({
+            topic,
+            context,
+            targetAudience,
+            pedagogicalApproach,
+            selectedProjectId,
+            instructorTranscripts,
+            autoSnapshots,
+            screenshots,
+            extractedFrames,
+          })
         );
       } catch (e) {
         // ignore
       }
     }
-  }, [topic, context, targetAudience, existingManual]);
+  }, [topic, context, targetAudience, pedagogicalApproach, selectedProjectId, instructorTranscripts, autoSnapshots, screenshots, extractedFrames, existingManual]);
 
   const handleClearDraft = () => {
     setTopic('');
@@ -800,6 +863,133 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
     onClose();
   };
 
+  // Guardar Borrador: Salva inmediatamente los fotogramas, audio y textos en un borrador editable
+  const handleSaveDraftManual = () => {
+    let images: Array<{ dataUrl: string; label?: string; timestamp?: number }> = [];
+    if (activeTab === 'screenshots') {
+      images = screenshots.map((s) => ({ dataUrl: s.dataUrl, label: s.name }));
+    } else if (activeTab === 'video') {
+      const selected = extractedFrames.filter((f) => f.selected);
+      images = (selected.length > 0 ? selected : extractedFrames).map((f) => ({
+        dataUrl: f.dataUrl,
+        label: f.label,
+        timestamp: f.timestamp,
+      }));
+    } else {
+      // record tab: autoSnapshots or extractedFrames
+      if (autoSnapshots.length > 0) {
+        images = autoSnapshots.map((s) => ({ dataUrl: s.dataUrl, label: s.label, timestamp: s.timestamp }));
+      } else if (extractedFrames.length > 0) {
+        const selected = extractedFrames.filter((f) => f.selected);
+        images = (selected.length > 0 ? selected : extractedFrames).map((f) => ({
+          dataUrl: f.dataUrl,
+          label: f.label,
+          timestamp: f.timestamp,
+        }));
+      }
+    }
+
+    const steps = images.map((img, idx) => {
+      let stepInstructorNote = '';
+      let stepInstructorQuote = '';
+      if (instructorTranscripts.length > 0) {
+        const matchedTrans =
+          img.timestamp !== undefined
+            ? instructorTranscripts.find((t) => Math.abs(t.timestamp - img.timestamp!) <= 4)
+            : instructorTranscripts[idx] || instructorTranscripts[0];
+        if (matchedTrans) {
+          stepInstructorNote = matchedTrans.text;
+          stepInstructorQuote = matchedTrans.text;
+        }
+      }
+
+      return {
+        id: `step-${Date.now()}-${idx}`,
+        stepNumber: idx + 1,
+        title: img.label || `Paso ${idx + 1}: Acción registrada`,
+        actionType: 'click' as const,
+        description: `Acción registrada durante la grabación de ${topic.trim() || 'la pantalla'}.`,
+        targetElement: img.label || 'Elemento en pantalla',
+        expectedResult: 'El sistema valida la acción realizada y avanza al siguiente paso.',
+        purpose: `Asegurar la correcta ejecución del paso ${idx + 1}.`,
+        instructorNotes: stepInstructorNote,
+        instructorAudioQuote: stepInstructorQuote,
+        image: img.dataUrl,
+        annotations: [
+          {
+            id: `ann-${idx}`,
+            x: 50,
+            y: 50,
+            shape: 'circle' as const,
+            color: '#ef4444',
+            label: img.label || `Paso ${idx + 1}`,
+          },
+        ],
+      };
+    });
+
+    const fullTranscriptionText = instructorTranscripts
+      .map((t) => `[${speechTranscriptionService.formatTime(t.timestamp)}] ${t.text}`)
+      .join('\n');
+
+    const draftId = existingManual?.id || `manual-draft-${Date.now()}`;
+    const draftTitle = topic.trim() || (existingManual?.title ? `${existingManual.title} (Borrador)` : 'Borrador de Manual');
+
+    const draftManual: UserManual = {
+      id: draftId,
+      projectId: selectedProjectId || activeProjectId || projects[0]?.id || undefined,
+      title: draftTitle,
+      subtitle: 'Borrador guardado · Listo para editar o generar con IA',
+      overview: context.trim() || (existingManual ? existingManual.overview : 'Borrador preliminar generado con capturas de pantalla y transcripción de voz.'),
+      targetAudience: targetAudience || 'Usuarios finales y colaboradores',
+      estimatedMinutes: Math.max(3, steps.length * 2),
+      difficulty: 'Principiante',
+      prerequisites: ['Acceso con credenciales al sistema'],
+      steps,
+      summaryChecklist: ['Completar todas las acciones de la secuencia'],
+      instructorTranscript: instructorTranscripts,
+      fullTranscriptionText,
+      pedagogicalApproach,
+      createdAt: existingManual?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      version: existingManual?.version || '0.1-borrador',
+      status: 'draft',
+      isDraft: true,
+    };
+
+    if (existingManual && saveMode === 'update' && onManualUpdated) {
+      onManualUpdated(draftManual);
+    } else {
+      onManualCreated(draftManual);
+    }
+
+    try {
+      sessionStorage.setItem(
+        DRAFT_STORAGE_KEY,
+        JSON.stringify({
+          topic,
+          context,
+          targetAudience,
+          pedagogicalApproach,
+          selectedProjectId,
+          instructorTranscripts,
+          autoSnapshots,
+          screenshots,
+          extractedFrames,
+        })
+      );
+    } catch (e) {
+      console.warn('Draft storage:', e);
+    }
+
+    setDraftSavedNotice({
+      show: true,
+      count: images.length,
+      title: draftTitle,
+      manualId: draftId,
+    });
+  };
+
   const toggleFrameSelection = (id: string) => {
     setExtractedFrames((prev) =>
       prev.map((f) => (f.id === id ? { ...f, selected: !f.selected } : f))
@@ -843,6 +1033,48 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {/* Banner de Confirmación de Borrador Guardado */}
+        {draftSavedNotice && draftSavedNotice.show && (
+          <div className="mx-4 mt-2 p-2.5 bg-emerald-50 border border-emerald-300 rounded-xl flex items-center justify-between gap-3 shadow-xs animate-in fade-in duration-150 shrink-0">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                <Check className="w-4 h-4 stroke-[3]" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-emerald-950 flex items-center gap-1.5 leading-none">
+                  <span>¡Borrador guardado exitosamente!</span>
+                  <span className="text-[10px] bg-emerald-200 text-emerald-900 font-extrabold px-1.5 py-0.2 rounded">
+                    {draftSavedNotice.count} fotogramas
+                  </span>
+                </h4>
+                <p className="text-[11px] text-emerald-800 mt-0.5">
+                  Toda tu grabación, capturas y transcripción de voz quedaron respaldadas en la biblioteca.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setDraftSavedNotice(null)}
+                className="px-2.5 py-1 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 rounded-lg transition-colors"
+              >
+                Seguir en grabadora
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDraftSavedNotice(null);
+                  onClose();
+                }}
+                className="px-3 py-1 text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg shadow-2xs transition-colors flex items-center gap-1"
+              >
+                <span>Abrir Editor</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Modal Body: 2 Columns 50% / 50% */}
         <div className="flex-1 overflow-hidden p-3 sm:p-4 grid grid-cols-1 lg:grid-cols-12 gap-3.5 min-h-0">
@@ -1521,6 +1753,17 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2">
+                        {/* Botón Guardar Borrador habilitado en la zona destacada */}
+                        <button
+                          type="button"
+                          onClick={handleSaveDraftManual}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-amber-950 bg-amber-400 hover:bg-amber-300 rounded-lg shadow-sm border border-amber-500 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                          title="Guarda inmediatamente un borrador con todos los fotogramas y la transcripción de voz para editarlo sin perder nada"
+                        >
+                          <Save className="w-3.5 h-3.5 text-amber-950" />
+                          <span>Guardar Borrador</span>
+                        </button>
+
                         {/* Botón habilitado en el área marcada en rojo para ver a pantalla completa */}
                         <button
                           type="button"
@@ -1634,6 +1877,15 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
+                          onClick={handleSaveDraftManual}
+                          className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-amber-950 bg-amber-400 hover:bg-amber-300 rounded-lg shadow-sm border border-amber-500 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                          title="Guardar borrador con las capturas actuales"
+                        >
+                          <Save className="w-3.5 h-3.5 text-amber-950" />
+                          <span>Guardar Borrador</span>
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => setFullscreenViewer({ isOpen: true, currentIndex: 0, source: 'screenshots' })}
                           className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm border border-indigo-700 transition-all hover:scale-[1.02] active:scale-[0.98]"
                           title="Ver y navegar todas las capturas a pantalla completa"
@@ -1735,15 +1987,26 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
                         Fotogramas Extraídos ({extractedFrames.filter((f) => f.selected).length} de{' '}
                         {extractedFrames.length} seleccionados)
                       </span>
-                      <button
-                        type="button"
-                        onClick={() => setFullscreenViewer({ isOpen: true, currentIndex: 0, source: 'extracted' })}
-                        className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm border border-indigo-700 transition-all hover:scale-[1.02] active:scale-[0.98]"
-                        title="Ver fotogramas extraídos a pantalla completa"
-                      >
-                        <Maximize2 className="w-3.5 h-3.5" />
-                        <span>Ver a Pantalla Completa</span>
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleSaveDraftManual}
+                          className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-amber-950 bg-amber-400 hover:bg-amber-300 rounded-lg shadow-sm border border-amber-500 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                          title="Guardar borrador con los fotogramas seleccionados"
+                        >
+                          <Save className="w-3.5 h-3.5 text-amber-950" />
+                          <span>Guardar Borrador</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setFullscreenViewer({ isOpen: true, currentIndex: 0, source: 'extracted' })}
+                          className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm border border-indigo-700 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                          title="Ver fotogramas extraídos a pantalla completa"
+                        >
+                          <Maximize2 className="w-3.5 h-3.5" />
+                          <span>Ver a Pantalla Completa</span>
+                        </button>
+                      </div>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-3">
                       {extractedFrames.map((frame, idx) => (
@@ -1833,6 +2096,22 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
           </button>
 
           <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={handleSaveDraftManual}
+              disabled={
+                isGenerating ||
+                (activeTab === 'screenshots' && screenshots.length === 0) ||
+                (activeTab === 'video' && extractedFrames.filter((f) => f.selected).length === 0) ||
+                (activeTab === 'record' && extractedFrames.length === 0 && autoSnapshots.length === 0 && !topic.trim())
+              }
+              className="py-2 px-3.5 bg-amber-400 hover:bg-amber-300 disabled:opacity-40 disabled:cursor-not-allowed text-amber-950 font-bold text-xs rounded-xl border border-amber-500 shadow-2xs transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center gap-1.5"
+              title="Guarda un borrador con todas tus capturas, fotogramas y texto para editarlo después sin perder la grabación"
+            >
+              <Save className="w-3.5 h-3.5 text-amber-950" />
+              <span>Guardar Borrador</span>
+            </button>
+
             <button
               type="button"
               onClick={handleGenerateDirectManual}

@@ -33,6 +33,7 @@ import {
   Building2,
   FolderKanban,
   Settings,
+  Save,
 } from 'lucide-react';
 import { Project } from '../types/project';
 import { OrganizationBranding } from '../types/branding';
@@ -296,12 +297,20 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
       {/* Top Action Header Bar */}
       <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-6 border-b border-slate-200">
         <div>
-          <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
+          <div className="flex items-center gap-2 text-xs text-slate-500 mb-1 flex-wrap">
             <span>Manual de Usuario</span>
             <span>·</span>
             <span>Versión {manual.version || '1.0'}</span>
             <span>·</span>
             <span>Actualizado {new Date(manual.updatedAt).toLocaleDateString()}</span>
+            {manual.isDraft && (
+              <>
+                <span>·</span>
+                <span className="bg-amber-100 text-amber-900 border border-amber-300 font-bold px-2 py-0.5 rounded-full text-[11px] inline-flex items-center gap-1">
+                  <Save className="w-3 h-3 text-amber-700" /> Borrador en progreso
+                </span>
+              </>
+            )}
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
             {manual.title}

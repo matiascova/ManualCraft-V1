@@ -9,7 +9,7 @@ export interface AutoCapturedSnapshot {
   id: string;
   timestamp: number;
   dataUrl: string;
-  reason: 'change_detected' | 'click' | 'enter' | 'save' | 'hotkey';
+  reason: 'change_detected' | 'click' | 'enter' | 'save' | 'hotkey' | 'manual_trigger';
   label: string;
   differenceScore: number;
 }

@@ -102,6 +102,8 @@ export interface UserManual {
   code?: string;
   category?: string;
   pedagogicalApproach?: 'sop' | 'microlearning' | 'onboarding';
+  status?: 'draft' | 'published';
+  isDraft?: boolean;
 }
 
 export interface VideoFrameCandidate {

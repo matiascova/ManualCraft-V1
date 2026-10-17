@@ -28,6 +28,7 @@ import {
   X,
   Unlink,
   AlertTriangle,
+  Save,
 } from 'lucide-react';
 
 interface ProjectWorkspaceProps {
@@ -392,9 +393,16 @@ const ProjectWorkspaceComponent: React.FC<ProjectWorkspaceProps> = ({
                 >
                   <div className="p-5 space-y-3">
                     <div className="flex items-start justify-between gap-2">
-                      <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-100">
-                        Manual #{idx + 1}
-                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-100">
+                          Manual #{idx + 1}
+                        </span>
+                        {manual.isDraft && (
+                          <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1">
+                            <Save className="w-2.5 h-2.5 text-amber-700" /> Borrador
+                          </span>
+                        )}
+                      </div>
                       <span className="text-[11px] text-slate-400 font-medium">
                         v{manual.version || '1.0'}
                       </span>
