@@ -13,22 +13,26 @@ import {
   Sliders,
   Eye,
   EyeOff,
+  Target,
+  Crosshair,
+  ShieldCheck,
 } from 'lucide-react';
 
 import { blurTaskbarOnDataUrl } from '../utils/motionDetector';
+import { VisualAnnotation, CropArea, transformAnnotationsForCrop } from '../types/manual';
 
-export interface CropArea {
-  x: number; // percentage 0 - 100
-  y: number; // percentage 0 - 100
-  width: number; // percentage 0 - 100
-  height: number; // percentage 0 - 100
-}
+export type { CropArea };
 
 export interface ImageCropModalProps {
   isOpen: boolean;
   imageSrc: string;
   imageTitle?: string;
-  onApplyCrop: (croppedDataUrl: string, cropArea: CropArea) => void;
+  annotations?: VisualAnnotation[];
+  onApplyCrop: (
+    croppedDataUrl: string,
+    cropArea: CropArea,
+    updatedAnnotations: VisualAnnotation[]
+  ) => void;
   onClose: () => void;
   initialCropArea?: CropArea;
 }
@@ -37,6 +41,7 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
   isOpen,
   imageSrc,
   imageTitle = 'Captura de Pantalla',
+  annotations = [],
   onApplyCrop,
   onClose,
   initialCropArea,
@@ -45,6 +50,9 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
   const [workingImageSrc, setWorkingImageSrc] = useState<string>(imageSrc);
   const [isTaskbarBlurred, setIsTaskbarBlurred] = useState<boolean>(false);
   const [isProcessingBlur, setIsProcessingBlur] = useState<boolean>(false);
+
+  // Guarantee: Maintain focal point fixed relative to the screen content
+  const [preserveFocalPoint, setPreserveFocalPoint] = useState<boolean>(true);
 
   // Crop area in percentages (0 to 100)
   const [crop, setCrop] = useState<CropArea>(
@@ -120,6 +128,22 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
 
   const handlePresetCenterFocus = () => {
     setCrop({ x: 10, y: 10, width: 80, height: 80 });
+  };
+
+  // Centrar automáticamente el encuadre de recorte alrededor del punto focal / anotación activa
+  const handleCenterOnFocalPoint = () => {
+    if (!annotations || annotations.length === 0) return;
+    const primary = annotations[0];
+    const w = primary.width ? Math.max(38, Math.min(88, primary.width * 1.8)) : 46;
+    const h = primary.height ? Math.max(30, Math.min(85, primary.height * 2.2)) : 42;
+    const x = Math.max(0, Math.min(100 - w, primary.x - w / 2));
+    const y = Math.max(0, Math.min(100 - h, primary.y - h / 2));
+    setCrop({
+      x: Math.round(x * 10) / 10,
+      y: Math.round(y * 10) / 10,
+      width: Math.round(w * 10) / 10,
+      height: Math.round(h * 10) / 10,
+    });
   };
 
   const handlePresetLeftHalf = () => {
@@ -253,7 +277,10 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
 
       // If full 100% and user simply wanted taskbar blur without clipping
       if (cropX === 0 && cropY === 0 && cropW === srcW && cropH === srcH) {
-        onApplyCrop(workingImageSrc, crop);
+        const updatedAnnotations = preserveFocalPoint
+          ? transformAnnotationsForCrop(annotations, crop)
+          : annotations;
+        onApplyCrop(workingImageSrc, crop, updatedAnnotations);
         onClose();
         return;
       }
@@ -268,7 +295,16 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
       ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
 
       const croppedDataUrl = canvas.toDataURL('image/jpeg', 0.92);
-      onApplyCrop(croppedDataUrl, crop);
+      // Immediately free GPU texture memory
+      canvas.width = 0;
+      canvas.height = 0;
+
+      // Automatically re-anchor annotations so focal point does NOT move
+      const updatedAnnotations = preserveFocalPoint
+        ? transformAnnotationsForCrop(annotations, crop)
+        : annotations;
+
+      onApplyCrop(croppedDataUrl, crop, updatedAnnotations);
       onClose();
     };
     img.src = workingImageSrc;
@@ -319,6 +355,20 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
               <Sliders className="w-3 h-3 text-indigo-600" />
               <span>Ajustes Rápidos:</span>
             </span>
+
+            {/* Quitar Barra de Tareas (Windows) */}
+            {/* Centrar en Punto Focal */}
+            {annotations && annotations.length > 0 && (
+              <button
+                type="button"
+                onClick={handleCenterOnFocalPoint}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold text-indigo-950 bg-indigo-100 hover:bg-indigo-200 rounded-md border border-indigo-300 shadow-2xs transition-colors"
+                title="Ajusta automáticamente el recorte para enmarcar el punto focal sin moverlo de la pantalla"
+              >
+                <Target className="w-3.5 h-3.5 text-indigo-700" />
+                <span>Centrar en Punto Focal</span>
+              </button>
+            )}
 
             {/* Quitar Barra de Tareas (Windows) */}
             <button
@@ -400,8 +450,23 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
             </button>
           </div>
 
-          <div className="flex items-center gap-2 text-xs font-mono text-slate-600">
-            <span className="bg-white px-2 py-0.5 rounded border border-slate-200 shadow-2xs text-[11px]">
+          <div className="flex items-center gap-2">
+            {/* Focal Point Anchor Indicator */}
+            <button
+              type="button"
+              onClick={() => setPreserveFocalPoint(!preserveFocalPoint)}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold border transition-colors ${
+                preserveFocalPoint
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
+                  : 'bg-slate-100 text-slate-500 border-slate-300 hover:bg-slate-200'
+              }`}
+              title="Garantiza que el punto focal mantenga exactamente su posición física en la pantalla tras recortar"
+            >
+              <ShieldCheck className={`w-3.5 h-3.5 ${preserveFocalPoint ? 'text-emerald-600' : 'text-slate-400'}`} />
+              <span>{preserveFocalPoint ? 'Anclaje Fijo: Activo' : 'Anclaje Fijo: Inactivo'}</span>
+            </button>
+
+            <span className="bg-white px-2 py-0.5 rounded border border-slate-200 shadow-2xs text-[11px] font-mono text-slate-600">
               {computedPixelWidth} × {computedPixelHeight} px
             </span>
           </div>
@@ -419,6 +484,79 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
               alt={imageTitle}
               className="max-h-[58vh] max-w-full block pointer-events-none object-contain"
             />
+
+            {/* Visual Annotations / Focal Points on Original Screen */}
+            {annotations.map((ann) => {
+              if (ann.shape === 'rect') {
+                const w = ann.width || 22;
+                const h = ann.height || 14;
+                return (
+                  <div
+                    key={ann.id}
+                    style={{
+                      left: `${ann.x}%`,
+                      top: `${ann.y}%`,
+                      width: `${w}%`,
+                      height: `${h}%`,
+                      transform: 'translate(-50%, -50%)',
+                      borderColor: ann.color || '#ef4444',
+                    }}
+                    className="absolute border-2 bg-red-500/15 rounded pointer-events-none z-10 shadow-sm"
+                  >
+                    {ann.label && (
+                      <span
+                        style={{ backgroundColor: ann.color || '#ef4444' }}
+                        className="absolute -top-6 left-0 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow whitespace-nowrap"
+                      >
+                        {ann.label}
+                      </span>
+                    )}
+                  </div>
+                );
+              }
+              if (ann.shape === 'blur') {
+                const w = ann.width || 20;
+                const h = ann.height || 12;
+                return (
+                  <div
+                    key={ann.id}
+                    style={{
+                      left: `${ann.x}%`,
+                      top: `${ann.y}%`,
+                      width: `${w}%`,
+                      height: `${h}%`,
+                      transform: 'translate(-50%, -50%)',
+                    }}
+                    className="absolute backdrop-blur-md bg-slate-800/70 border border-slate-400 rounded pointer-events-none z-10"
+                  />
+                );
+              }
+              return (
+                <div
+                  key={ann.id}
+                  style={{
+                    left: `${ann.x}%`,
+                    top: `${ann.y}%`,
+                    transform: 'translate(-50%, -50%)',
+                    borderColor: ann.color || '#ef4444',
+                  }}
+                  className="absolute w-7 h-7 rounded-full border-2 bg-red-500/30 flex items-center justify-center pointer-events-none z-10 shadow-sm"
+                >
+                  <div
+                    style={{ backgroundColor: ann.color || '#ef4444' }}
+                    className="w-2.5 h-2.5 rounded-full"
+                  />
+                  {ann.label && (
+                    <span
+                      style={{ backgroundColor: ann.color || '#ef4444' }}
+                      className="absolute -top-6 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow whitespace-nowrap"
+                    >
+                      {ann.label}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
 
             {/* Dark Masks Outside Crop Rectangle */}
             {/* Top Mask */}

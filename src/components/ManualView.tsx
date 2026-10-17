@@ -1,5 +1,12 @@
 import React, { useState, useMemo, useCallback, memo } from 'react';
-import { UserManual, ManualStep, getActionTypeSpanish } from '../types/manual';
+import {
+  UserManual,
+  ManualStep,
+  getActionTypeSpanish,
+  transformAnnotationsForCrop,
+  CropArea,
+  VisualAnnotation,
+} from '../types/manual';
 import {
   Sparkles,
   Play,
@@ -88,10 +95,22 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
   const [editingTranscriptText, setEditingTranscriptText] = useState('');
   const [cropStep, setCropStep] = useState<ManualStep | null>(null);
 
-  const handleApplyStepCrop = (croppedDataUrl: string) => {
+  const handleApplyStepCrop = (
+    croppedDataUrl: string,
+    cropArea?: CropArea,
+    updatedAnnotations?: VisualAnnotation[]
+  ) => {
     if (!cropStep) return;
+    const finalAnnotations =
+      updatedAnnotations ||
+      (cropArea
+        ? transformAnnotationsForCrop(cropStep.annotations || [], cropArea)
+        : cropStep.annotations || []);
+
     const updatedSteps = manual.steps.map((s) =>
-      s.id === cropStep.id ? { ...s, image: croppedDataUrl } : s
+      s.id === cropStep.id
+        ? { ...s, image: croppedDataUrl, annotations: finalAnnotations }
+        : s
     );
     onUpdateManual({
       ...manual,
@@ -103,10 +122,20 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
 
   const [isBatchOptimizing, setIsBatchOptimizing] = useState(false);
 
-  const handleApplyStepCropDirect = (stepId: string, newImageDataUrl: string) => {
-    const updatedSteps = manual.steps.map((s) =>
-      s.id === stepId ? { ...s, image: newImageDataUrl } : s
-    );
+  const handleApplyStepCropDirect = (
+    stepId: string,
+    newImageDataUrl: string,
+    cropArea?: CropArea
+  ) => {
+    const updatedSteps = manual.steps.map((s) => {
+      if (s.id === stepId) {
+        const transformedAnnotations = cropArea
+          ? transformAnnotationsForCrop(s.annotations || [], cropArea)
+          : s.annotations;
+        return { ...s, image: newImageDataUrl, annotations: transformedAnnotations };
+      }
+      return s;
+    });
     onUpdateManual({
       ...manual,
       steps: updatedSteps,
@@ -119,6 +148,7 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
   const handleBatchCropTaskbarInManual = async () => {
     if (isBatchOptimizing) return;
     setIsBatchOptimizing(true);
+    const taskbarCropArea: CropArea = { x: 0, y: 0, width: 100, height: 94.8 };
     try {
       const updatedSteps = [...manual.steps];
       const chunkSize = 2;
@@ -128,7 +158,15 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
           slice.map(async (s, sliceIdx) => {
             if (!s.image) return;
             const cropped = await cropTaskbarFromDataUrl(s.image, 0.052);
-            updatedSteps[i + sliceIdx] = { ...s, image: cropped };
+            const transformedAnnotations = transformAnnotationsForCrop(
+              s.annotations || [],
+              taskbarCropArea
+            );
+            updatedSteps[i + sliceIdx] = {
+              ...s,
+              image: cropped,
+              annotations: transformedAnnotations,
+            };
           })
         );
         // Ceder el hilo principal para que el recolector de basura libere los búferes de imagen intermedios
@@ -828,7 +866,12 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
                         <button
                           onClick={async () => {
                             const cropped = await cropTaskbarFromDataUrl(step.image!, 0.052);
-                            handleApplyStepCropDirect(step.id, cropped);
+                            handleApplyStepCropDirect(step.id, cropped, {
+                              x: 0,
+                              y: 0,
+                              width: 100,
+                              height: 94.8,
+                            });
                           }}
                           className="p-1.5 text-slate-500 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors text-xs font-medium flex items-center gap-1"
                           title="Quitar automáticamente la barra de tareas (~5% inferior) para usar menos espacio en el PDF"
@@ -1597,6 +1640,7 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
           isOpen={!!cropStep}
           imageSrc={cropStep.image}
           imageTitle={`Paso ${cropStep.stepNumber}: ${cropStep.title}`}
+          annotations={cropStep.annotations || []}
           onApplyCrop={handleApplyStepCrop}
           onClose={() => setCropStep(null)}
         />

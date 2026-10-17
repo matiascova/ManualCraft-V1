@@ -1,5 +1,11 @@
 import React, { useState } from 'react';
-import { ManualStep, ActionType } from '../types/manual';
+import {
+  ManualStep,
+  ActionType,
+  transformAnnotationsForCrop,
+  CropArea,
+  VisualAnnotation,
+} from '../types/manual';
 import {
   X,
   Sparkles,
@@ -54,8 +60,21 @@ export const StepEditorModal: React.FC<StepEditorModalProps> = ({
   const [aiMessage, setAiMessage] = useState<string | null>(null);
   const [isCropModalOpen, setIsCropModalOpen] = useState(false);
 
-  const handleApplyStepCrop = (croppedDataUrl: string) => {
-    const updated = { ...formData, image: croppedDataUrl };
+  const handleApplyStepCrop = (
+    croppedDataUrl: string,
+    cropArea?: CropArea,
+    updatedAnnotations?: VisualAnnotation[]
+  ) => {
+    const finalAnnotations =
+      updatedAnnotations ||
+      (cropArea
+        ? transformAnnotationsForCrop(formData.annotations || [], cropArea)
+        : formData.annotations || []);
+    const updated = {
+      ...formData,
+      image: croppedDataUrl,
+      annotations: finalAnnotations,
+    };
     setFormData(updated);
     onSave(updated);
   };
@@ -467,7 +486,12 @@ export const StepEditorModal: React.FC<StepEditorModalProps> = ({
                     onClick={async () => {
                       if (!formData.image) return;
                       const cropped = await cropTaskbarFromDataUrl(formData.image, 0.052);
-                      handleApplyStepCrop(cropped);
+                      handleApplyStepCrop(cropped, {
+                        x: 0,
+                        y: 0,
+                        width: 100,
+                        height: 94.8,
+                      });
                     }}
                     className="py-1.5 px-2 bg-white hover:bg-amber-50 text-slate-700 hover:text-amber-800 border border-slate-300 text-xs font-semibold rounded-lg flex items-center gap-1 shadow-2xs transition-all"
                     title="Quitar automáticamente la barra de tareas de Windows (~5% inferior) para usar menos espacio en el PDF"
@@ -577,6 +601,7 @@ export const StepEditorModal: React.FC<StepEditorModalProps> = ({
           isOpen={isCropModalOpen}
           imageSrc={formData.image}
           imageTitle={formData.title}
+          annotations={formData.annotations || []}
           onApplyCrop={handleApplyStepCrop}
           onClose={() => setIsCropModalOpen(false)}
         />

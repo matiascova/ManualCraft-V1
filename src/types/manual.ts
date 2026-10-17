@@ -46,6 +46,49 @@ export interface VisualAnnotation {
   labelOffsetY?: number;
 }
 
+export interface CropArea {
+  x: number; // percentage 0 - 100
+  y: number; // percentage 0 - 100
+  width: number; // percentage 0 - 100
+  height: number; // percentage 0 - 100
+}
+
+/**
+ * Recalcula y transforma matemáticamente las anotaciones visuales y puntos focales
+ * al recortar una captura, garantizando que el punto focal NUNCA se desplace
+ * y quede siempre perfectamente anclado al mismo elemento del sistema en pantalla.
+ */
+export function transformAnnotationsForCrop(
+  annotations: VisualAnnotation[] = [],
+  crop: CropArea
+): VisualAnnotation[] {
+  if (!annotations || annotations.length === 0) return [];
+  if (crop.width <= 0 || crop.height <= 0) return annotations;
+
+  // Si no hay recorte efectivo (100% completo), mantener intacto
+  if (crop.x === 0 && crop.y === 0 && crop.width === 100 && crop.height === 100) {
+    return annotations;
+  }
+
+  return annotations.map((ann) => {
+    // Nueva posición en el sistema de coordenadas relativo a la imagen recortada
+    const newX = ((ann.x - crop.x) / crop.width) * 100;
+    const newY = ((ann.y - crop.y) / crop.height) * 100;
+
+    // Escalar dimensiones de rectángulos / regiones de difuminado
+    const newWidth = ann.width !== undefined ? (ann.width / crop.width) * 100 : undefined;
+    const newHeight = ann.height !== undefined ? (ann.height / crop.height) * 100 : undefined;
+
+    return {
+      ...ann,
+      x: Math.round(Math.max(1, Math.min(99, newX)) * 10) / 10,
+      y: Math.round(Math.max(1, Math.min(99, newY)) * 10) / 10,
+      width: newWidth !== undefined ? Math.round(Math.max(2, Math.min(98, newWidth)) * 10) / 10 : undefined,
+      height: newHeight !== undefined ? Math.round(Math.max(2, Math.min(98, newHeight)) * 10) / 10 : undefined,
+    };
+  });
+}
+
 export interface ManualStep {
   id: string;
   stepNumber: number;
