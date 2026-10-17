@@ -163,15 +163,15 @@ Si identificas datos sensibles reales o confidenciales como:
 Genera en 'sensitiveDataRegions' las coordenadas aproximadas de la caja que contiene ese dato:
 (x, y del centro en porcentaje 0-100, width y height en porcentaje de la pantalla) para aplicar difuminado automático (blur) de protección.
 
-Además, genera basándote ÚNICAMENTE en el flujo analizado:
+Además, genera basándote ÚNICAMENTE en el flujo analizado (FIDELIDAD TOTAL A LA GRABACIÓN):
 - Un título atractivo y preciso para el manual
 - Un subtítulo conciso
 - Resumen general (overview) enriquecido con el propósito explicado por el instructor
 - Tiempo estimado en minutos
 - Nivel de dificultad ('Principiante' | 'Intermedio' | 'Avanzado')
-- Lista de requisitos previos coherentes con el proceso grabado (prerequisites)
-- Lista de preguntas frecuentes o resolución de problemas reales pertinentes a este flujo (troubleshooting: problem & solution)
-- Checklist de verificación final (summaryChecklist)
+- Lista de requisitos previos coherentes con el proceso grabado (prerequisites). Si no aplican, deja un arreglo mínimo o vacío.
+- Resolución de incidencias ('troubleshooting'): IMPORTANTE: NO inventes problemas hipotéticos ni incidencias genéricas que no hayan ocurrido ni sido mencionadas por el instructor en el audio. Si el flujo se completó con normalidad y el instructor no mencionó errores, deja 'troubleshooting' como arreglo vacío [].
+- Checklist de verificación final ('summaryChecklist'): 2 a 4 comprobaciones clave de éxito de este proceso específico.
 
 Asegúrate de responder estrictamente en el formato JSON estructurado solicitado.`;
 

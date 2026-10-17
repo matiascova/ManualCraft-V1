@@ -60,6 +60,7 @@ export const OrganizationLogoModal: React.FC<OrganizationLogoModalProps> = ({
 
   const [activeTab, setActiveTab] = useState<'logo' | 'presets' | 'options'>('logo');
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -67,9 +68,10 @@ export const OrganizationLogoModal: React.FC<OrganizationLogoModalProps> = ({
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 5 * 1024 * 1024) {
-        alert('La imagen no debe superar los 5MB.');
+        setUploadError('La imagen no debe superar los 5MB.');
         return;
       }
+      setUploadError(null);
       const reader = new FileReader();
       reader.onload = (event) => {
         if (event.target?.result) {

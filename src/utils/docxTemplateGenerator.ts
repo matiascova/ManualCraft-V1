@@ -122,34 +122,38 @@ async function generateCorporateBrandHeaderPng(
       }
 
       if (!ourImgLoaded) {
-        // Fallback: draw crisp vector Weber / Company at balanced intermediate scale
+        // Fallback: draw crisp vector corporate badge
         const startX = 40;
         const startY = (canvas.height - 130) / 2;
-        ctx.fillStyle = '#FEDB00'; // Yellow
+        ctx.fillStyle = '#183B6C'; // Corporate Navy
         ctx.beginPath();
-        ctx.moveTo(startX, startY + 100);
-        ctx.lineTo(startX + 65, startY);
-        ctx.lineTo(startX + 130, startY + 100);
-        ctx.closePath();
+        if (typeof (ctx as any).roundRect === 'function') {
+          (ctx as any).roundRect(startX, startY + 10, 110, 110, 16);
+        } else {
+          ctx.rect(startX, startY + 10, 110, 110);
+        }
         ctx.fill();
 
-        ctx.fillStyle = '#1E293B';
-        ctx.fillRect(startX + 36, startY + 40, 58, 60);
+        ctx.fillStyle = '#2563EB'; // Blue accent
+        ctx.fillRect(startX + 28, startY + 36, 54, 58);
+
+        ctx.fillStyle = '#FFFFFF';
+        ctx.font = 'bold 54px Arial, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const brandName = (config.ourCompanyName || config.clientName || 'ORGANIZACIÓN').trim();
+        ctx.fillText((brandName.charAt(0) || 'O').toUpperCase(), startX + 55, startY + 65);
 
         ctx.fillStyle = '#0F172A';
-        ctx.font = 'bold 70px Arial, sans-serif';
+        ctx.font = 'bold 60px Arial, sans-serif';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'top';
-        const brandName = config.ourCompanyName || 'weber';
-        ctx.fillText(brandName.toLowerCase(), startX + 155, startY + 5);
+        ctx.fillText(brandName, startX + 135, startY + 14);
 
         ctx.fillStyle = '#475569';
-        ctx.font = 'bold 28px Arial, sans-serif';
-        ctx.fillText(
-          (config.ourSlogan || 'SAINT-GOBAIN CHILE').toUpperCase(),
-          startX + 155,
-          startY + 82
-        );
+        ctx.font = 'bold 26px Arial, sans-serif';
+        const slogan = (config.ourSlogan || 'DOCUMENTACIÓN OPERATIVA').toUpperCase();
+        ctx.fillText(slogan, startX + 135, startY + 84);
       }
 
       // 2. Draw Right Side (Logo del Cliente o Sello HSBT)
@@ -578,13 +582,20 @@ export async function exportToDocxWithTemplateStructure(
     level: 1 | 2;
   }
 
+  const hasPrereqs = Boolean(manual.prerequisites && manual.prerequisites.length > 0);
   const tocItems: DocxTocItem[] = [
     { title: '1 INTRODUCCIÓN', pageNum: 3, level: 1 },
     { title: '1.1 Objetivo y Alcance', pageNum: 3, level: 2 },
-    { title: '1.2 Requisitos Previos', pageNum: 3, level: 2 },
-    { title: '1.3 Ficha Técnica del Proceso', pageNum: 3, level: 2 },
-    { title: '2 FLUJO DEL PROCESO', pageNum: 4, level: 1 },
   ];
+
+  if (hasPrereqs) {
+    tocItems.push({ title: '1.2 Requisitos Previos', pageNum: 3, level: 2 });
+    tocItems.push({ title: '1.3 Ficha Técnica del Proceso', pageNum: 3, level: 2 });
+  } else {
+    tocItems.push({ title: '1.2 Ficha Técnica del Proceso', pageNum: 3, level: 2 });
+  }
+
+  tocItems.push({ title: '2 FLUJO DEL PROCESO', pageNum: 4, level: 1 });
 
   manual.steps.forEach((st, sIdx) => {
     const stepNum = 3 + sIdx;
@@ -595,19 +606,19 @@ export async function exportToDocxWithTemplateStructure(
     });
   });
 
-  const nextSec = 3 + manual.steps.length;
+  let nextSec = 3 + manual.steps.length;
   if (manual.troubleshooting && manual.troubleshooting.length > 0) {
     tocItems.push({
       title: `${nextSec} RESOLUCIÓN DE PROBLEMAS`,
       pageNum: 5 + manual.steps.length,
       level: 1,
     });
+    nextSec++;
   }
 
-  const checkSec = nextSec + (manual.troubleshooting && manual.troubleshooting.length > 0 ? 1 : 0);
   if (manual.summaryChecklist && manual.summaryChecklist.length > 0) {
     tocItems.push({
-      title: `${checkSec} LISTA DE VERIFICACIÓN`,
+      title: `${nextSec} LISTA DE VERIFICACIÓN`,
       pageNum: 5 + manual.steps.length,
       level: 1,
     });
@@ -706,52 +717,47 @@ export async function exportToDocxWithTemplateStructure(
     })
   );
 
-  // Section 1.2 Requisitos Previos y Destinatarios
-  docChildren.push(
-    new Paragraph({
-      heading: HeadingLevel.HEADING_2,
-      spacing: { before: 100, after: 60 },
-      children: [
-        new TextRun({
-          text: '1.2 Requisitos Previos y Destinatarios',
-          bold: true,
-          color: '183B6C',
-          size: 22,
-        }),
-      ],
-    })
-  );
-
-  const prereqList =
-    manual.prerequisites && manual.prerequisites.length > 0
-      ? manual.prerequisites
-      : [
-          'Contar con credenciales y accesos activos autorizados en el sistema correspondiente.',
-          'Disponer de los permisos y roles operativos necesarios para ejecutar las transacciones.',
-        ];
-
-  prereqList.forEach((reqText) => {
+  // Section 1.2 Requisitos Previos y Destinatarios (Only if present in manual data)
+  if (manual.prerequisites && manual.prerequisites.length > 0) {
     docChildren.push(
       new Paragraph({
-        spacing: { after: 60 },
+        heading: HeadingLevel.HEADING_2,
+        spacing: { before: 100, after: 60 },
         children: [
-          new TextRun({ text: '▪  ', bold: true, color: '2563EB', size: 20 }),
-          new TextRun({ text: reqText, size: 20, color: '334155' }),
+          new TextRun({
+            text: '1.2 Requisitos Previos y Destinatarios',
+            bold: true,
+            color: '183B6C',
+            size: 22,
+          }),
         ],
       })
     );
-  });
 
-  docChildren.push(new Paragraph({ spacing: { after: 100 } }));
+    manual.prerequisites.forEach((reqText) => {
+      docChildren.push(
+        new Paragraph({
+          spacing: { after: 60 },
+          children: [
+            new TextRun({ text: '▪  ', bold: true, color: '2563EB', size: 20 }),
+            new TextRun({ text: reqText, size: 20, color: '334155' }),
+          ],
+        })
+      );
+    });
 
-  // Section 1.3 Ficha Técnica del Procedimiento
+    docChildren.push(new Paragraph({ spacing: { after: 100 } }));
+  }
+
+  // Ficha Técnica del Procedimiento (1.3 if prereqs exist, 1.2 if not)
+  const fichaSectionNumber = (manual.prerequisites && manual.prerequisites.length > 0) ? '1.3' : '1.2';
   docChildren.push(
     new Paragraph({
       heading: HeadingLevel.HEADING_2,
       spacing: { before: 80, after: 60 },
       children: [
         new TextRun({
-          text: '1.3 Ficha Técnica del Procedimiento',
+          text: `${fichaSectionNumber} Ficha Técnica del Procedimiento`,
           bold: true,
           color: '183B6C',
           size: 22,
@@ -1284,92 +1290,59 @@ export async function exportToDocxWithTemplateStructure(
   }
 
   // =========================================================================
-  // --- 6. SECCIÓN 4: RESOLUCIÓN DE PROBLEMAS Y PREGUNTAS FRECUENTES ---
+  // --- SECCIÓN: RESOLUCIÓN DE PROBLEMAS Y PREGUNTAS FRECUENTES (ONLY IF PRESENT) ---
   // =========================================================================
-  docChildren.push(new Paragraph({ children: [new PageBreak()] }));
+  let sectionPostSteps = 3 + manual.steps.length;
 
-  docChildren.push(
-    new Paragraph({
-      heading: HeadingLevel.HEADING_1,
-      spacing: { before: 80, after: 60 },
-      children: [
-        new TextRun({
-          text: isSap ? '4. RESOLUCIÓN DE PROBLEMAS Y ERRORES SAP' : '4. RESOLUCIÓN DE PROBLEMAS Y PREGUNTAS FRECUENTES',
-          bold: true,
-          color: '183B6C',
-          size: 28,
-        }),
-      ],
-    })
-  );
+  if (manual.troubleshooting && manual.troubleshooting.length > 0) {
+    docChildren.push(new Paragraph({ children: [new PageBreak()] }));
 
-  docChildren.push(
-    new Paragraph({
-      spacing: { after: 100 },
-      children: [
-        new TextRun({
-          text: 'Guía de contingencia y soluciones recomendadas ante incidencias o bloqueos en las transacciones:',
-          size: 20,
-          color: '475569',
-        }),
-      ],
-    })
-  );
+    docChildren.push(
+      new Paragraph({
+        heading: HeadingLevel.HEADING_1,
+        spacing: { before: 80, after: 60 },
+        children: [
+          new TextRun({
+            text: isSap
+              ? `${sectionPostSteps}. RESOLUCIÓN DE PROBLEMAS Y ERRORES SAP`
+              : `${sectionPostSteps}. RESOLUCIÓN DE PROBLEMAS Y PREGUNTAS FRECUENTES`,
+            bold: true,
+            color: '183B6C',
+            size: 28,
+          }),
+        ],
+      })
+    );
 
-  const troubleshootingList =
-    manual.troubleshooting && manual.troubleshooting.length > 0
-      ? manual.troubleshooting
-      : [
-          {
-            problem: 'El sistema no permite avanzar o muestra campos requeridos pendientes',
-            solution: 'Validar que todos los campos obligatorios del formulario o pantalla estén completos antes de continuar.',
-          },
-          {
-            problem: 'Permisos o autorizaciones insuficientes para la acción solicitada',
-            solution: 'Comprobar con el administrador del sistema que el usuario tenga asignado el rol operativo correspondiente.',
-          },
-          {
-            problem: 'Los datos o elementos en pantalla no se actualizan tras la confirmación',
-            solution: 'Verificar la conexión de red y refrescar la vista del sistema para confirmar el estado de la operación.',
-          },
-        ];
+    docChildren.push(
+      new Paragraph({
+        spacing: { after: 100 },
+        children: [
+          new TextRun({
+            text: 'Guía de contingencia y soluciones recomendadas ante incidencias o bloqueos en las transacciones:',
+            size: 20,
+            color: '475569',
+          }),
+        ],
+      })
+    );
 
-  const faqTableRows: TableRow[] = [
-    new TableRow({
-      children: [
-        new TableCell({
-          width: { size: 35, type: WidthType.PERCENTAGE },
-          shading: { fill: '183B6C' },
-          borders: tableBordersAll,
-          margins: { top: 90, bottom: 90, left: 100, right: 100 },
-          children: [new Paragraph({ children: [new TextRun({ text: isSap ? 'PROBLEMA O SÍNTOMA EN SAP' : 'PROBLEMA O INCIDENCIA', bold: true, size: 16, color: 'FFFFFF' })] })],
-        }),
-        new TableCell({
-          width: { size: 65, type: WidthType.PERCENTAGE },
-          shading: { fill: '183B6C' },
-          borders: tableBordersAll,
-          margins: { top: 90, bottom: 90, left: 100, right: 100 },
-          children: [new Paragraph({ children: [new TextRun({ text: 'SOLUCIÓN OPERATIVA RECOMENDADA', bold: true, size: 16, color: 'FFFFFF' })] })],
-        }),
-      ],
-    }),
-    ...troubleshootingList.map((item, idx) => {
-      const isEven = idx % 2 === 0;
-      return new TableRow({
+    const faqTableRows: TableRow[] = [
+      new TableRow({
         children: [
           new TableCell({
             width: { size: 35, type: WidthType.PERCENTAGE },
-            shading: { fill: isEven ? 'F8FAFC' : 'FFFFFF' },
+            shading: { fill: '183B6C' },
             borders: tableBordersAll,
-            margins: { top: 80, bottom: 80, left: 100, right: 100 },
+            margins: { top: 90, bottom: 90, left: 100, right: 100 },
             children: [
               new Paragraph({
                 children: [
                   new TextRun({
-                    text: item.problem,
+                    text: isSap ? 'PROBLEMA O SÍNTOMA EN SAP' : 'PROBLEMA O INCIDENCIA',
                     bold: true,
-                    size: 17,
-                    color: 'B45309', // amber dark
+                    size: 16,
+                    color: 'FFFFFF',
                   }),
                 ],
               }),
@@ -1377,74 +1350,112 @@ export async function exportToDocxWithTemplateStructure(
           }),
           new TableCell({
             width: { size: 65, type: WidthType.PERCENTAGE },
-            shading: { fill: isEven ? 'F8FAFC' : 'FFFFFF' },
+            shading: { fill: '183B6C' },
             borders: tableBordersAll,
-            margins: { top: 80, bottom: 80, left: 100, right: 100 },
+            margins: { top: 90, bottom: 90, left: 100, right: 100 },
             children: [
               new Paragraph({
                 children: [
                   new TextRun({
-                    text: item.solution,
-                    size: 18,
-                    color: '1E293B',
+                    text: 'SOLUCIÓN OPERATIVA RECOMENDADA',
+                    bold: true,
+                    size: 16,
+                    color: 'FFFFFF',
                   }),
                 ],
               }),
             ],
           }),
         ],
-      });
-    }),
-  ];
+      }),
+      ...manual.troubleshooting.map((item, idx) => {
+        const isEven = idx % 2 === 0;
+        return new TableRow({
+          children: [
+            new TableCell({
+              width: { size: 35, type: WidthType.PERCENTAGE },
+              shading: { fill: isEven ? 'F8FAFC' : 'FFFFFF' },
+              borders: tableBordersAll,
+              margins: { top: 80, bottom: 80, left: 100, right: 100 },
+              children: [
+                new Paragraph({
+                  children: [
+                    new TextRun({
+                      text: item.problem,
+                      bold: true,
+                      size: 17,
+                      color: 'B45309', // amber dark
+                    }),
+                  ],
+                }),
+              ],
+            }),
+            new TableCell({
+              width: { size: 65, type: WidthType.PERCENTAGE },
+              shading: { fill: isEven ? 'F8FAFC' : 'FFFFFF' },
+              borders: tableBordersAll,
+              margins: { top: 80, bottom: 80, left: 100, right: 100 },
+              children: [
+                new Paragraph({
+                  children: [
+                    new TextRun({
+                      text: item.solution,
+                      size: 18,
+                      color: '1E293B',
+                    }),
+                  ],
+                }),
+              ],
+            }),
+          ],
+        });
+      }),
+    ];
 
-  docChildren.push(
-    new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      rows: faqTableRows,
-    })
-  );
+    docChildren.push(
+      new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        rows: faqTableRows,
+      })
+    );
 
-  docChildren.push(new Paragraph({ spacing: { after: 160 } }));
+    docChildren.push(new Paragraph({ spacing: { after: 160 } }));
+    sectionPostSteps++;
+  }
 
   // =========================================================================
-  // --- 7. SECCIÓN 5: LISTA DE VERIFICACIÓN FINAL (CHECKLIST) ---
+  // --- SECCIÓN: LISTA DE VERIFICACIÓN FINAL (ONLY IF PRESENT) ---
   // =========================================================================
-  docChildren.push(
-    new Paragraph({
-      heading: HeadingLevel.HEADING_1,
-      spacing: { before: 100, after: 60 },
-      children: [
-        new TextRun({
-          text: '5. LISTA DE VERIFICACIÓN Y CONTROL DE CALIDAD',
-          bold: true,
-          color: '183B6C',
-          size: 28,
-        }),
-      ],
-    })
-  );
+  if (manual.summaryChecklist && manual.summaryChecklist.length > 0) {
+    docChildren.push(new Paragraph({ children: [new PageBreak()] }));
 
-  const checklistItems =
-    manual.summaryChecklist && manual.summaryChecklist.length > 0
-      ? manual.summaryChecklist
-      : [
-          'Verificar que todos los pasos procedimentales se hayan ejecutado en la secuencia descrita.',
-          'Comprobar que los campos y valores ingresados correspondan a la información validada.',
-          'Confirmar que el sistema emita el mensaje o número de documento de confirmación exitosa.',
-          'Registrar o archivar la evidencia de la operación según los estándares de la organización.',
-        ];
-
-  checklistItems.forEach((chk) => {
     docChildren.push(
       new Paragraph({
-        spacing: { after: 70 },
+        heading: HeadingLevel.HEADING_1,
+        spacing: { before: 100, after: 60 },
         children: [
-          new TextRun({ text: '☐  ', bold: true, size: 22, color: '183B6C' }),
-          new TextRun({ text: chk, size: 20, color: '1E293B' }),
+          new TextRun({
+            text: `${sectionPostSteps}. LISTA DE VERIFICACIÓN Y CONTROL DE CALIDAD`,
+            bold: true,
+            color: '183B6C',
+            size: 28,
+          }),
         ],
       })
     );
-  });
+
+    manual.summaryChecklist.forEach((chk) => {
+      docChildren.push(
+        new Paragraph({
+          spacing: { after: 70 },
+          children: [
+            new TextRun({ text: '☐  ', bold: true, size: 22, color: '183B6C' }),
+            new TextRun({ text: chk, size: 20, color: '1E293B' }),
+          ],
+        })
+      );
+    });
+  }
 
   // =========================================================================
   // --- BUILD WORD DOCUMENT WITH CORPORATE HEADERS & FOOTERS ---
@@ -1653,7 +1664,7 @@ export async function exportProjectDossierDocx(
 ): Promise<void> {
   if (onProgress) onProgress(`Iniciando Dossier Word para "${project.name}" (${manuals.length} manuales)...`);
 
-  const clientName = project.clientName || 'Weber Chile (Saint-Gobain)';
+  const clientName = project.clientName || 'Organización';
   const dateObj = new Date(project.updatedAt || project.createdAt || Date.now());
   const dateFormatted = dateObj.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' }).toUpperCase();
 
@@ -1709,7 +1720,7 @@ export async function exportProjectDossierDocx(
                   spacing: { after: 60 },
                   children: [
                     new TextRun({
-                      text: `DOSSIER TÉCNICO DE SOLUCIÓN · PROYECTO: ${project.code || 'PRJ-CORP'}`,
+                      text: `DOSSIER TÉCNICO DE SOLUCIÓN · PROYECTO: ${project.code || 'PRJ-01'}`,
                       bold: true,
                       color: 'FFFFFF',
                       size: 19,
@@ -1751,7 +1762,7 @@ export async function exportProjectDossierDocx(
 
   // Master Project Control Table
   const projectControlRows: TableRow[] = [
-    ['Cliente', clientName, 'Código Proyecto', project.code || 'PRJ-SAP'],
+    ['Cliente', clientName, 'Código Proyecto', project.code || 'PRJ-01'],
     ['Proyecto', project.name, 'Manuales Incluidos', `${manuals.length} Procedimientos`],
     ['Versión', `v${project.version || '1.0'}`, 'Fecha Emisión', dateFormatted],
     ['Elaborado por', project.author || 'Equipo de Proyecto', 'Estado', project.status || 'Productivo'],

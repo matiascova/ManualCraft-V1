@@ -106,12 +106,11 @@ export default function App() {
 
   // Active Manual (memoized)
   const activeManual = useMemo(() => {
-    return (
-      manuals.find((m) => m.id === activeManualId) ||
-      manualsInActiveProject[0] ||
-      manuals[0] ||
-      SAMPLE_MANUALS[0]
-    );
+    if (activeManualId) {
+      const found = manuals.find((m) => m.id === activeManualId);
+      if (found) return found;
+    }
+    return manualsInActiveProject[0] || manuals[0] || null;
   }, [manuals, activeManualId, manualsInActiveProject]);
 
   // Handler: Save Project (create or edit)
@@ -172,13 +171,8 @@ export default function App() {
       return updated;
     });
 
-    setActiveManualId((currentId) => {
-      if (currentId === manualId) {
-        setViewMode('project');
-        return '';
-      }
-      return currentId;
-    });
+    setActiveManualId((currentId) => (currentId === manualId ? '' : currentId));
+    setViewMode('project');
   }, []);
 
   // Handler: Unlink manual from project (safe in-app action without window.confirm)

@@ -93,15 +93,21 @@ export async function extractFramesFromVideo(
           }
         }
 
+        canvas.width = 0;
+        canvas.height = 0;
         URL.revokeObjectURL(fileUrl);
         resolve(frames);
       } catch (err) {
+        canvas.width = 0;
+        canvas.height = 0;
         URL.revokeObjectURL(fileUrl);
         reject(err);
       }
     };
 
-    video.onerror = (e) => {
+    video.onerror = () => {
+      canvas.width = 0;
+      canvas.height = 0;
       URL.revokeObjectURL(fileUrl);
       reject(new Error('Error al cargar el archivo de video. Asegúrate de que sea un formato compatible (MP4, WebM).'));
     };
@@ -110,12 +116,26 @@ export async function extractFramesFromVideo(
 
 function seekToTime(video: HTMLVideoElement, time: number): Promise<void> {
   return new Promise((resolve) => {
+    let resolved = false;
+    const timer = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        video.removeEventListener('seeked', handleSeeked);
+        resolve(); // Continue gracefully rather than hanging forever
+      }
+    }, 2500);
+
     const handleSeeked = () => {
-      video.removeEventListener('seeked', handleSeeked);
-      resolve();
+      if (!resolved) {
+        resolved = true;
+        clearTimeout(timer);
+        video.removeEventListener('seeked', handleSeeked);
+        resolve();
+      }
     };
+
     video.addEventListener('seeked', handleSeeked);
-    video.currentTime = Math.min(time, Math.max(0, video.duration - 0.1));
+    video.currentTime = Math.min(time, Math.max(0, (video.duration || 1) - 0.1));
   });
 }
 
@@ -135,11 +155,15 @@ export function captureSingleFrameFromVideo(video: HTMLVideoElement): string {
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext('2d');
+  let result = '';
   if (ctx) {
     ctx.drawImage(video, 0, 0, width, height);
-    return canvas.toDataURL('image/jpeg', 0.88);
+    result = canvas.toDataURL('image/jpeg', 0.88);
   }
-  return '';
+  // Free backing store immediately
+  canvas.width = 0;
+  canvas.height = 0;
+  return result;
 }
 
 /**

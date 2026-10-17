@@ -26,6 +26,7 @@ import {
   RefreshCw,
   History,
   Save,
+  Camera,
   FolderKanban,
   Building2,
   Shield,
@@ -318,6 +319,7 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
         const recordedFile = new File([session.blob], 'grabacion-pantalla.webm', {
           type: session.blob.type,
         });
+        setVideoFile(recordedFile);
 
         // If we collected auto snapshots, integrate them directly into extractedFrames
         if (autoSnapshots.length > 0) {
@@ -341,6 +343,7 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
             onInterim: (txt) => setInterimSpeech(txt),
             onSentence: (segment) => {
               setInstructorTranscripts((prev) => [...prev, segment]);
+              screenActionDetector.notifySpeechSentence(segment.text, segment.timestamp);
             },
             onStatusChange: (status, msg) => {
               setTranscriptionStatus(status);
@@ -406,12 +409,19 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
     if (recordTimerRef.current) clearInterval(recordTimerRef.current);
   };
 
-  const handleTriggerActionSnapshot = (reason: 'click' | 'enter' | 'save' | 'type') => {
+  const handleTriggerActionSnapshot = (
+    reason: 'click' | 'enter' | 'save' | 'type' | 'custom',
+    customLabel?: string
+  ) => {
     let label = 'Clic detectado';
     if (reason === 'enter') label = 'Tecla Enter presionada';
     if (reason === 'save') label = 'Acción Grabar/Guardar';
-    if (reason === 'type') label = 'Dato completado';
-    screenActionDetector.captureNow(reason === 'type' ? 'change_detected' : reason, label);
+    if (reason === 'type') label = 'Interacción en campo / selección';
+    if (reason === 'custom' && customLabel) label = customLabel;
+    screenActionDetector.captureNow(
+      reason === 'type' || reason === 'custom' ? 'change_detected' : reason,
+      label
+    );
   };
 
   // Add simulated instructor voice phrase (convenient for testing or dictating manually)
@@ -696,372 +706,352 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-3 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl w-[98vw] max-w-[98vw] h-[98vh] max-h-[98vh] flex flex-col overflow-hidden border border-slate-200">
+    <div className="fixed inset-0 z-50 bg-slate-900/85 backdrop-blur-sm flex items-center justify-center p-1 sm:p-2 overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-2xl w-[98.5vw] h-[98vh] max-w-none max-h-none flex flex-col overflow-hidden border border-slate-200">
         {/* Header */}
-        <div className="px-6 py-5 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-          <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-xl ${existingManual ? 'bg-amber-600 shadow-amber-200' : 'bg-indigo-600 shadow-indigo-200'} flex items-center justify-center text-white shadow-md`}>
-              {existingManual ? <RotateCcw className="w-5 h-5" /> : <Sparkles className="w-5 h-5" />}
+        <div className="px-5 py-3 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className={`w-8 h-8 rounded-lg ${existingManual ? 'bg-amber-600 shadow-amber-200' : 'bg-indigo-600 shadow-indigo-200'} flex items-center justify-center text-white shadow-xs`}>
+              {existingManual ? <RotateCcw className="w-4 h-4" /> : <Sparkles className="w-4 h-4" />}
             </div>
             <div>
-              <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+              <h2 className="text-base font-bold text-slate-900 flex items-center gap-2 leading-none">
                 <span>{existingManual ? 'Regenerar Grabación del Manual' : 'Nuevo Manual de Usuario con IA'}</span>
                 {existingManual ? (
-                  <span className="text-[11px] bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full flex items-center gap-1 border border-amber-200">
-                    <RotateCcw className="w-3 h-3 text-amber-700" /> Conservando Datos Llenados
+                  <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full flex items-center gap-1 border border-amber-200">
+                    <RotateCcw className="w-2.5 h-2.5 text-amber-700" /> Conservando Datos
                   </span>
                 ) : (
-                  <span className="text-[11px] bg-indigo-100 text-indigo-700 font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
-                    <Mic className="w-3 h-3" /> Transcripción en Vivo Tipo MS Teams
+                  <span className="text-[10px] bg-indigo-100 text-indigo-700 font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <Mic className="w-2.5 h-2.5" /> Transcripción en Vivo Tipo MS Teams
                   </span>
                 )}
               </h2>
-              <p className="text-xs text-slate-500">
+              <p className="text-[11px] text-slate-500 mt-0.5">
                 {existingManual
-                  ? `Graba una nueva secuencia de pantallas y voz para «${existingManual.title}». Todo lo que llenaste al crearlo por primera vez se mantiene guardado.`
-                  : 'Graba tu pantalla mientras explicas por micrófono. El sistema transcribirá tu voz y enriquecerá automáticamente el manual con tus explicaciones.'}
+                  ? `Graba una nueva secuencia de pantallas y voz para «${existingManual.title}».`
+                  : 'Graba tu pantalla mientras explicas por micrófono. El sistema capturará automáticamente cada paso.'}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
             disabled={isGenerating}
-            className="p-2 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-200/60 transition-colors"
+            className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-200/60 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Modal Body */}
-        <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
-          {/* Regeneration Notice Banner if editing existing manual */}
-          {existingManual && (
-            <div className="bg-gradient-to-r from-amber-50 via-orange-50/40 to-indigo-50/50 border border-amber-300 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-xs">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-amber-500 text-white flex items-center justify-center font-bold flex-shrink-0 shadow-xs">
-                  <RotateCcw className="w-4 h-4" />
+        {/* Modal Body: 2 Columns 50% / 50% */}
+        <div className="flex-1 overflow-hidden p-3 sm:p-4 grid grid-cols-1 lg:grid-cols-12 gap-3.5 min-h-0">
+          {/* Left Column: Form Parameters & Settings (50% width for extensive context) */}
+          <div className="lg:col-span-6 flex flex-col justify-between h-full overflow-y-auto pr-1 gap-2.5 bg-slate-50/80 p-3 sm:p-4 rounded-xl border border-slate-200 min-h-0 scrollbar-thin">
+            {/* Regeneration Notice Banner if editing existing manual */}
+            {existingManual && (
+              <div className="bg-amber-50 border border-amber-300 rounded-lg p-2.5 flex items-center justify-between gap-2 shadow-2xs shrink-0">
+                <div className="flex items-center gap-1.5 truncate">
+                  <RotateCcw className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                  <span className="font-bold text-xs text-amber-950 truncate">
+                    {existingManual.title}
+                  </span>
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-xs text-amber-950 uppercase tracking-wider bg-amber-200/80 text-amber-900 px-2 py-0.5 rounded">
-                      Modo Regeneración Activo
-                    </span>
-                    <span className="text-xs text-slate-600 font-medium truncate max-w-sm">
-                      {existingManual.title}
-                    </span>
-                  </div>
-                  <p className="text-xs text-amber-950 mt-0.5">
-                    <strong>Los datos originales se han conservado:</strong> El título, notas de contexto y público objetivo ya están llenos. Graba la nueva sesión para renovar capturas y la transcripción del instructor.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 self-end md:self-auto flex-shrink-0 bg-white px-2.5 py-1.5 rounded-lg border border-amber-200 shadow-2xs">
-                <span className="text-xs font-semibold text-slate-700">Guardar como:</span>
-                <select
-                  value={saveMode}
-                  onChange={(e) => setSaveMode(e.target.value as 'update' | 'new_version')}
-                  className="text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
-                >
-                  <option value="update">Actualizar manual actual (mantener ID)</option>
-                  <option value="new_version">
-                    Nueva versión (v{(parseFloat(existingManual.version || '1.0') + 0.1).toFixed(1)})
-                  </option>
-                </select>
-              </div>
-            </div>
-          )}
-
-          {/* Metadata Section */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
-            {projects && projects.length > 0 && (
-              <div className="md:col-span-2 bg-white p-3 rounded-lg border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center flex-shrink-0">
-                    <FolderKanban className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <label className="text-xs font-bold text-slate-800 block">
-                      Proyecto Asociado
-                    </label>
-                    <span className="text-[11px] text-slate-500">
-                      Este manual se incorporará dentro de la solución del cliente seleccionado
-                    </span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 w-full sm:w-auto">
+                <div className="flex items-center gap-1 shrink-0">
+                  <span className="text-[10px] font-semibold text-slate-600">Guardar:</span>
                   <select
-                    value={selectedProjectId}
-                    onChange={(e) => setSelectedProjectId(e.target.value)}
-                    className="w-full sm:w-auto text-xs font-bold text-slate-800 bg-slate-50 hover:bg-slate-100 border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none cursor-pointer"
+                    value={saveMode}
+                    onChange={(e) => setSaveMode(e.target.value as 'update' | 'new_version')}
+                    className="text-[10px] font-bold text-indigo-700 bg-white border border-indigo-200 rounded px-1.5 py-0.5 focus:outline-none"
                   >
-                    {projects.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.clientName} · {p.name}
-                      </option>
-                    ))}
+                    <option value="update">Actualizar actual</option>
+                    <option value="new_version">
+                      Nueva versión (v{(parseFloat(existingManual.version || '1.0') + 0.1).toFixed(1)})
+                    </option>
                   </select>
                 </div>
               </div>
             )}
 
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-bold uppercase text-slate-600">
-                  Título o Tarea a Documentar *
-                </label>
-                <DictationButton
-                  value={topic}
-                  onChange={setTopic}
-                  title="Dictar título por voz"
-                  size="xs"
-                />
-              </div>
-              <input
-                type="text"
-                value={topic}
-                onChange={(e) => setTopic(e.target.value)}
-                placeholder="Ej. Cómo autorizar una orden de compra en el ERP"
-                className="w-full text-sm px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-bold uppercase text-slate-600">
-                  Público Objetivo
-                </label>
-                <DictationButton
-                  value={targetAudience}
-                  onChange={setTargetAudience}
-                  title="Dictar público objetivo por voz"
-                  size="xs"
-                />
-              </div>
-              <input
-                type="text"
-                value={targetAudience}
-                onChange={(e) => setTargetAudience(e.target.value)}
-                placeholder="Ej. Clientes nuevos, equipo de ventas"
-                className="w-full text-sm px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-            <div className="md:col-span-2">
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-bold uppercase text-slate-600">
-                  Notas / Contexto Adicional (Opcional)
-                </label>
-                <DictationButton
-                  value={context}
-                  onChange={setContext}
-                  title="Dictar contexto por voz"
-                  size="xs"
-                />
-              </div>
-              <input
-                type="text"
-                value={context}
-                onChange={(e) => setContext(e.target.value)}
-                placeholder="Ej. Enfatizar que se debe revisar el número de referencia antes de guardar"
-                className="w-full text-sm px-3.5 py-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-
-            {/* Pedagogical Approach (4C/ID) & PII Auto-Anonymization */}
-            <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 p-3 bg-slate-50 border border-slate-200/80 rounded-xl">
-              <div>
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5 mb-1.5">
-                  <Target className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>Enfoque Pedagógico (Diseño Instruccional 4C/ID)</span>
-                </label>
-                <div className="grid grid-cols-3 gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setPedagogicalApproach('sop')}
-                    className={`py-1.5 px-2 text-xs font-medium rounded-lg border text-center transition-all ${
-                      pedagogicalApproach === 'sop'
-                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
-                        : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
-                    }`}
-                  >
-                    <div className="font-bold">SOP Formal</div>
-                    <div className="text-[10px] opacity-80">Rigor & Auditoría</div>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPedagogicalApproach('microlearning')}
-                    className={`py-1.5 px-2 text-xs font-medium rounded-lg border text-center transition-all ${
-                      pedagogicalApproach === 'microlearning'
-                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
-                        : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
-                    }`}
-                  >
-                    <div className="font-bold">Guía Rápida</div>
-                    <div className="text-[10px] opacity-80">Microaprendizaje</div>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPedagogicalApproach('onboarding')}
-                    className={`py-1.5 px-2 text-xs font-medium rounded-lg border text-center transition-all ${
-                      pedagogicalApproach === 'onboarding'
-                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
-                        : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
-                    }`}
-                  >
-                    <div className="font-bold">Capacitación</div>
-                    <div className="text-[10px] opacity-80">Didáctico / Onboarding</div>
-                  </button>
+            {/* Proyecto Asociado */}
+            {projects && projects.length > 0 && (
+              <div className="bg-white p-2.5 rounded-lg border border-slate-200 flex items-center justify-between gap-2 shadow-2xs shrink-0">
+                <div className="flex items-center gap-1.5">
+                  <FolderKanban className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                  <span className="text-xs font-bold text-slate-700">Proyecto:</span>
                 </div>
+                <select
+                  value={selectedProjectId}
+                  onChange={(e) => setSelectedProjectId(e.target.value)}
+                  className="text-xs font-semibold text-slate-800 bg-slate-50 border border-slate-300 rounded-md px-2 py-1 max-w-[280px] truncate focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                >
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.clientName} · {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Inputs: Título, Audiencia, Contexto Ampliado */}
+            <div className="flex flex-col gap-2 shrink-0">
+              <div>
+                <div className="flex items-center justify-between mb-0.5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-slate-600">
+                    Título o Tarea a Documentar *
+                  </label>
+                  <DictationButton
+                    value={topic}
+                    onChange={setTopic}
+                    title="Dictar título por voz"
+                    size="xs"
+                  />
+                </div>
+                <input
+                  type="text"
+                  value={topic}
+                  onChange={(e) => setTopic(e.target.value)}
+                  placeholder="Ej. Cómo autorizar una orden de compra en el ERP"
+                  className="w-full text-xs px-3 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
               </div>
 
-              {/* PII Anonymization Toggle */}
-              <div className="flex flex-col justify-between">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5 mb-1.5">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Privacidad & Anonimización Automática (PII)</span>
-                </label>
-                <div
-                  onClick={() => setAutoAnonymizePii(!autoAnonymizePii)}
-                  className={`p-2 rounded-lg border cursor-pointer transition-all flex items-center justify-between ${
-                    autoAnonymizePii
-                      ? 'bg-emerald-50/80 border-emerald-300 text-emerald-950'
-                      : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'
+              <div>
+                <div className="flex items-center justify-between mb-0.5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-slate-600">
+                    Público Objetivo
+                  </label>
+                  <DictationButton
+                    value={targetAudience}
+                    onChange={setTargetAudience}
+                    title="Dictar público objetivo por voz"
+                    size="xs"
+                  />
+                </div>
+                <input
+                  type="text"
+                  value={targetAudience}
+                  onChange={(e) => setTargetAudience(e.target.value)}
+                  placeholder="Ej. Usuarios finales y colaboradores, analistas contables"
+                  className="w-full text-xs px-3 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                    <span>Notas / Contexto Adicional (Opcional)</span>
+                    <span className="text-[9px] text-indigo-600 font-medium lowercase">(reglas, requisitos o explicaciones para la IA)</span>
+                  </label>
+                  <DictationButton
+                    value={context}
+                    onChange={setContext}
+                    title="Dictar contexto por voz"
+                    size="xs"
+                  />
+                </div>
+                <textarea
+                  value={context}
+                  onChange={(e) => setContext(e.target.value)}
+                  rows={4}
+                  placeholder="Escribe o dicta aquí notas clave, reglas de negocio, requerimientos previos, consideraciones especiales o advertencias que la IA deba incorporar en cada paso..."
+                  className="w-full text-xs px-3 py-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 leading-relaxed resize-y min-h-[92px]"
+                />
+              </div>
+            </div>
+
+            {/* Pedagogical Approach (4C/ID) */}
+            <div className="bg-white p-2 border border-slate-200/90 rounded-lg shrink-0 shadow-2xs">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5 mb-1">
+                <Target className="w-3 h-3 text-indigo-600" />
+                <span>Enfoque Pedagógico (Diseño 4C/ID)</span>
+              </label>
+              <div className="grid grid-cols-3 gap-1">
+                <button
+                  type="button"
+                  onClick={() => setPedagogicalApproach('sop')}
+                  className={`py-1 px-1 text-xs rounded border text-center transition-all ${
+                    pedagogicalApproach === 'sop'
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs font-bold'
+                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 font-medium'
                   }`}
                 >
-                  <div className="flex items-center gap-2">
-                    <Shield className={`w-4 h-4 ${autoAnonymizePii ? 'text-emerald-600' : 'text-slate-400'}`} />
-                    <span className="text-xs font-semibold">
-                      {autoAnonymizePii ? 'Difuminar datos sensibles (Emails, RUT, Tarjetas)' : 'Sin difuminado automático de datos'}
-                    </span>
-                  </div>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${autoAnonymizePii ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'}`}>
-                    {autoAnonymizePii ? 'Activo' : 'Inactivo'}
-                  </span>
-                </div>
+                  <div className="font-bold text-[11px] leading-tight">SOP Formal</div>
+                  <div className="text-[8.5px] opacity-80 leading-tight">Rigor & Auditoría</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPedagogicalApproach('microlearning')}
+                  className={`py-1 px-1 text-xs rounded border text-center transition-all ${
+                    pedagogicalApproach === 'microlearning'
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs font-bold'
+                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 font-medium'
+                  }`}
+                >
+                  <div className="font-bold text-[11px] leading-tight">Guía Rápida</div>
+                  <div className="text-[8.5px] opacity-80 leading-tight">Microaprendizaje</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPedagogicalApproach('onboarding')}
+                  className={`py-1 px-1 text-xs rounded border text-center transition-all ${
+                    pedagogicalApproach === 'onboarding'
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs font-bold'
+                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 font-medium'
+                  }`}
+                >
+                  <div className="font-bold text-[11px] leading-tight">Capacitación</div>
+                  <div className="text-[8.5px] opacity-80 leading-tight">Onboarding</div>
+                </button>
               </div>
             </div>
 
-            {/* Preservation notice and clear button */}
-            <div className="flex items-center justify-between col-span-1 md:col-span-2 text-[11px] text-slate-500 pt-2 border-t border-slate-200/70 mt-1">
-              <span className="flex items-center gap-1.5 text-indigo-700 font-medium">
-                <Save className="w-3.5 h-3.5 text-indigo-600" />
-                Los datos llenados (tema, contexto y audiencia) se conservan automáticamente y no se borran al regenerar la grabación.
+            {/* PII Anonymization Toggle */}
+            <div
+              onClick={() => setAutoAnonymizePii(!autoAnonymizePii)}
+              className={`py-1.5 px-2 rounded-lg border cursor-pointer transition-all flex items-center justify-between shrink-0 shadow-2xs ${
+                autoAnonymizePii
+                  ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
+                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              <div className="flex items-center gap-1.5">
+                <Shield className={`w-3.5 h-3.5 ${autoAnonymizePii ? 'text-emerald-600' : 'text-slate-400'}`} />
+                <span className="text-[10.5px] font-semibold">
+                  {autoAnonymizePii ? 'Difuminar datos sensibles (Emails, RUT, Tarjetas)' : 'Sin difuminado automático'}
+                </span>
+              </div>
+              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${autoAnonymizePii ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'}`}>
+                {autoAnonymizePii ? 'Activo' : 'Inactivo'}
+              </span>
+            </div>
+
+            {/* Bottom info note */}
+            <div className="flex items-center justify-between text-[10px] text-slate-500 pt-1 shrink-0">
+              <span className="flex items-center gap-1 text-indigo-700 font-medium">
+                <Save className="w-3 h-3 text-indigo-600" />
+                Datos conservados automáticamente
               </span>
               {!existingManual && (topic || context) && (
                 <button
                   type="button"
                   onClick={handleClearDraft}
-                  className="text-slate-400 hover:text-red-600 transition-colors text-xs font-medium"
+                  className="text-slate-400 hover:text-red-600 font-medium transition-colors"
                 >
-                  Limpiar campos
+                  Limpiar
                 </button>
               )}
             </div>
           </div>
 
-          {/* Source Tabs */}
-          <div>
-            <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+          {/* Right Column: Source Tabs & Capture / Record (50% width) */}
+          <div className="lg:col-span-6 flex flex-col h-full overflow-hidden bg-white p-3 sm:p-4 rounded-xl border border-slate-200 shadow-2xs min-h-0">
+            {/* Source Tabs */}
+            <div className="flex items-center gap-2 border-b border-slate-200 pb-2 shrink-0">
               <button
                 type="button"
                 onClick={() => setActiveTab('record')}
-                className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
                   activeTab === 'record'
-                    ? 'bg-indigo-600 text-white shadow-sm'
+                    ? 'bg-indigo-600 text-white shadow-xs'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                 }`}
               >
-                <MonitorPlay className="w-4 h-4" />
-                <span>Grabar Pantalla + Transcripción de Voz</span>
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${activeTab === 'record' ? 'bg-indigo-800 text-indigo-100' : 'bg-indigo-100 text-indigo-700'}`}>
+                <MonitorPlay className="w-3.5 h-3.5" />
+                <span>Grabar Pantalla + Voz</span>
+                <span className={`text-[9px] px-1 py-0.5 rounded-full font-bold ${activeTab === 'record' ? 'bg-indigo-800 text-indigo-100' : 'bg-indigo-100 text-indigo-700'}`}>
                   Recomendado
                 </span>
               </button>
               <button
                 type="button"
                 onClick={() => setActiveTab('screenshots')}
-                className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
                   activeTab === 'screenshots'
-                    ? 'bg-indigo-50 text-indigo-700'
+                    ? 'bg-indigo-600 text-white shadow-xs'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                 }`}
               >
-                <Upload className="w-4 h-4" /> Capturas de Pantalla ({screenshots.length})
+                <Upload className="w-3.5 h-3.5" />
+                <span>Capturas de Pantalla ({screenshots.length})</span>
               </button>
               <button
                 type="button"
                 onClick={() => setActiveTab('video')}
-                className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
                   activeTab === 'video'
-                    ? 'bg-indigo-50 text-indigo-700'
+                    ? 'bg-indigo-600 text-white shadow-xs'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                 }`}
               >
-                <Video className="w-4 h-4" /> Subir Video ({extractedFrames.length} fotogramas)
+                <Video className="w-3.5 h-3.5" />
+                <span>Subir Video ({extractedFrames.length})</span>
               </button>
             </div>
 
-            {/* TAB 1: SCREEN RECORDING + MS TEAMS STYLE AUDIO TRANSCRIPTION */}
-            {activeTab === 'record' && (
-              <div className="pt-4 flex flex-col gap-5">
-                {/* Pre-recording audio configuration card */}
-                {!isRecording && (
-                  <div className="p-4 bg-gradient-to-r from-indigo-50/90 via-purple-50/70 to-slate-50 border border-indigo-200 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xs">
-                    <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-purple-600 text-white flex items-center justify-center flex-shrink-0 shadow-md shadow-purple-200">
-                        <Mic className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-sm font-bold text-slate-900">
-                            Escuchar y transcribir al instructor en vivo (tipo MS Teams)
-                          </h4>
-                          <span className="text-[10px] bg-purple-100 text-purple-700 font-bold px-2 py-0.5 rounded-full border border-purple-200">
-                            Voz Activa (Español)
-                          </span>
+            {/* Tab Contents: Flex-1 and Overflow controlled */}
+            <div className="flex-1 overflow-y-auto pt-2 flex flex-col pr-1 min-h-0 scrollbar-thin">
+              {/* TAB 1: SCREEN RECORDING + MS TEAMS STYLE AUDIO TRANSCRIPTION */}
+              {activeTab === 'record' && (
+                <div className="flex flex-col gap-3">
+                  {/* Pre-recording audio configuration card */}
+                  {!isRecording && (
+                    <div className="p-3 bg-gradient-to-r from-indigo-50/90 via-purple-50/70 to-slate-50 border border-indigo-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shadow-xs shrink-0">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-8 h-8 rounded-lg bg-purple-600 text-white flex items-center justify-center flex-shrink-0 shadow-xs">
+                          <Mic className="w-4 h-4" />
                         </div>
-                        <p className="text-xs text-slate-600 mt-0.5 leading-relaxed">
-                          Mientras grabas tus pantallas, el sistema escuchará tus explicaciones como en una reunión de Teams, transcribiendo cada frase para enriquecer las instrucciones, consejos y advertencias del manual.
-                        </p>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <h4 className="text-xs font-bold text-slate-900 truncate">
+                              Audio y Transcripción en Vivo (tipo MS Teams)
+                            </h4>
+                            <span className="text-[9.5px] bg-purple-100 text-purple-700 font-bold px-1.5 py-0.5 rounded-full border border-purple-200 shrink-0">
+                              Español Activo
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-600 truncate mt-0.5">
+                            Escucha tus explicaciones y transcribe cada frase para enriquecer las instrucciones y consejos.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <label className="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-slate-700 bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 shadow-2xs">
+                          <input
+                            type="checkbox"
+                            checked={enableInstructorAudio}
+                            onChange={(e) => setEnableInstructorAudio(e.target.checked)}
+                            className="w-3.5 h-3.5 text-purple-600 rounded focus:ring-purple-500"
+                          />
+                          <span>Micrófono</span>
+                        </label>
                       </div>
                     </div>
+                  )}
 
-                    <div className="flex items-center gap-3 self-end md:self-auto flex-shrink-0">
-                      <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700 bg-white px-3 py-2 rounded-lg border border-slate-200 shadow-2xs">
-                        <input
-                          type="checkbox"
-                          checked={enableInstructorAudio}
-                          onChange={(e) => setEnableInstructorAudio(e.target.checked)}
-                          className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
-                        />
-                        <span>Activar micrófono</span>
-                      </label>
+                  {/* Recorder Control Center */}
+                  <div className="flex flex-col items-center justify-center p-4 bg-slate-50 rounded-xl border border-slate-200 gap-2.5 text-center shrink-0">
+                    <div
+                      className={`w-12 h-12 rounded-full flex items-center justify-center shadow transition-all ${
+                        isRecording
+                          ? 'bg-red-600 text-white animate-pulse ring-4 ring-red-200'
+                          : 'bg-indigo-600 text-white'
+                      }`}
+                    >
+                      {isRecording ? <Radio className="w-6 h-6" /> : <MonitorPlay className="w-6 h-6" />}
                     </div>
-                  </div>
-                )}
 
-                {/* Recorder Control Center */}
-                <div className="flex flex-col items-center justify-center p-6 bg-slate-50 rounded-xl border border-slate-200 gap-4 text-center">
-                  <div
-                    className={`w-16 h-16 rounded-full flex items-center justify-center shadow-lg transition-all ${
-                      isRecording
-                        ? 'bg-red-600 text-white animate-pulse ring-4 ring-red-200'
-                        : 'bg-indigo-600 text-white'
-                    }`}
-                  >
-                    {isRecording ? <Radio className="w-8 h-8" /> : <MonitorPlay className="w-8 h-8" />}
-                  </div>
-
-                  <div>
-                    <h3 className="font-bold text-slate-900 text-lg">
-                      {isRecording ? 'Grabando Pantalla y Transcribiendo Voz del Instructor...' : 'Grabador de Pantalla con Detección y Audio'}
-                    </h3>
-                    <p className="text-xs text-slate-500 max-w-xl mt-1">
-                      {isRecording
-                        ? `Tiempo: ${speechTranscriptionService.formatTime(recordingDuration)} · El sistema captura automáticamente cada cambio en pantalla y transcribe en tiempo real todo lo que vas explicando.`
-                        : 'Al iniciar la grabación, habla con naturalidad indicando los pasos. El sistema capturará las pantallas y dejará una transcripción para enriquecer el texto.'}
-                    </p>
-                  </div>
+                    <div>
+                      <h3 className="font-bold text-slate-900 text-sm">
+                        {isRecording ? 'Grabando Pantalla y Transcribiendo Voz del Instructor...' : 'Grabador de Pantalla con Detección y Audio'}
+                      </h3>
+                      <p className="text-xs text-slate-500 max-w-lg mt-0.5">
+                        {isRecording
+                          ? `Tiempo: ${speechTranscriptionService.formatTime(recordingDuration)} · Captura automática de cambios y transcripción de voz activa.`
+                          : 'Al iniciar la grabación, habla con naturalidad indicando los pasos. El sistema capturará las pantallas y dejará una transcripción para enriquecer el texto.'}
+                      </p>
+                    </div>
 
                   {/* ACTIVE RECORDING HUD: LIVE SUBTITLES & TEAMS CAPTIONS */}
                   {isRecording ? (
@@ -1126,24 +1116,35 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
                       <div className="p-3 bg-white rounded-xl border border-indigo-200 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xs">
                         <div className="text-xs font-semibold text-indigo-900 flex items-center gap-2">
                           <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
-                          <span>{autoSnapshots.length} acciones de pantalla capturadas</span>
+                          <span>{autoSnapshots.length} acciones capturadas (Auto-detector activo)</span>
                         </div>
 
                         {/* Quick action triggers */}
-                        <div className="flex flex-wrap items-center gap-1.5">
+                        <div className="flex flex-wrap items-center gap-2">
                           <button
                             type="button"
-                            onClick={() => handleTriggerActionSnapshot('click')}
-                            className="px-2.5 py-1.5 text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-lg border border-indigo-200 transition-colors"
+                            onClick={() => handleTriggerActionSnapshot('custom', 'Paso marcado por el instructor')}
+                            className="px-3.5 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg shadow-sm flex items-center gap-1.5 transition-all active:scale-95"
+                            title="Toma una captura de pantalla inmediatamente en este instante exacto"
                           >
-                            🖱️ Clic
+                            <Camera className="w-3.5 h-3.5" />
+                            <span>📸 Capturar Paso Ahora</span>
                           </button>
                           <button
                             type="button"
                             onClick={() => handleTriggerActionSnapshot('type')}
                             className="px-2.5 py-1.5 text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-lg border border-blue-200 transition-colors"
+                            title="Registrar llenado de campo o selección"
                           >
-                            📝 Dato
+                            📝 Campo / Opción
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleTriggerActionSnapshot('click')}
+                            className="px-2.5 py-1.5 text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-lg border border-indigo-200 transition-colors"
+                            title="Registrar clic en botón o elemento"
+                          >
+                            🖱️ Clic
                           </button>
                           <button
                             type="button"
@@ -1157,7 +1158,7 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
                             onClick={() => handleTriggerActionSnapshot('save')}
                             className="px-2.5 py-1.5 text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold rounded-lg border border-emerald-200 transition-colors"
                           >
-                            💾 Grabar
+                            💾 Guardar
                           </button>
                         </div>
                       </div>
@@ -1408,10 +1409,49 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
                 {/* Show captured auto snapshots if any */}
                 {autoSnapshots.length > 0 && !isRecording && (
                   <div>
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500 block mb-2">
-                      Secuencia Capturada ({autoSnapshots.length} capturas)
-                    </span>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                      <span className="text-xs font-bold uppercase tracking-wider text-slate-500 block">
+                        Secuencia Capturada ({autoSnapshots.length} capturas)
+                      </span>
+                      {videoFile && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (videoFile) {
+                              setIsExtracting(true);
+                              try {
+                                const extra = await extractFramesFromVideo(videoFile, {
+                                  maxFrames: 12,
+                                  intervalSeconds: 3,
+                                });
+                                const mappedExtra: AutoCapturedSnapshot[] = extra.map((ef, i) => ({
+                                  id: ef.id,
+                                  timestamp: ef.timestamp,
+                                  dataUrl: ef.dataUrl,
+                                  reason: 'change_detected',
+                                  label: `Fotograma adicional (${Math.round(ef.timestamp)}s)`,
+                                  differenceScore: 1,
+                                }));
+                                setAutoSnapshots((prev) => [...prev, ...mappedExtra]);
+                                setExtractedFrames((prev) => [...prev, ...extra]);
+                              } catch (err) {
+                                console.error('Error extracting extra frames:', err);
+                              } finally {
+                                setIsExtracting(false);
+                              }
+                            }
+                          }}
+                          disabled={isExtracting}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 transition-colors self-start sm:self-auto disabled:opacity-50"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>
+                            {isExtracting ? 'Extrayendo...' : 'Extraer más fotogramas del video grabado'}
+                          </span>
+                        </button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-3">
                       {autoSnapshots.map((snap, idx) => (
                         <div
                           key={snap.id}
@@ -1431,10 +1471,10 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
 
             {/* TAB 2: SCREENSHOTS UPLOAD */}
             {activeTab === 'screenshots' && (
-              <div className="pt-4 flex flex-col gap-4">
+              <div className="pt-2 flex flex-col gap-3">
                 <div
                   onClick={() => fileInputRef.current?.click()}
-                  className="border-2 border-dashed border-indigo-200 hover:border-indigo-500 bg-indigo-50/30 hover:bg-indigo-50/60 rounded-xl p-8 text-center cursor-pointer transition-colors flex flex-col items-center justify-center gap-2"
+                  className="border-2 border-dashed border-indigo-200 hover:border-indigo-500 bg-indigo-50/30 hover:bg-indigo-50/60 rounded-xl p-4 sm:p-5 text-center cursor-pointer transition-colors flex flex-col items-center justify-center gap-1.5 shrink-0"
                 >
                   <input
                     type="file"
@@ -1444,24 +1484,24 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
                     accept="image/*"
                     className="hidden"
                   />
-                  <div className="w-12 h-12 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center">
-                    <Upload className="w-6 h-6" />
+                  <div className="w-9 h-9 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center">
+                    <Upload className="w-5 h-5" />
                   </div>
                   <div>
-                    <span className="font-semibold text-slate-800 text-sm">
+                    <span className="font-semibold text-slate-800 text-xs sm:text-sm">
                       Haz clic para subir capturas
                     </span>{' '}
-                    <span className="text-slate-500 text-sm">o arrastra tus archivos aquí</span>
+                    <span className="text-slate-500 text-xs">o arrastra tus archivos aquí</span>
                   </div>
-                  <p className="text-xs text-indigo-600 font-medium">
-                    💡 Consejo: ¡También puedes presionar <kbd className="px-1.5 py-0.5 bg-white border rounded shadow-xs font-mono">Ctrl + V</kbd> para pegar capturas directamente desde el portapapeles!
+                  <p className="text-[11px] text-indigo-600 font-medium">
+                    💡 Consejo: ¡También puedes presionar <kbd className="px-1 py-0.5 bg-white border rounded shadow-2xs font-mono text-[10px]">Ctrl + V</kbd> para pegar capturas directamente desde el portapapeles!
                   </p>
                 </div>
 
                 {/* Screenshot Previews */}
                 {screenshots.length > 0 && (
                   <div>
-                    <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center justify-between mb-1.5">
                       <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
                         Secuencia de Pasos ({screenshots.length})
                       </span>
@@ -1472,7 +1512,7 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
                         Limpiar todas
                       </button>
                     </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-2.5">
                       {screenshots.map((s, idx) => (
                         <div
                           key={s.id}
@@ -1481,18 +1521,18 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
                           <img
                             src={s.dataUrl}
                             alt={s.name}
-                            className="w-full h-24 object-cover group-hover:opacity-80 transition-opacity"
+                            className="w-full h-20 object-cover group-hover:opacity-80 transition-opacity"
                           />
-                          <div className="absolute top-1.5 left-1.5 bg-indigo-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow">
+                          <div className="absolute top-1 left-1 bg-indigo-600 text-white text-[9.5px] font-bold px-1.5 py-0.5 rounded shadow">
                             #{idx + 1}
                           </div>
                           <button
                             onClick={() => removeScreenshot(s.id)}
-                            className="absolute top-1.5 right-1.5 p-1 bg-red-600 text-white rounded-md opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700"
+                            className="absolute top-1 right-1 p-1 bg-red-600 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <Trash2 className="w-3 h-3" />
                           </button>
-                          <div className="p-1.5 bg-white text-[11px] font-medium text-slate-700 truncate">
+                          <div className="p-1 bg-white text-[10px] font-medium text-slate-700 truncate">
                             {s.name}
                           </div>
                         </div>
@@ -1505,10 +1545,10 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
 
             {/* TAB 3: VIDEO UPLOAD */}
             {activeTab === 'video' && (
-              <div className="pt-4 flex flex-col gap-4">
+              <div className="pt-2 flex flex-col gap-3">
                 <div
                   onClick={() => videoInputRef.current?.click()}
-                  className="border-2 border-dashed border-indigo-200 hover:border-indigo-500 bg-indigo-50/30 hover:bg-indigo-50/60 rounded-xl p-8 text-center cursor-pointer transition-colors flex flex-col items-center justify-center gap-2"
+                  className="border-2 border-dashed border-indigo-200 hover:border-indigo-500 bg-indigo-50/30 hover:bg-indigo-50/60 rounded-xl p-4 sm:p-5 text-center cursor-pointer transition-colors flex flex-col items-center justify-center gap-1.5 shrink-0"
                 >
                   <input
                     type="file"
@@ -1521,15 +1561,15 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
                     accept="video/*"
                     className="hidden"
                   />
-                  <div className="w-12 h-12 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center">
-                    <Video className="w-6 h-6" />
+                  <div className="w-9 h-9 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center">
+                    <Video className="w-5 h-5" />
                   </div>
                   <div>
-                    <span className="font-semibold text-slate-800 text-sm">
+                    <span className="font-semibold text-slate-800 text-xs sm:text-sm">
                       {videoFile ? videoFile.name : 'Haz clic para seleccionar un video'}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-[11px] text-slate-500">
                     Soporta MP4, WebM o MOV. Extraeremos automáticamente los fotogramas clave.
                   </p>
                 </div>
@@ -1559,7 +1599,7 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
                         {extractedFrames.length} seleccionados)
                       </span>
                     </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-3">
                       {extractedFrames.map((frame, idx) => (
                         <div
                           key={frame.id}
@@ -1596,11 +1636,12 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
                 )}
               </div>
             )}
+            </div>
           </div>
 
           {/* Error Message with Quick Actions */}
           {errorMessage && (
-            <div className="p-4 bg-red-50 border border-red-200 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="lg:col-span-12 p-3 bg-red-50 border border-red-200 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shrink-0">
               <div className="flex items-start gap-2.5">
                 <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
                 <div>
@@ -1636,16 +1677,16 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
+        <div className="px-5 py-2.5 border-t border-slate-200 bg-slate-50 flex items-center justify-between shrink-0">
           <button
             onClick={onClose}
             disabled={isGenerating}
-            className="py-2 px-4 text-xs font-semibold text-slate-600 hover:text-slate-900 rounded-lg transition-colors"
+            className="py-1.5 px-3 text-xs font-semibold text-slate-600 hover:text-slate-900 rounded-lg transition-colors"
           >
             Cancelar
           </button>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
             <button
               type="button"
               onClick={handleGenerateDirectManual}
@@ -1655,7 +1696,7 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
                 (activeTab === 'video' && extractedFrames.filter((f) => f.selected).length === 0) ||
                 (activeTab === 'record' && extractedFrames.length === 0 && autoSnapshots.length === 0)
               }
-              className="py-2.5 px-4 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-800 font-semibold text-xs rounded-xl border border-slate-300 shadow-2xs transition-colors"
+              className="py-2 px-3.5 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-800 font-semibold text-xs rounded-xl border border-slate-300 shadow-2xs transition-colors"
               title="Compila el manual de inmediato con tus capturas y transcripción de voz sin consultar a la IA"
             >
               Creación Directa (Inmediata)
@@ -1669,9 +1710,9 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
                 (activeTab === 'video' && extractedFrames.filter((f) => f.selected).length === 0) ||
                 (activeTab === 'record' && extractedFrames.length === 0 && autoSnapshots.length === 0)
               }
-              className={`py-2.5 px-6 ${
+              className={`py-2 px-5 ${
                 existingManual ? 'bg-amber-600 hover:bg-amber-700' : 'bg-indigo-600 hover:bg-indigo-700'
-              } disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold text-sm rounded-xl shadow-md transition-all flex items-center gap-2`}
+              } disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold text-xs sm:text-sm rounded-xl shadow-md transition-all flex items-center gap-2`}
             >
               {isGenerating ? (
                 <>

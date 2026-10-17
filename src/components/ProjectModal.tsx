@@ -66,6 +66,7 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
   );
 
   const [activeTab, setActiveTab] = useState<'general' | 'logo' | 'documentFeatures'>('general');
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -106,13 +107,14 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
-      alert('Por favor ingresa un nombre para el proyecto.');
+      setValidationError('Por favor ingresa un nombre para el proyecto.');
       return;
     }
     if (!clientName.trim()) {
-      alert('Por favor ingresa el nombre del cliente.');
+      setValidationError('Por favor ingresa el nombre del cliente.');
       return;
     }
+    setValidationError(null);
 
     const projectToSave: Project = {
       id: existingProject ? existingProject.id : `prj-${Date.now()}`,
@@ -165,6 +167,19 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {validationError && (
+          <div className="bg-red-50 border-b border-red-200 px-6 py-2.5 text-xs text-red-700 font-semibold flex items-center justify-between">
+            <span>{validationError}</span>
+            <button
+              type="button"
+              onClick={() => setValidationError(null)}
+              className="text-red-500 hover:text-red-700 font-bold ml-2"
+            >
+              ×
+            </button>
+          </div>
+        )}
 
         {/* Tab navigation */}
         <div className="flex border-b border-slate-200 bg-slate-50 px-6 pt-2 gap-2 text-xs font-semibold">

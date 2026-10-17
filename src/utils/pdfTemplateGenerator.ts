@@ -87,8 +87,8 @@ function drawCorporateLogos(
 ) {
   const scale = isMini ? 0.65 : 1;
   const ourLogoUrl = branding?.logo;
-  const ourCompanyName = branding?.companyName || 'weber';
-  const ourSlogan = branding?.companySlogan || 'SAINT-GOBAIN';
+  const ourCompanyName = branding?.companyName || clientName || 'ORGANIZACIÓN';
+  const ourSlogan = branding?.companySlogan || 'DOCUMENTACIÓN DE PROCESOS';
 
   // 1. LEFT SIDE: NUESTRO LOGO (Organización Emisora)
   let ourDrawn = false;
@@ -129,30 +129,26 @@ function drawCorporateLogos(
   }
 
   if (!ourDrawn) {
-    // Crisp Vector Weber / Company fallback
-    doc.setFillColor(254, 219, 0); // Weber Yellow
-    doc.triangle(
-      leftX,
-      y + 6 * scale,
-      leftX + 4.5 * scale,
-      y,
-      leftX + 9 * scale,
-      y + 6 * scale,
-      'F'
-    );
-    doc.setFillColor(30, 41, 59); // Dark slate arc accent
-    doc.rect(leftX + 2.5 * scale, y + 2.5 * scale, 4 * scale, 3.5 * scale, 'F');
+    // Elegant Corporate Crest fallback (Navy / Indigo)
+    doc.setFillColor(24, 59, 108); // Corporate Navy #183B6C
+    doc.roundedRect(leftX, y + 1 * scale, 7 * scale, 7 * scale, 1.2 * scale, 1.2 * scale, 'F');
+    doc.setFillColor(37, 99, 235); // Blue Accent
+    doc.rect(leftX + 1.8 * scale, y + 2.2 * scale, 3.4 * scale, 4.5 * scale, 'F');
+    doc.setFillColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(isMini ? 5 : 7);
+    doc.text((ourCompanyName || 'O').charAt(0).toUpperCase(), leftX + 3.5 * scale, y + 5.5 * scale, { align: 'center' });
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(isMini ? 8.5 : 12.5);
     doc.setTextColor(15, 23, 42);
-    doc.text(ourCompanyName.toLowerCase(), leftX + 11 * scale, y + 5 * scale);
+    doc.text(ourCompanyName, leftX + 9.5 * scale, y + 5 * scale);
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(isMini ? 4.5 : 5.8);
     doc.setTextColor(71, 85, 105);
     const line2 = ourSlogan.length > 25 ? ourSlogan.slice(0, 24) + '...' : ourSlogan;
-    doc.text(line2.toUpperCase(), leftX + 11 * scale, y + 8.2 * scale);
+    doc.text(line2.toUpperCase(), leftX + 9.5 * scale, y + 8.2 * scale);
   }
 
   // 2. RIGHT SIDE: LOGO DEL CLIENTE / SELLO HSBT
@@ -328,7 +324,13 @@ export async function exportToPdfWithTemplateStructure(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
   doc.setTextColor(255, 255, 255);
-  doc.text('MANUAL DE USUARIO SAP', marginX + 8, bannerY + 11);
+  doc.text(
+    isSap
+      ? 'MANUAL DE USUARIO SAP'
+      : (manual.category ? `MANUAL DE PROCEDIMIENTO · ${manual.category.toUpperCase()}` : 'MANUAL DE PROCEDIMIENTO OPERATIVO'),
+    marginX + 8,
+    bannerY + 11
+  );
 
   // Main Title
   doc.setFont('helvetica', 'bold');
@@ -507,35 +509,33 @@ export async function exportToPdfWithTemplateStructure(
   // 1.2 Requisitos Previos del Proceso
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10.5);
-  doc.setTextColor(navyColor[0], navyColor[1], navyColor[2]);
-  doc.text('1.2 Requisitos Previos y Destinatarios', marginX, currentY);
-  currentY += 5.5;
+  // 1.2 Requisitos Previos (Only if present in manual data)
+  if (manual.prerequisites && manual.prerequisites.length > 0) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10.5);
+    doc.setTextColor(navyColor[0], navyColor[1], navyColor[2]);
+    doc.text('1.2 Requisitos Previos y Destinatarios', marginX, currentY);
+    currentY += 5.5;
 
-  const prereqs =
-    manual.prerequisites && manual.prerequisites.length > 0
-      ? manual.prerequisites
-      : [
-          'Tener credenciales y accesos activos asignados para el sistema.',
-          'Contar con los roles y autorizaciones operativas correspondientes.',
-        ];
+    manual.prerequisites.forEach((reqText) => {
+      doc.setFillColor(37, 99, 235); // Blue square bullet
+      doc.rect(marginX + 1, currentY - 2.8, 2.2, 2.2, 'F');
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.2);
+      doc.setTextColor(51, 65, 85);
+      const rLines = doc.splitTextToSize(reqText, contentWidth - 8);
+      doc.text(rLines, marginX + 6, currentY);
+      currentY += rLines.length * 4.2 + 2;
+    });
+    currentY += 4;
+  }
 
-  prereqs.forEach((reqText) => {
-    doc.setFillColor(37, 99, 235); // Blue square bullet
-    doc.rect(marginX + 1, currentY - 2.8, 2.2, 2.2, 'F');
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8.2);
-    doc.setTextColor(51, 65, 85);
-    const rLines = doc.splitTextToSize(reqText, contentWidth - 8);
-    doc.text(rLines, marginX + 6, currentY);
-    currentY += rLines.length * 4.2 + 2;
-  });
-  currentY += 4;
-
-  // 1.3 Ficha Técnica del Proceso
+  // Ficha Técnica del Proceso (1.3 if prereqs exist, 1.2 if not)
+  const pdfFichaNum = (manual.prerequisites && manual.prerequisites.length > 0) ? '1.3' : '1.2';
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10.5);
   doc.setTextColor(navyColor[0], navyColor[1], navyColor[2]);
-  doc.text('1.3 Ficha Técnica del Proceso', marginX, currentY);
+  doc.text(`${pdfFichaNum} Ficha Técnica del Proceso`, marginX, currentY);
   currentY += 5.5;
 
   const realFichaData: Array<[string, string]> = [
@@ -1166,8 +1166,12 @@ export async function exportToPdfWithTemplateStructure(
   // Section 1
   drawTocItem('1 INTRODUCCIÓN', introPage, 1);
   drawTocItem('1.1 Objetivo y Alcance', introPage, 2);
-  drawTocItem('1.2 Requisitos Previos', introPage, 2);
-  drawTocItem('1.3 Ficha Técnica del Proceso', introPage, 2);
+  if (manual.prerequisites && manual.prerequisites.length > 0) {
+    drawTocItem('1.2 Requisitos Previos', introPage, 2);
+    drawTocItem('1.3 Ficha Técnica del Proceso', introPage, 2);
+  } else {
+    drawTocItem('1.2 Ficha Técnica del Proceso', introPage, 2);
+  }
 
   // Section 2
   drawTocItem('2 FLUJO DEL PROCESO', flowPage, 1);

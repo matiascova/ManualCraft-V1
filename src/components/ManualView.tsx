@@ -116,7 +116,6 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
 
   const deleteStep = useCallback((stepId: string) => {
     if (manual.steps.length <= 1) {
-      alert('El manual debe contener al menos un paso.');
       return;
     }
     const newSteps = manual.steps.filter((s) => s.id !== stepId);

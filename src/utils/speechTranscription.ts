@@ -134,13 +134,13 @@ export class SpeechTranscriptionService {
 
     this.recognition.onerror = (event: any) => {
       console.warn('SpeechRecognition error event:', event.error);
-      if (event.error === 'no-speech') {
-        // Normal silence; do not abort
+      if (event.error === 'no-speech' || event.error === 'aborted') {
+        // Normal silence or intentional abort/stop; do not trigger error
         return;
       }
       if (event.error === 'not-allowed') {
         if (this.callbacks.onStatusChange) {
-          this.callbacks.onStatusChange('error', 'Permiso de micrófono denegado para transcripción.');
+          this.callbacks.onStatusChange('error', 'Permiso de micrófono bloqueado. Haz clic en el ícono del candado 🔒 en la barra de direcciones y activa el micrófono.');
         }
         this.stop();
       }
