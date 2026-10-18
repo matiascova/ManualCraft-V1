@@ -86,11 +86,11 @@ export const StepEditorModal: React.FC<StepEditorModalProps> = ({
 
     const currentAnnotations = formData.annotations || [];
     let updatedAnnotations: VisualAnnotation[];
-    const circleAnn = currentAnnotations.find((a) => a.shape === 'circle');
+    const focalAnn = currentAnnotations.find((a) => a.shape === 'circle' || a.shape === 'arrow') || currentAnnotations[0];
 
-    if (circleAnn) {
+    if (focalAnn) {
       updatedAnnotations = currentAnnotations.map((a) =>
-        a.id === circleAnn.id ? { ...a, x, y } : a
+        a.id === focalAnn.id ? { ...a, x, y } : a
       );
     } else {
       const newAnn: VisualAnnotation = {
@@ -648,18 +648,48 @@ export const StepEditorModal: React.FC<StepEditorModalProps> = ({
                   />
 
                   {/* Hotspots mini-preview */}
-                  {formData.annotations?.map((ann) => (
-                    <div
-                      key={ann.id}
-                      style={{
-                        left: `${ann.x}%`,
-                        top: `${ann.y}%`,
-                        transform: 'translate(-50%, -50%)',
-                        borderColor: ann.color || '#ef4444',
-                      }}
-                      className="absolute w-6 h-6 rounded-full border-2 bg-red-500/20 pointer-events-none"
-                    />
-                  ))}
+                  {formData.annotations?.map((ann) => {
+                    if (ann.shape === 'arrow') {
+                      return (
+                        <div
+                          key={ann.id}
+                          style={{
+                            left: `${ann.x}%`,
+                            top: `${ann.y}%`,
+                            transform: 'none',
+                          }}
+                          className="absolute pointer-events-none"
+                        >
+                          <svg
+                            width="20"
+                            height="20"
+                            viewBox="0 0 28 28"
+                            className="drop-shadow-md"
+                            style={{ fill: ann.color || '#ef4444' }}
+                          >
+                            <path
+                              d="M 0 0 L 0 20 L 5.5 15.5 L 9.5 24.5 L 12.8 23 L 8.8 14 L 15 14 Z"
+                              stroke="#ffffff"
+                              strokeWidth="1.8"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div
+                        key={ann.id}
+                        style={{
+                          left: `${ann.x}%`,
+                          top: `${ann.y}%`,
+                          transform: 'translate(-50%, -50%)',
+                          borderColor: ann.color || '#ef4444',
+                        }}
+                        className="absolute w-5 h-5 rounded-full border-2 bg-red-500/20 pointer-events-none"
+                      />
+                    );
+                  })}
                 </div>
 
                 <div className="absolute inset-0 bg-slate-950/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white font-semibold text-xs backdrop-blur-2xs pointer-events-none">

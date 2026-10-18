@@ -233,6 +233,54 @@ export async function renderAnnotatedScreenshotForPdf(
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
             ctx.lineWidth = 1;
             ctx.strokeRect(left, top, w, h);
+          } else if (ann.shape === 'arrow') {
+            // Mouse pointer arrow with exact tip at (cx, cy)
+            const arrowScale = Math.max(1.1, origW * 0.0011);
+            ctx.save();
+            ctx.translate(cx, cy);
+            ctx.scale(arrowScale, arrowScale);
+
+            // Drop shadow
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+            ctx.shadowBlur = 6;
+            ctx.shadowOffsetX = 2;
+            ctx.shadowOffsetY = 2;
+
+            // Draw arrow polygon path (tip at 0, 0)
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(0, 20);
+            ctx.lineTo(5.5, 15.5);
+            ctx.lineTo(9.5, 24.5);
+            ctx.lineTo(12.8, 23);
+            ctx.lineTo(8.8, 14);
+            ctx.lineTo(15, 14);
+            ctx.closePath();
+
+            ctx.fillStyle = color;
+            ctx.fill();
+
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1.8;
+            ctx.lineJoin = 'round';
+            ctx.stroke();
+
+            // Concentric hotspot dot at tip
+            ctx.shadowColor = 'transparent';
+            ctx.beginPath();
+            ctx.arc(0, 0, 3, 0, Math.PI * 2);
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(0, 0, 1.8, 0, Math.PI * 2);
+            ctx.fillStyle = color;
+            ctx.fill();
+
+            ctx.restore();
+
+            if (ann.label) {
+              drawCanvasLabelForPdf(ctx, ann, cx + 18, cy + 18, 40, 24, origW, color);
+            }
           } else {
             // Circle hotspot
             const radius = Math.max(16, origW * 0.02);

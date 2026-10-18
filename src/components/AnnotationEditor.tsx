@@ -12,6 +12,7 @@ import {
   CornerLeftUp,
   Square,
   Circle,
+  MousePointer,
   EyeOff,
   ZoomIn,
   ZoomOut,
@@ -19,6 +20,10 @@ import {
   Copy,
   Crosshair,
   Sliders,
+  ArrowUp,
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
 } from 'lucide-react';
 import { DictationButton } from './DictationButton';
 
@@ -55,14 +60,15 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     annotations[0]?.id || null
   );
 
-  // Tool mode: 'circle' (drop focal hotspot), 'rect', 'blur', or 'select'
-  const [toolMode, setToolMode] = useState<'circle' | 'rect' | 'blur' | 'select'>('circle');
+  // Tool mode: 'circle' (drop focal hotspot), 'arrow' (puntero de mouse), 'rect', 'blur', or 'select'
+  const [toolMode, setToolMode] = useState<'circle' | 'arrow' | 'rect' | 'blur' | 'select'>('circle');
   // 'move' repositions current focal point on click; 'add' creates a new annotation on next click
   const [clickPlacementMode, setClickPlacementMode] = useState<'move' | 'add'>('move');
   const [clickRipple, setClickRipple] = useState<{ x: number; y: number } | null>(null);
+  const [hoverCoords, setHoverCoords] = useState<{ x: number; y: number } | null>(null);
 
   // New item defaults
-  const [activeShape, setActiveShape] = useState<'circle' | 'rect' | 'blur'>('circle');
+  const [activeShape, setActiveShape] = useState<'circle' | 'arrow' | 'rect' | 'blur'>('circle');
   const [activeColor, setActiveColor] = useState<string>('#ef4444');
   const [zoomLevel, setZoomLevel] = useState<number>(1);
 
@@ -137,14 +143,9 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     setClickRipple({ x, y });
     setTimeout(() => setClickRipple(null), 650);
 
-    // If in ADD mode, or if there are no annotations yet, or if toolMode is rect or blur:
-    if (
-      clickPlacementMode === 'add' ||
-      localAnnotations.length === 0 ||
-      toolMode === 'rect' ||
-      toolMode === 'blur'
-    ) {
-      const shapeToCreate = toolMode === 'select' ? 'circle' : toolMode;
+    // If in ADD mode, or if there are no annotations yet:
+    if (clickPlacementMode === 'add' || localAnnotations.length === 0) {
+      const shapeToCreate = toolMode === 'select' ? activeShape : toolMode;
       const labelText = shapeToCreate === 'blur' ? '' : `Paso ${localAnnotations.length + 1}`;
 
       const newAnnotation: VisualAnnotation = {
@@ -155,8 +156,8 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         color: activeColor,
         label: labelText,
         labelPosition: y < 18 ? 'bottom' : 'top',
-        width: shapeToCreate === 'circle' ? undefined : (shapeToCreate === 'blur' ? 22 : 22),
-        height: shapeToCreate === 'circle' ? undefined : (shapeToCreate === 'blur' ? 12 : 14),
+        width: shapeToCreate === 'circle' || shapeToCreate === 'arrow' ? undefined : (shapeToCreate === 'blur' ? 22 : 22),
+        height: shapeToCreate === 'circle' || shapeToCreate === 'arrow' ? undefined : (shapeToCreate === 'blur' ? 12 : 14),
         labelOffsetX: 0,
         labelOffsetY: 0,
       };
@@ -169,47 +170,79 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       return;
     }
 
-    // Default MOVE / RELOCATE mode for focal point:
-    // If toolMode is circle or active annotation is circle, ensure the focal hotspot moves right to (x, y)
-    if (toolMode === 'circle' || activeAnnotation?.shape === 'circle') {
-      const targetCircle = localAnnotations.find((a) => a.id === selectedId && a.shape === 'circle') ||
-        localAnnotations.find((a) => a.shape === 'circle');
-
-      if (targetCircle) {
-        const updated = localAnnotationsRef.current.map((a) =>
-          a.id === targetCircle.id ? { ...a, x, y } : a
-        );
-        setLocalAnnotations(updated);
-        onChange(updated);
-        setSelectedId(targetCircle.id);
-        return;
-      }
-
-      // If no circle exists yet, create one directly at clicked coordinates
-      const newAnnotation: VisualAnnotation = {
-        id: `ann-${Date.now()}`,
-        x,
-        y,
-        shape: 'circle',
-        color: activeColor,
-        label: `Paso ${localAnnotations.length + 1}`,
-        labelPosition: y < 18 ? 'bottom' : 'top',
-        labelOffsetX: 0,
-        labelOffsetY: 0,
-      };
-      const updated = [...localAnnotations, newAnnotation];
+    // Default MOVE / RELOCATE mode:
+    // Move the active focal point, mouse pointer arrow, or selected annotation directly to clicked coordinates
+    const target = activeAnnotation || localAnnotations.find((a) => a.shape === 'arrow' || a.shape === 'circle') || localAnnotations[0];
+    if (target) {
+      const updated = localAnnotationsRef.current.map((a) =>
+        a.id === target.id ? { ...a, x, y } : a
+      );
       setLocalAnnotations(updated);
       onChange(updated);
-      setSelectedId(newAnnotation.id);
+      setSelectedId(target.id);
       return;
     }
 
-    // Otherwise reposition the currently selected annotation (rect, etc.)
-    updateActive({ x, y }, true);
+    // If no annotation exists yet, create one directly at clicked coordinates
+    const newAnnotation: VisualAnnotation = {
+      id: `ann-${Date.now()}`,
+      x,
+      y,
+      shape: toolMode === 'arrow' ? 'arrow' : 'circle',
+      color: activeColor,
+      label: `Paso ${localAnnotations.length + 1}`,
+      labelPosition: y < 18 ? 'bottom' : 'top',
+      labelOffsetX: 0,
+      labelOffsetY: 0,
+    };
+    const updated = [...localAnnotations, newAnnotation];
+    setLocalAnnotations(updated);
+    onChange(updated);
+    setSelectedId(newAnnotation.id);
   };
 
+  const handleCanvasMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!imgRef.current) return;
+    const rect = imgRef.current.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const clickX = e.clientX - rect.left;
+    const clickY = e.clientY - rect.top;
+    if (clickX >= 0 && clickX <= rect.width && clickY >= 0 && clickY <= rect.height) {
+      const x = Math.round(((clickX / rect.width) * 100) * 10) / 10;
+      const y = Math.round(((clickY / rect.height) * 100) * 10) / 10;
+      setHoverCoords({ x, y });
+    } else {
+      setHoverCoords(null);
+    }
+  };
+
+  // Keyboard arrow keys fine adjustment (0.5% per keypress, Shift for 2.0%)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) return;
+      if (!activeAnnotation) return;
+
+      const step = e.shiftKey ? 2.0 : 0.5;
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        updateActive({ y: Math.max(0, Math.round((activeAnnotation.y - step) * 10) / 10) });
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        updateActive({ y: Math.min(100, Math.round((activeAnnotation.y + step) * 10) / 10) });
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        updateActive({ x: Math.max(0, Math.round((activeAnnotation.x - step) * 10) / 10) });
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        updateActive({ x: Math.min(100, Math.round((activeAnnotation.x + step) * 10) / 10) });
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeAnnotation, updateActive]);
+
   // Explicit function to activate adding a new annotation via click or instant drop
-  const handleAddNewAnnotation = (shapeOverride?: 'circle' | 'rect' | 'blur') => {
+  const handleAddNewAnnotation = (shapeOverride?: 'circle' | 'arrow' | 'rect' | 'blur') => {
     const shape = shapeOverride || activeShape;
     setToolMode(shape);
     setActiveShape(shape);
@@ -238,20 +271,31 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     updateActive({ x: 50, y: 50 });
   };
 
-  // Preset to place rectangle directly in the Top-Left Corner (SAP Command Bar)
+  // Preset to place annotation directly in the Top-Left Corner (SAP Command Bar / Window Origin)
   const handlePositionTopLeft = () => {
     if (!activeAnnotation) return;
-    const width = activeAnnotation.width || 22;
-    const height = activeAnnotation.height || 14;
-    const targetX = Math.round(width / 2 + 2);
-    const targetY = Math.round(height / 2 + 2);
-    updateActive({
-      x: targetX,
-      y: targetY,
-      labelPosition: 'inside',
-      labelOffsetX: 0,
-      labelOffsetY: 0,
-    });
+    if (activeAnnotation.shape === 'rect' || activeAnnotation.shape === 'blur') {
+      const width = activeAnnotation.width || 22;
+      const height = activeAnnotation.height || 14;
+      const targetX = Math.round(width / 2 + 1);
+      const targetY = Math.round(height / 2 + 1);
+      updateActive({
+        x: targetX,
+        y: targetY,
+        labelPosition: 'inside',
+        labelOffsetX: 0,
+        labelOffsetY: 0,
+      });
+    } else {
+      // Circle hotspot or mouse pointer arrow directly anchored to top-left corner (0,0)
+      updateActive({
+        x: 3.5,
+        y: 3.5,
+        labelPosition: 'bottom',
+        labelOffsetX: 0,
+        labelOffsetY: 0,
+      });
+    }
   };
 
   // Start dragging annotation body
@@ -489,7 +533,7 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
             <span className="text-[11px]">Ubicar con Clic</span>
           </button>
 
-          {/* 2. Add New Focal Hotspot */}
+          {/* 2. Add New Focal Hotspot (Circle) */}
           <button
             type="button"
             onClick={() => handleAddNewAnnotation('circle')}
@@ -498,13 +542,28 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                 ? 'bg-red-600 text-white shadow-xs ring-2 ring-red-400 animate-pulse'
                 : 'bg-slate-700/60 hover:bg-slate-700 text-slate-200'
             }`}
-            title="Añadir nuevo punto focal: activa este botón y haz clic en la captura"
+            title="Añadir nuevo punto focal circular: activa este botón y haz clic en la captura"
           >
             <Circle className="w-3.5 h-3.5 text-red-300" />
             <span className="text-[11px]">+ Punto Focal</span>
           </button>
 
-          {/* 3. Add Rectangle */}
+          {/* 3. Add New Mouse Pointer (Arrow) */}
+          <button
+            type="button"
+            onClick={() => handleAddNewAnnotation('arrow')}
+            className={`py-1 px-2.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs ${
+              clickPlacementMode === 'add' && toolMode === 'arrow'
+                ? 'bg-red-600 text-white shadow-xs ring-2 ring-red-400 animate-pulse'
+                : 'bg-slate-700/60 hover:bg-slate-700 text-slate-200'
+            }`}
+            title="Añadir puntero de flecha de mouse: la punta señala con exactitud milimétrica el elemento a cliquear"
+          >
+            <MousePointer className="w-3.5 h-3.5 text-red-300" />
+            <span className="text-[11px]">+ Puntero</span>
+          </button>
+
+          {/* 4. Add Rectangle */}
           <button
             type="button"
             onClick={() => handleAddNewAnnotation('rect')}
@@ -519,7 +578,7 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
             <span className="text-[11px]">+ Recuadro</span>
           </button>
 
-          {/* 4. Add Blur Box */}
+          {/* 5. Add Blur Box */}
           <button
             type="button"
             onClick={() => handleAddNewAnnotation('blur')}
@@ -534,15 +593,53 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
             <span className="text-[11px]">+ Difuminar</span>
           </button>
 
-          {activeAnnotation?.shape === 'rect' && (
+          {/* 6. Quick Anchor to Top-Left Corner (0,0) */}
+          {activeAnnotation && (
             <button
               type="button"
               onClick={handlePositionTopLeft}
-              className="py-1 px-2 rounded-lg text-[11px] font-semibold bg-slate-700/40 hover:bg-slate-700 text-indigo-300 border border-indigo-500/30 transition-all hidden lg:flex items-center gap-1"
-              title="Ajustar automáticamente a la barra de transacciones superior izquierda (SAP / ERP)"
+              className="py-1 px-2.5 rounded-lg text-[11px] font-bold bg-slate-700/60 hover:bg-slate-700 text-indigo-300 border border-indigo-500/40 transition-all flex items-center gap-1 shadow-2xs"
+              title="Anclar exactamente a la esquina superior izquierda (0,0) / barra de transacciones SAP"
             >
               <CornerLeftUp className="w-3 h-3 text-indigo-400" />
               <span>Esquina Sup. Izq.</span>
+            </button>
+          )}
+
+          {/* 7. Quick Shape Switch: Arrow <-> Circle */}
+          {activeAnnotation && (activeAnnotation.shape === 'circle' || activeAnnotation.shape === 'arrow') && (
+            <button
+              type="button"
+              onClick={() => {
+                const newShape = activeAnnotation.shape === 'circle' ? 'arrow' : 'circle';
+                updateActive({ shape: newShape });
+                setToolMode(newShape);
+              }}
+              className="py-1 px-2.5 rounded-lg text-[11px] font-bold bg-slate-700/60 hover:bg-slate-700 text-amber-300 border border-amber-500/40 transition-all flex items-center gap-1 shadow-2xs"
+              title={activeAnnotation.shape === 'circle' ? 'Cambiar a Puntero de Mouse (Flecha)' : 'Cambiar a Punto Focal Circular'}
+            >
+              {activeAnnotation.shape === 'circle' ? (
+                <>
+                  <MousePointer className="w-3 h-3 text-amber-300" />
+                  <span>Usar Puntero</span>
+                </>
+              ) : (
+                <>
+                  <Circle className="w-3 h-3 text-amber-300" />
+                  <span>Usar Círculo</span>
+                </>
+              )}
+            </button>
+          )}
+
+          {activeAnnotation && (
+            <button
+              type="button"
+              onClick={handleCenterCurrent}
+              className="py-1 px-2 rounded-lg text-[11px] font-semibold bg-slate-700/40 hover:bg-slate-700 text-slate-300 transition-all hidden lg:flex items-center gap-1"
+              title="Centrar en la imagen"
+            >
+              <span>Centrar</span>
             </button>
           )}
         </div>
@@ -609,15 +706,19 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
           <div className="absolute top-2.5 bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-full px-3.5 py-1 flex items-center gap-2 text-white shadow-xl z-20 pointer-events-none">
             <span className={`w-2 h-2 rounded-full ${clickPlacementMode === 'add' ? 'bg-amber-400 animate-ping' : 'bg-red-500 animate-pulse'}`} />
             <span className="font-semibold text-[11px] text-slate-200">
-              {clickPlacementMode === 'add'
+              {hoverCoords
+                ? `🎯 Ubicación: X: ${hoverCoords.x}%, Y: ${hoverCoords.y}% · Haz clic para ubicar aquí`
+                : clickPlacementMode === 'add'
                 ? '🎯 Modo Añadir Activo: Haz clic en la captura para colocar el nuevo elemento'
-                : '🎯 Haz clic en cualquier parte de la imagen para posicionar el punto focal allí'}
+                : '🎯 Haz clic en cualquier parte de la imagen para posicionar el punto focal / puntero allí'}
             </span>
           </div>
 
           {/* Zoomable Image Container */}
           <div
             onClick={handleCanvasClick}
+            onMouseMove={handleCanvasMouseMove}
+            onMouseLeave={() => setHoverCoords(null)}
             className="relative inline-block cursor-crosshair shadow-2xl rounded-lg overflow-visible border border-slate-800 max-h-full max-w-full transition-transform duration-150 select-none"
             style={{ transform: `scale(${zoomLevel})` }}
           >
@@ -747,7 +848,87 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                 );
               }
 
-              // 3. CIRCLE HOTSPOT
+              // 3. MOUSE POINTER ARROW (PUNTERO DE MOUSE EXACTO)
+              if (ann.shape === 'arrow') {
+                return (
+                  <div
+                    key={ann.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedId(ann.id);
+                    }}
+                    onMouseDown={(e) => handleStartDragAnnotation(e, ann)}
+                    style={{
+                      left: `${ann.x}%`,
+                      top: `${ann.y}%`,
+                      // The tip of the pointer arrow is exactly at (0, 0)
+                      transform: 'none',
+                    }}
+                    className={`absolute cursor-grab active:cursor-grabbing select-none ${
+                      isSelected
+                        ? 'z-30 filter drop-shadow-[0_0_12px_rgba(255,255,255,0.95)]'
+                        : 'z-20 hover:scale-105'
+                    }`}
+                    title="Arrastra para mover el puntero o haz clic en cualquier parte para reubicarlo"
+                  >
+                    <div className="relative">
+                      {/* Concentric radar ring and focal center dot centered precisely at the tip (0, 0) */}
+                      <div
+                        style={{
+                          left: '0px',
+                          top: '0px',
+                          transform: 'translate(-50%, -50%)',
+                          borderColor: ann.color || '#ef4444',
+                        }}
+                        className="w-6 h-6 rounded-full border-2 absolute pointer-events-none animate-ping opacity-60"
+                      />
+                      <div
+                        style={{
+                          left: '0px',
+                          top: '0px',
+                          transform: 'translate(-50%, -50%)',
+                          backgroundColor: ann.color || '#ef4444',
+                        }}
+                        className="w-2.5 h-2.5 rounded-full absolute pointer-events-none ring-2 ring-white shadow-xs"
+                      />
+
+                      {/* Crisp OS Mouse Pointer Arrow with tip exactly at (0, 0) */}
+                      <svg
+                        width="28"
+                        height="28"
+                        viewBox="0 0 28 28"
+                        className="drop-shadow-xl"
+                        style={{ fill: ann.color || '#ef4444' }}
+                      >
+                        <path
+                          d="M 0 0 L 0 20 L 5.5 15.5 L 9.5 24.5 L 12.8 23 L 8.8 14 L 15 14 Z"
+                          stroke="#ffffff"
+                          strokeWidth="1.8"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </div>
+
+                    {/* Draggable Label Badge for Arrow */}
+                    {ann.label && (
+                      <div
+                        onMouseDown={(e) => handleStartDragLabel(e, ann)}
+                        style={{
+                          backgroundColor: ann.color || '#ef4444',
+                          ...getLabelStyle(ann),
+                        }}
+                        className="absolute text-white text-[11px] font-bold px-2 py-0.5 rounded shadow-lg whitespace-nowrap z-30 select-none flex items-center gap-1.5 border border-white/20 hover:ring-2 hover:ring-white cursor-grab active:cursor-grabbing ml-6 -mt-1"
+                        title="Arrastra para mover la etiqueta libremente"
+                      >
+                        <MousePointer className="w-2.5 h-2.5 opacity-90" />
+                        <span>{ann.label}</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
+              // 4. CIRCLE HOTSPOT
               return (
                 <div
                   key={ann.id}
@@ -945,11 +1126,11 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">
                   Tipo de Forma
                 </span>
-                <div className="grid grid-cols-3 gap-1">
+                <div className="grid grid-cols-4 gap-1">
                   <button
                     type="button"
                     onClick={() => updateActive({ shape: 'rect' })}
-                    className={`py-1 px-1.5 text-xs font-semibold rounded-lg border text-center transition-all flex items-center justify-center gap-1 ${
+                    className={`py-1 px-1 text-[11px] font-semibold rounded-lg border text-center transition-all flex items-center justify-center gap-1 ${
                       activeAnnotation.shape === 'rect'
                         ? 'bg-indigo-50 border-indigo-600 text-indigo-700 font-bold shadow-2xs'
                         : 'border-slate-200 text-slate-600 hover:bg-slate-50'
@@ -960,7 +1141,7 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                   <button
                     type="button"
                     onClick={() => updateActive({ shape: 'circle' })}
-                    className={`py-1 px-1.5 text-xs font-semibold rounded-lg border text-center transition-all flex items-center justify-center gap-1 ${
+                    className={`py-1 px-1 text-[11px] font-semibold rounded-lg border text-center transition-all flex items-center justify-center gap-1 ${
                       activeAnnotation.shape === 'circle'
                         ? 'bg-indigo-50 border-indigo-600 text-indigo-700 font-bold shadow-2xs'
                         : 'border-slate-200 text-slate-600 hover:bg-slate-50'
@@ -970,8 +1151,20 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                   </button>
                   <button
                     type="button"
+                    onClick={() => updateActive({ shape: 'arrow' })}
+                    className={`py-1 px-1 text-[11px] font-semibold rounded-lg border text-center transition-all flex items-center justify-center gap-1 ${
+                      activeAnnotation.shape === 'arrow'
+                        ? 'bg-indigo-50 border-indigo-600 text-indigo-700 font-bold shadow-2xs'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                    title="Puntero de mouse con flecha apuntando al punto exacto"
+                  >
+                    <MousePointer className="w-3 h-3 text-red-500" /> Puntero
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => updateActive({ shape: 'blur' })}
-                    className={`py-1 px-1.5 text-xs font-semibold rounded-lg border text-center transition-all flex items-center justify-center gap-1 ${
+                    className={`py-1 px-1 text-[11px] font-semibold rounded-lg border text-center transition-all flex items-center justify-center gap-1 ${
                       activeAnnotation.shape === 'blur'
                         ? 'bg-indigo-50 border-indigo-600 text-indigo-700 font-bold shadow-2xs'
                         : 'border-slate-200 text-slate-600 hover:bg-slate-50'
@@ -1032,10 +1225,10 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                     <button
                       type="button"
                       onClick={handlePositionTopLeft}
-                      className="text-[9px] text-slate-500 hover:text-indigo-600 font-medium"
-                      title="Mover a esquina superior izquierda"
+                      className="text-[9px] text-indigo-700 hover:text-indigo-900 font-bold"
+                      title="Anclar a esquina superior izquierda (0,0)"
                     >
-                      Sup. Izq
+                      Sup. Izq (0,0)
                     </button>
                   </div>
                 </div>
@@ -1063,7 +1256,7 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                       className="w-full px-1 py-0.5 bg-white border border-slate-200 rounded text-xs font-mono text-center"
                     />
                   </div>
-                  {activeAnnotation.shape !== 'circle' ? (
+                  {activeAnnotation.shape !== 'circle' && activeAnnotation.shape !== 'arrow' ? (
                     <>
                       <div>
                         <span className="text-[9px] text-slate-400 block text-center">Ancho %</span>
@@ -1089,10 +1282,49 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                       </div>
                     </>
                   ) : (
-                    <div className="col-span-2 flex items-center justify-center text-[10px] text-slate-400 italic">
-                      Hotspot circular
+                    <div className="col-span-2 flex items-center justify-center text-[10px] text-indigo-700 bg-indigo-50/80 rounded border border-indigo-200/60 font-semibold px-1">
+                      {activeAnnotation.shape === 'arrow' ? '↖ Flecha Puntero' : '🎯 Punto Focal'}
                     </div>
                   )}
+                </div>
+
+                {/* Fine Pixel Nudge Controls */}
+                <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-slate-200 text-[10px]">
+                  <span className="text-slate-500 font-medium">Ajuste fino (0.5%):</span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => updateActive({ x: Math.max(0, Math.round((activeAnnotation.x - 0.5) * 10) / 10) })}
+                      className="p-1 bg-white hover:bg-slate-100 border border-slate-200 rounded text-slate-700 shadow-2xs"
+                      title="Mover 0.5% a la izquierda (o usa ← en teclado)"
+                    >
+                      <ArrowLeft className="w-3 h-3" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateActive({ y: Math.max(0, Math.round((activeAnnotation.y - 0.5) * 10) / 10) })}
+                      className="p-1 bg-white hover:bg-slate-100 border border-slate-200 rounded text-slate-700 shadow-2xs"
+                      title="Mover 0.5% arriba (o usa ↑ en teclado)"
+                    >
+                      <ArrowUp className="w-3 h-3" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateActive({ y: Math.min(100, Math.round((activeAnnotation.y + 0.5) * 10) / 10) })}
+                      className="p-1 bg-white hover:bg-slate-100 border border-slate-200 rounded text-slate-700 shadow-2xs"
+                      title="Mover 0.5% abajo (o usa ↓ en teclado)"
+                    >
+                      <ArrowDown className="w-3 h-3" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateActive({ x: Math.min(100, Math.round((activeAnnotation.x + 0.5) * 10) / 10) })}
+                      className="p-1 bg-white hover:bg-slate-100 border border-slate-200 rounded text-slate-700 shadow-2xs"
+                      title="Mover 0.5% a la derecha (o usa → en teclado)"
+                    >
+                      <ArrowRight className="w-3 h-3" />
+                    </button>
+                  </div>
                 </div>
               </div>
 

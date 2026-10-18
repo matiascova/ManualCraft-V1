@@ -51,8 +51,8 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
   const [isTaskbarBlurred, setIsTaskbarBlurred] = useState<boolean>(false);
   const [isProcessingBlur, setIsProcessingBlur] = useState<boolean>(false);
 
-  // Guarantee: Maintain focal point fixed relative to the screen content
-  const [preserveFocalPoint, setPreserveFocalPoint] = useState<boolean>(true);
+  // Guarantee: Maintain focal point fixed relative to the screen content or top-left corner
+  const [anchorMode, setAnchorMode] = useState<'top-left' | 'dynamic' | 'fixed'>('top-left');
 
   // Crop area in percentages (0 to 100)
   const [crop, setCrop] = useState<CropArea>(
@@ -277,8 +277,8 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
 
       // If full 100% and user simply wanted taskbar blur without clipping
       if (cropX === 0 && cropY === 0 && cropW === srcW && cropH === srcH) {
-        const updatedAnnotations = preserveFocalPoint
-          ? transformAnnotationsForCrop(annotations, crop)
+        const updatedAnnotations = anchorMode !== 'fixed'
+          ? transformAnnotationsForCrop(annotations, crop, anchorMode)
           : annotations;
         onApplyCrop(workingImageSrc, crop, updatedAnnotations);
         onClose();
@@ -300,8 +300,8 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
       canvas.height = 0;
 
       // Automatically re-anchor annotations so focal point does NOT move
-      const updatedAnnotations = preserveFocalPoint
-        ? transformAnnotationsForCrop(annotations, crop)
+      const updatedAnnotations = anchorMode !== 'fixed'
+        ? transformAnnotationsForCrop(annotations, crop, anchorMode)
         : annotations;
 
       onApplyCrop(croppedDataUrl, crop, updatedAnnotations);
@@ -438,6 +438,19 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
               <span>Mitad Der.</span>
             </button>
 
+            {/* Center on Focal Point */}
+            {annotations.length > 0 && (
+              <button
+                type="button"
+                onClick={handleCenterOnFocalPoint}
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-md border border-indigo-200 transition-colors shadow-2xs"
+                title="Ajusta y centra automáticamente el recorte alrededor del punto focal o elemento activo"
+              >
+                <Target className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Enfocar Punto</span>
+              </button>
+            )}
+
             {/* Reset */}
             <button
               type="button"
@@ -451,20 +464,47 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Focal Point Anchor Indicator */}
-            <button
-              type="button"
-              onClick={() => setPreserveFocalPoint(!preserveFocalPoint)}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold border transition-colors ${
-                preserveFocalPoint
-                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
-                  : 'bg-slate-100 text-slate-500 border-slate-300 hover:bg-slate-200'
-              }`}
-              title="Garantiza que el punto focal mantenga exactamente su posición física en la pantalla tras recortar"
-            >
-              <ShieldCheck className={`w-3.5 h-3.5 ${preserveFocalPoint ? 'text-emerald-600' : 'text-slate-400'}`} />
-              <span>{preserveFocalPoint ? 'Anclaje Fijo: Activo' : 'Anclaje Fijo: Inactivo'}</span>
-            </button>
+            {/* Focal Point Anchor Reference Selector */}
+            <div className="flex items-center bg-slate-200/80 p-0.5 rounded-lg border border-slate-300 text-[11px] font-semibold">
+              <button
+                type="button"
+                onClick={() => setAnchorMode('top-left')}
+                className={`flex items-center gap-1 px-2 py-1 rounded-md transition-all ${
+                  anchorMode === 'top-left'
+                    ? 'bg-emerald-600 text-white shadow-xs font-bold'
+                    : 'text-slate-700 hover:text-slate-900'
+                }`}
+                title="Mantiene el punto focal estrictamente referenciado a la esquina superior izquierda (0,0) para que no se desplace al recortar"
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>Ref. Esquina Sup. Izq.</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setAnchorMode('fixed')}
+                className={`flex items-center gap-1 px-2 py-1 rounded-md transition-all ${
+                  anchorMode === 'fixed'
+                    ? 'bg-slate-700 text-white shadow-xs font-bold'
+                    : 'text-slate-700 hover:text-slate-900'
+                }`}
+                title="Conserva la posición porcentual fija sin desplazamiento alguno"
+              >
+                <span>Inmóvil</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setAnchorMode('dynamic')}
+                className={`flex items-center gap-1 px-2 py-1 rounded-md transition-all ${
+                  anchorMode === 'dynamic'
+                    ? 'bg-indigo-600 text-white shadow-xs font-bold'
+                    : 'text-slate-700 hover:text-slate-900'
+                }`}
+                title="Adapta proporcionalmente la posición del punto focal al nuevo recuadro recortado"
+              >
+                <Target className="w-3.5 h-3.5" />
+                <span>Dinámico</span>
+              </button>
+            </div>
 
             <span className="bg-white px-2 py-0.5 rounded border border-slate-200 shadow-2xs text-[11px] font-mono text-slate-600">
               {computedPixelWidth} × {computedPixelHeight} px
@@ -529,6 +569,65 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
                     }}
                     className="absolute backdrop-blur-md bg-slate-800/70 border border-slate-400 rounded pointer-events-none z-10"
                   />
+                );
+              }
+              if (ann.shape === 'arrow') {
+                return (
+                  <div
+                    key={ann.id}
+                    style={{
+                      left: `${ann.x}%`,
+                      top: `${ann.y}%`,
+                      transform: 'none',
+                    }}
+                    className="absolute pointer-events-none z-20 flex flex-col items-start select-none"
+                  >
+                    <div className="relative">
+                      {/* Concentric radar ring and focal center dot at exact tip */}
+                      <div
+                        style={{
+                          left: '0px',
+                          top: '0px',
+                          transform: 'translate(-50%, -50%)',
+                          borderColor: ann.color || '#ef4444',
+                        }}
+                        className="w-6 h-6 rounded-full border-2 absolute animate-ping opacity-60"
+                      />
+                      <div
+                        style={{
+                          left: '0px',
+                          top: '0px',
+                          transform: 'translate(-50%, -50%)',
+                          backgroundColor: ann.color || '#ef4444',
+                        }}
+                        className="w-2.5 h-2.5 rounded-full absolute ring-2 ring-white shadow-xs"
+                      />
+
+                      {/* Crisp OS Mouse Pointer Arrow with tip exactly at (0, 0) */}
+                      <svg
+                        width="26"
+                        height="26"
+                        viewBox="0 0 28 28"
+                        className="drop-shadow-xl"
+                        style={{ fill: ann.color || '#ef4444' }}
+                      >
+                        <path
+                          d="M 0 0 L 0 20 L 5.5 15.5 L 9.5 24.5 L 12.8 23 L 8.8 14 L 15 14 Z"
+                          stroke="#ffffff"
+                          strokeWidth="1.8"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </div>
+                    {ann.label && (
+                      <span
+                        style={{ backgroundColor: ann.color || '#ef4444' }}
+                        className="text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow whitespace-nowrap ml-6 -mt-1"
+                      >
+                        {ann.label}
+                      </span>
+                    )}
+                  </div>
                 );
               }
               return (

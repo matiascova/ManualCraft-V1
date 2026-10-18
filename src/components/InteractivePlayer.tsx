@@ -320,6 +320,63 @@ export const InteractivePlayer: React.FC<InteractivePlayerProps> = ({
                       );
                     }
 
+                    if (ann.shape === 'arrow') {
+                      return (
+                        <div
+                          key={ann.id}
+                          style={{
+                            left: `${ann.x}%`,
+                            top: `${ann.y}%`,
+                            transform: 'none',
+                          }}
+                          className="absolute pointer-events-none select-none z-20"
+                        >
+                          <div className="relative">
+                            <div
+                              style={{
+                                left: '0px',
+                                top: '0px',
+                                transform: 'translate(-50%, -50%)',
+                                borderColor: ann.color || '#ef4444',
+                              }}
+                              className="w-6 h-6 rounded-full border-2 absolute animate-ping opacity-60"
+                            />
+                            <div
+                              style={{
+                                left: '0px',
+                                top: '0px',
+                                transform: 'translate(-50%, -50%)',
+                                backgroundColor: ann.color || '#ef4444',
+                              }}
+                              className="w-2.5 h-2.5 rounded-full absolute ring-2 ring-white shadow-xs"
+                            />
+                            <svg
+                              width="28"
+                              height="28"
+                              viewBox="0 0 28 28"
+                              className="drop-shadow-xl"
+                              style={{ fill: ann.color || '#ef4444' }}
+                            >
+                              <path
+                                d="M 0 0 L 0 20 L 5.5 15.5 L 9.5 24.5 L 12.8 23 L 8.8 14 L 15 14 Z"
+                                stroke="#ffffff"
+                                strokeWidth="1.8"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                          </div>
+                          {ann.label && (
+                            <span
+                              style={{ backgroundColor: ann.color || '#ef4444' }}
+                              className="absolute text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow whitespace-nowrap ml-6 -mt-1"
+                            >
+                              {ann.label}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    }
+
                     return (
                       <div
                         key={ann.id}

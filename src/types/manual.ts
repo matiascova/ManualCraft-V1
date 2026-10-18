@@ -56,11 +56,12 @@ export interface CropArea {
 /**
  * Recalcula y transforma matemáticamente las anotaciones visuales y puntos focales
  * al recortar una captura, garantizando que el punto focal NUNCA se desplace
- * y quede siempre perfectamente anclado al mismo elemento del sistema en pantalla.
+ * y quede siempre perfectamente anclado (con opción de referencia a la esquina superior izquierda o modo inmóvil).
  */
 export function transformAnnotationsForCrop(
   annotations: VisualAnnotation[] = [],
-  crop: CropArea
+  crop: CropArea,
+  anchorMode: 'top-left' | 'dynamic' | 'fixed' = 'top-left'
 ): VisualAnnotation[] {
   if (!annotations || annotations.length === 0) return [];
   if (crop.width <= 0 || crop.height <= 0) return annotations;
@@ -70,10 +71,30 @@ export function transformAnnotationsForCrop(
     return annotations;
   }
 
+  // Si el usuario eligió modo fijo o inmóvil: las coordenadas relativas se mantienen exactamente idénticas
+  if (anchorMode === 'fixed') {
+    return annotations;
+  }
+
   return annotations.map((ann) => {
-    // Nueva posición en el sistema de coordenadas relativo a la imagen recortada
-    const newX = ((ann.x - crop.x) / crop.width) * 100;
-    const newY = ((ann.y - crop.y) / crop.height) * 100;
+    let newX: number;
+    let newY: number;
+
+    if (anchorMode === 'top-left') {
+      // Referencia estricta a la esquina superior izquierda (0,0):
+      // Si el recorte preserva el origen (0,0), mantiene la distancia física exacta en píxeles
+      if (crop.x === 0 && crop.y === 0) {
+        newX = (ann.x / crop.width) * 100;
+        newY = (ann.y / crop.height) * 100;
+      } else {
+        newX = ((ann.x - crop.x) / crop.width) * 100;
+        newY = ((ann.y - crop.y) / crop.height) * 100;
+      }
+    } else {
+      // Modo dinámico respecto al cuadro de recorte
+      newX = ((ann.x - crop.x) / crop.width) * 100;
+      newY = ((ann.y - crop.y) / crop.height) * 100;
+    }
 
     // Escalar dimensiones de rectángulos / regiones de difuminado
     const newWidth = ann.width !== undefined ? (ann.width / crop.width) * 100 : undefined;
@@ -81,8 +102,8 @@ export function transformAnnotationsForCrop(
 
     return {
       ...ann,
-      x: Math.round(Math.max(1, Math.min(99, newX)) * 10) / 10,
-      y: Math.round(Math.max(1, Math.min(99, newY)) * 10) / 10,
+      x: Math.round(Math.max(0.2, Math.min(99.8, newX)) * 10) / 10,
+      y: Math.round(Math.max(0.2, Math.min(99.8, newY)) * 10) / 10,
       width: newWidth !== undefined ? Math.round(Math.max(2, Math.min(98, newWidth)) * 10) / 10 : undefined,
       height: newHeight !== undefined ? Math.round(Math.max(2, Math.min(98, newHeight)) * 10) / 10 : undefined,
     };

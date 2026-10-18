@@ -307,10 +307,10 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
         const x = Math.round(((clickX / rect.width) * 100) * 10) / 10;
         const y = Math.round(((clickY / rect.height) * 100) * 10) / 10;
         const currentAnns = step.annotations || [];
-        const circleAnn = currentAnns.find((a) => a.shape === 'circle');
+        const focalAnn = currentAnns.find((a) => a.shape === 'circle' || a.shape === 'arrow') || currentAnns[0];
         let updatedAnns: VisualAnnotation[];
-        if (circleAnn) {
-          updatedAnns = currentAnns.map((a) => (a.id === circleAnn.id ? { ...a, x, y } : a));
+        if (focalAnn) {
+          updatedAnns = currentAnns.map((a) => (a.id === focalAnn.id ? { ...a, x, y } : a));
         } else {
           updatedAnns = [
             ...currentAnns,
@@ -1477,6 +1477,68 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
                                 }}
                                 className="absolute backdrop-blur-md bg-slate-800/60 border border-slate-400 rounded pointer-events-none"
                               />
+                            );
+                          }
+                          if (ann.shape === 'arrow') {
+                            return (
+                              <div
+                                key={ann.id}
+                                style={{
+                                  left: `${ann.x}%`,
+                                  top: `${ann.y}%`,
+                                  transform: 'none',
+                                }}
+                                className="absolute pointer-events-none z-20 select-none"
+                              >
+                                <div className="relative">
+                                  {/* Concentric radar ring and focal center dot at exact tip */}
+                                  <div
+                                    style={{
+                                      left: '0px',
+                                      top: '0px',
+                                      transform: 'translate(-50%, -50%)',
+                                      borderColor: ann.color || '#ef4444',
+                                    }}
+                                    className="w-6 h-6 rounded-full border-2 absolute animate-ping opacity-60"
+                                  />
+                                  <div
+                                    style={{
+                                      left: '0px',
+                                      top: '0px',
+                                      transform: 'translate(-50%, -50%)',
+                                      backgroundColor: ann.color || '#ef4444',
+                                    }}
+                                    className="w-2.5 h-2.5 rounded-full absolute ring-2 ring-white shadow-xs"
+                                  />
+
+                                  {/* Crisp OS Mouse Pointer Arrow with tip exactly at (0, 0) */}
+                                  <svg
+                                    width="28"
+                                    height="28"
+                                    viewBox="0 0 28 28"
+                                    className="drop-shadow-xl"
+                                    style={{ fill: ann.color || '#ef4444' }}
+                                  >
+                                    <path
+                                      d="M 0 0 L 0 20 L 5.5 15.5 L 9.5 24.5 L 12.8 23 L 8.8 14 L 15 14 Z"
+                                      stroke="#ffffff"
+                                      strokeWidth="1.8"
+                                      strokeLinejoin="round"
+                                    />
+                                  </svg>
+                                </div>
+
+                                {ann.label && (
+                                  <span
+                                    style={{
+                                      backgroundColor: ann.color || '#ef4444',
+                                    }}
+                                    className="absolute text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow whitespace-nowrap z-20 ml-6 -mt-1"
+                                  >
+                                    {ann.label}
+                                  </span>
+                                )}
+                              </div>
                             );
                           }
                           if (ann.shape === 'rect') {
