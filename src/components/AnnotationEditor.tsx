@@ -48,14 +48,19 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   const localAnnotationsRef = useRef<VisualAnnotation[]>(annotations);
   localAnnotationsRef.current = localAnnotations;
   const rafRef = useRef<number | null>(null);
+  const hasDraggedRef = useRef<boolean>(false);
 
   // Always select first or active annotation
   const [selectedId, setSelectedId] = useState<string | null>(
     annotations[0]?.id || null
   );
 
+  // Tool mode: 'circle' (drop focal hotspot), 'rect', 'blur', or 'select'
+  const [toolMode, setToolMode] = useState<'circle' | 'rect' | 'blur' | 'select'>('circle');
+  const [clickRipple, setClickRipple] = useState<{ x: number; y: number } | null>(null);
+
   // New item defaults
-  const [activeShape, setActiveShape] = useState<'circle' | 'rect' | 'blur'>('rect');
+  const [activeShape, setActiveShape] = useState<'circle' | 'rect' | 'blur'>('circle');
   const [activeColor, setActiveColor] = useState<string>('#ef4444');
   const [zoomLevel, setZoomLevel] = useState<number>(1);
 
@@ -108,9 +113,63 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
     [activeAnnotation, selectedId, onChange]
   );
 
+  // Precision Click-to-Place or Click-to-Move on Image Canvas
+  const handleCanvasClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (hasDraggedRef.current || isDraggingAnnotation || isDraggingLabel || isResizing) {
+      return;
+    }
+    if (!imgRef.current) return;
+    const rect = imgRef.current.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const clickY = e.clientY - rect.top;
+
+    if (clickX < 0 || clickX > rect.width || clickY < 0 || clickY > rect.height) {
+      return;
+    }
+
+    // Exact sub-pixel normalized percentage coordinates (0.1% precision)
+    const x = Math.round(((clickX / rect.width) * 100) * 10) / 10;
+    const y = Math.round(((clickY / rect.height) * 100) * 10) / 10;
+
+    // Show instant visual confirmation ripple
+    setClickRipple({ x, y });
+    setTimeout(() => setClickRipple(null), 550);
+
+    // If a circular focal point is already selected and in select or circle mode:
+    // Move it directly to the exact clicked coordinates!
+    if (activeAnnotation && activeAnnotation.shape === 'circle' && toolMode !== 'place-rect' && toolMode !== 'place-blur') {
+      updateActive({ x, y }, true);
+      return;
+    }
+
+    // Otherwise create new element precisely where clicked:
+    const shapeToCreate = toolMode === 'select' ? 'circle' : toolMode;
+    const labelText = shapeToCreate === 'blur' ? '' : `Paso ${localAnnotations.length + 1}`;
+
+    const newAnnotation: VisualAnnotation = {
+      id: `ann-${Date.now()}`,
+      x,
+      y,
+      shape: shapeToCreate,
+      color: activeColor,
+      label: labelText,
+      labelPosition: y < 18 ? 'bottom' : 'top',
+      width: shapeToCreate === 'circle' ? undefined : (shapeToCreate === 'blur' ? 22 : 22),
+      height: shapeToCreate === 'circle' ? undefined : (shapeToCreate === 'blur' ? 12 : 14),
+      labelOffsetX: 0,
+      labelOffsetY: 0,
+    };
+
+    const updated = [...localAnnotations, newAnnotation];
+    setLocalAnnotations(updated);
+    onChange(updated);
+    setSelectedId(newAnnotation.id);
+  };
+
   // Explicit function to add a new annotation via button
   const handleAddNewAnnotation = (shapeOverride?: 'circle' | 'rect' | 'blur') => {
     const shape = shapeOverride || activeShape;
+    setToolMode(shape);
     const offset = (localAnnotations.length % 5) * 6;
     const x = Math.min(75, 25 + offset);
     const y = Math.min(75, 20 + offset);
@@ -220,6 +279,7 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!imgRef.current || !dragStart || !initialAnnState) return;
+      hasDraggedRef.current = true;
       const rect = imgRef.current.getBoundingClientRect();
 
       const deltaXPercent = ((e.clientX - dragStart.x) / (rect.width || 1)) * 100;
@@ -231,8 +291,8 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
 
       rafRef.current = requestAnimationFrame(() => {
         if (isDraggingAnnotation) {
-          const newX = Math.max(0, Math.min(100, Math.round(initialAnnState.x + deltaXPercent)));
-          const newY = Math.max(0, Math.min(100, Math.round(initialAnnState.y + deltaYPercent)));
+          const newX = Math.max(0, Math.min(100, Math.round((initialAnnState.x + deltaXPercent) * 10) / 10));
+          const newY = Math.max(0, Math.min(100, Math.round((initialAnnState.y + deltaYPercent) * 10) / 10));
           updateActive({ x: newX, y: newY }, false); // Do not bubble up to App during active drag!
         } else if (isDraggingLabel) {
           const deltaXPixels = Math.round(e.clientX - dragStart.x);
@@ -246,8 +306,8 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
             false
           );
         } else if (isResizing) {
-          const newWidth = Math.max(5, Math.min(95, Math.round((initialAnnState.width || 20) + deltaXPercent)));
-          const newHeight = Math.max(4, Math.min(95, Math.round((initialAnnState.height || 12) + deltaYPercent)));
+          const newWidth = Math.max(4, Math.min(96, Math.round(((initialAnnState.width || 20) + deltaXPercent) * 10) / 10));
+          const newHeight = Math.max(3, Math.min(96, Math.round(((initialAnnState.height || 12) + deltaYPercent) * 10) / 10));
           updateActive({ width: newWidth, height: newHeight }, false);
         }
       });
@@ -268,6 +328,9 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       // Single consolidated commit to parent application state once gesture completes!
       if (wasActive) {
         onChange(localAnnotationsRef.current);
+        setTimeout(() => {
+          hasDraggedRef.current = false;
+        }, 80);
       }
     };
 
