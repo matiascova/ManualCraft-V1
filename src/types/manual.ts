@@ -156,3 +156,80 @@ export interface VideoFrameCandidate {
   selected: boolean;
   label?: string;
 }
+
+/**
+ * Limpia y normaliza el título descriptivo del paso, removiendo de forma exhaustiva
+ * cualquier prefijo desactualizado de numeración simple o encadenada
+ * (ej. "Paso 8:", "Paso 9 -", "8.", "Acción 8:", "Paso 1: Paso 2:").
+ * Si el título contenía únicamente el prefijo sin descripción adicional, retorna cadena vacía.
+ */
+export function cleanStepTitle(title: string): string {
+  if (!title) return '';
+  let cleaned = title.trim();
+  const prefixRegex = /^((Paso|Acci[oó]n|Step)\s*\d+[\s:.-]*|\d+[\s:.-]+)/i;
+  // Bucle exhaustivo para remover prefijos encadenados si existieron reordenamientos previos
+  while (prefixRegex.test(cleaned)) {
+    cleaned = cleaned.replace(prefixRegex, '').trim();
+  }
+  return cleaned;
+}
+
+/**
+ * Obtiene el título operativo alineado con el correlativo final (iniciando siempre estrictamente en 1).
+ * Garantiza que en la columna "Paso Operativo" se muestre:
+ * "Paso {correlativo}: {descripción}" o "Paso {correlativo}" si no hay descripción.
+ */
+export function formatStepOperativeTitle(title: string, indexOrNumber: number): string {
+  const stepNum = indexOrNumber;
+  const baseTitle = cleanStepTitle(title);
+  if (!baseTitle) {
+    return `Paso ${stepNum}`;
+  }
+  return `Paso ${stepNum}: ${baseTitle}`;
+}
+
+/**
+ * Reajusta y recalcula todos los correlativos de una lista de pasos finales,
+ * iniciando siempre estrictamente en 1.
+ * Actualiza stepNumber, alinea el título del paso con su correlativo
+ * y sincroniza las etiquetas de los puntos focales/anotaciones visuales.
+ */
+export function reindexManualSteps(steps: ManualStep[]): ManualStep[] {
+  if (!steps || !Array.isArray(steps)) return [];
+
+  return steps.map((step, idx) => {
+    const newStepNumber = idx + 1;
+    const clean = cleanStepTitle(step.title);
+    const updatedTitle = formatStepOperativeTitle(clean, newStepNumber);
+
+    // Ajustar etiquetas de anotaciones si tienen "Paso X" o "Paso"
+    const updatedAnnotations = (step.annotations || []).map((ann) => {
+      if (!ann.label) return ann;
+      const updatedLabel = ann.label.replace(
+        /^(Paso|Acci[oó]n|Step)\s*\d+/i,
+        `Paso ${newStepNumber}`
+      );
+      return {
+        ...ann,
+        label: updatedLabel,
+      };
+    });
+
+    // Ajustar propósito si menciona explícitamente "paso X"
+    let updatedPurpose = step.purpose;
+    if (updatedPurpose) {
+      updatedPurpose = updatedPurpose.replace(
+        /paso\s*\d+/gi,
+        `paso ${newStepNumber}`
+      );
+    }
+
+    return {
+      ...step,
+      stepNumber: newStepNumber,
+      title: updatedTitle,
+      purpose: updatedPurpose,
+      annotations: updatedAnnotations,
+    };
+  });
+}

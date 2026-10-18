@@ -41,7 +41,13 @@ import {
   Scissors,
   EyeOff,
 } from 'lucide-react';
-import { VideoFrameCandidate, UserManual, InstructorTranscriptSegment } from '../types/manual';
+import {
+  VideoFrameCandidate,
+  UserManual,
+  InstructorTranscriptSegment,
+  reindexManualSteps,
+  formatStepOperativeTitle,
+} from '../types/manual';
 import { Project } from '../types/project';
 import { extractFramesFromVideo, parseTranscriptWithTimestamps } from '../utils/videoExtractor';
 import { screenRecorder } from '../utils/screenRecorder';
@@ -937,6 +943,9 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
       }
 
       const generated = data.manual;
+      if (generated && Array.isArray(generated.steps)) {
+        generated.steps = reindexManualSteps(generated.steps);
+      }
       if (existingManual) {
         if (saveMode === 'update' && onManualUpdated) {
           const updatedManual: UserManual = {
@@ -1006,7 +1015,7 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
 
     if (images.length === 0) return;
 
-    const steps = images.map((img, idx) => {
+    const rawSteps = images.map((img, idx) => {
       // Find matching instructor speech for this step
       let stepInstructorNote = '';
       let stepInstructorQuote = '';
@@ -1024,7 +1033,7 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
       return {
         id: `step-${Date.now()}-${idx}`,
         stepNumber: idx + 1,
-        title: img.label || `Paso ${idx + 1}: Realizar acción`,
+        title: formatStepOperativeTitle(img.label || 'Realizar acción', idx + 1),
         actionType: 'click' as const,
         description: `Ejecuta la acción indicada en la captura de pantalla para completar este paso dentro del flujo de ${topic || 'la tarea'}.`,
         targetElement: img.label || 'Elemento en pantalla',
@@ -1040,11 +1049,13 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
             y: 50,
             shape: 'circle' as const,
             color: '#ef4444',
-            label: img.label || `Paso ${idx + 1}`,
+            label: `Paso ${idx + 1}`,
           },
         ],
       };
     });
+
+    const steps = reindexManualSteps(rawSteps);
 
     const fullTranscriptionText = instructorTranscripts
       .map((t) => `[${speechTranscriptionService.formatTime(t.timestamp)}] ${t.text}`)
@@ -1157,7 +1168,7 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
       return {
         id: `step-${Date.now()}-${idx}`,
         stepNumber: idx + 1,
-        title: img.label || `Paso ${idx + 1}: Acción registrada`,
+        title: formatStepOperativeTitle(img.label || 'Acción registrada', idx + 1),
         actionType: 'click' as const,
         description: `Acción registrada durante la grabación de ${topic.trim() || 'la pantalla'}.`,
         targetElement: img.label || 'Elemento en pantalla',
@@ -1173,11 +1184,13 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
             y: 50,
             shape: 'circle' as const,
             color: '#ef4444',
-            label: img.label || `Paso ${idx + 1}`,
+            label: `Paso ${idx + 1}`,
           },
         ],
       };
     });
+
+    const reindexedSteps = reindexManualSteps(steps);
 
     const fullTranscriptionText = instructorTranscripts
       .map((t) => `[${speechTranscriptionService.formatTime(t.timestamp)}] ${t.text}`)
@@ -1193,10 +1206,10 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
       subtitle: 'Borrador guardado · Listo para editar o generar con IA',
       overview: context.trim() || (existingManual ? existingManual.overview : 'Borrador preliminar generado con capturas de pantalla y transcripción de voz.'),
       targetAudience: targetAudience || 'Usuarios finales y colaboradores',
-      estimatedMinutes: Math.max(3, steps.length * 2),
+      estimatedMinutes: Math.max(3, reindexedSteps.length * 2),
       difficulty: 'Principiante',
       prerequisites: ['Acceso con credenciales al sistema'],
-      steps,
+      steps: reindexedSteps,
       summaryChecklist: ['Completar todas las acciones de la secuencia'],
       instructorTranscript: instructorTranscripts,
       fullTranscriptionText,

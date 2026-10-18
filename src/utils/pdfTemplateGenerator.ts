@@ -1,5 +1,5 @@
 import { jsPDF } from 'jspdf';
-import { UserManual, getActionTypeSpanish } from '../types/manual';
+import { UserManual, getActionTypeSpanish, formatStepOperativeTitle } from '../types/manual';
 import { Project } from '../types/project';
 import { OrganizationBranding } from '../types/branding';
 import { renderAnnotatedScreenshotForPdf } from './exportUtils';
@@ -721,7 +721,8 @@ export async function exportToPdfWithTemplateStructure(
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(7.5);
         doc.setTextColor(30, 41, 59);
-        const stepShortTitle = doc.splitTextToSize(step.title, flowColW[2] - 4)[0];
+        const opTitle1 = formatStepOperativeTitle(step.title, sIdx + 1);
+        const stepShortTitle = doc.splitTextToSize(opTitle1, flowColW[2] - 4)[0];
         doc.text(stepShortTitle, curColX + 2, currentY + 4.8);
 
         // Columna 4: Transacción
@@ -754,7 +755,8 @@ export async function exportToPdfWithTemplateStructure(
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(7.5);
         doc.setTextColor(30, 41, 59);
-        const stepShortTitle = doc.splitTextToSize(step.title, flowColW[1] - 4)[0];
+        const opTitle2 = formatStepOperativeTitle(step.title, sIdx + 1);
+        const stepShortTitle = doc.splitTextToSize(opTitle2, flowColW[1] - 4)[0];
         doc.text(stepShortTitle, curColX + 2, currentY + 4.8);
 
         // Columna 3: Transacción
@@ -786,7 +788,8 @@ export async function exportToPdfWithTemplateStructure(
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(7.5);
       doc.setTextColor(30, 41, 59);
-      const stepShortTitle = doc.splitTextToSize(step.title, flowColW[1] - 4)[0];
+      const opTitle3 = formatStepOperativeTitle(step.title, sIdx + 1);
+      const stepShortTitle = doc.splitTextToSize(opTitle3, flowColW[1] - 4)[0];
       doc.text(stepShortTitle, curColX + 2, currentY + 4.8);
 
       // Action Type Badge
@@ -856,7 +859,7 @@ export async function exportToPdfWithTemplateStructure(
     stepStartPages[i] = stepPageNum;
 
     // 1. SECTION TITLE (Matching Template: "3. DATOS MAESTROS")
-    const sectionTitleText = `${sectionCounter}. ${step.title.toUpperCase()}`;
+    const sectionTitleText = `${sectionCounter}. ${formatStepOperativeTitle(step.title, i + 1).toUpperCase()}`;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(13);
     doc.setTextColor(navyColor[0], navyColor[1], navyColor[2]);
@@ -1273,7 +1276,7 @@ export async function exportToPdfWithTemplateStructure(
   let tocSecNum = 3;
   manual.steps.forEach((st, sIdx) => {
     const pNum = stepStartPages[sIdx] || 5 + sIdx;
-    drawTocItem(`${tocSecNum} ${st.title.toUpperCase()}`, pNum, 1);
+    drawTocItem(`${tocSecNum} ${formatStepOperativeTitle(st.title, sIdx + 1).toUpperCase()}`, pNum, 1);
     tocSecNum++;
   });
 
@@ -1684,7 +1687,7 @@ export async function exportProjectDossierPdf(
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8);
       doc.setTextColor(15, 23, 42);
-      doc.text(`Paso ${step.stepNumber || sIdx + 1}: ${step.title}`, marginX + 4, curY + 4.8);
+      doc.text(formatStepOperativeTitle(step.title, sIdx + 1), marginX + 4, curY + 4.8);
 
       if (step.actionType) {
         doc.setFillColor(37, 99, 235);

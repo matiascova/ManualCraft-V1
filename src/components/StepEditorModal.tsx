@@ -5,6 +5,8 @@ import {
   transformAnnotationsForCrop,
   CropArea,
   VisualAnnotation,
+  cleanStepTitle,
+  formatStepOperativeTitle,
 } from '../types/manual';
 import {
   X,
@@ -68,50 +70,47 @@ export const StepEditorModal: React.FC<StepEditorModalProps> = ({
       return;
     }
     const rect = previewImgRef.current.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
-    const clickY = e.clientY - rect.top;
-
-    if (
-      clickX >= 0 &&
-      clickX <= rect.width &&
-      clickY >= 0 &&
-      clickY <= rect.height &&
-      rect.width > 0 &&
-      rect.height > 0
-    ) {
-      const x = Math.round(((clickX / rect.width) * 100) * 10) / 10;
-      const y = Math.round(((clickY / rect.height) * 100) * 10) / 10;
-
-      const currentAnnotations = formData.annotations || [];
-      let updatedAnnotations: VisualAnnotation[];
-      const circleAnn = currentAnnotations.find((a) => a.shape === 'circle');
-
-      if (circleAnn) {
-        updatedAnnotations = currentAnnotations.map((a) =>
-          a.id === circleAnn.id ? { ...a, x, y } : a
-        );
-      } else {
-        const newAnn: VisualAnnotation = {
-          id: `ann-${Date.now()}`,
-          x,
-          y,
-          shape: 'circle',
-          color: '#ef4444',
-          label: `Paso ${formData.stepNumber}`,
-          labelPosition: y < 18 ? 'bottom' : 'top',
-        };
-        updatedAnnotations = [...currentAnnotations, newAnn];
-      }
-
-      const updated = { ...formData, annotations: updatedAnnotations };
-      setFormData(updated);
-      onSave(updated);
-      onOpenAnnotationEditor(updated);
+    if (rect.width <= 0 || rect.height <= 0) {
+      onSave(formData);
+      onOpenAnnotationEditor(formData);
       return;
     }
 
-    onSave(formData);
-    onOpenAnnotationEditor(formData);
+    const clickX = e.clientX - rect.left;
+    const clickY = e.clientY - rect.top;
+    const clampedClickX = Math.max(0, Math.min(rect.width, clickX));
+    const clampedClickY = Math.max(0, Math.min(rect.height, clickY));
+
+    const x = Math.round(((clampedClickX / rect.width) * 100) * 10) / 10;
+    const y = Math.round(((clampedClickY / rect.height) * 100) * 10) / 10;
+
+    const currentAnnotations = formData.annotations || [];
+    let updatedAnnotations: VisualAnnotation[];
+    const circleAnn = currentAnnotations.find((a) => a.shape === 'circle');
+
+    if (circleAnn) {
+      updatedAnnotations = currentAnnotations.map((a) =>
+        a.id === circleAnn.id ? { ...a, x, y } : a
+      );
+    } else {
+      const newAnn: VisualAnnotation = {
+        id: `ann-${Date.now()}`,
+        x,
+        y,
+        shape: 'circle',
+        color: '#ef4444',
+        label: `Paso ${formData.stepNumber}`,
+        labelPosition: y < 18 ? 'bottom' : 'top',
+        labelOffsetX: 0,
+        labelOffsetY: 0,
+      };
+      updatedAnnotations = [...currentAnnotations, newAnn];
+    }
+
+    const updated = { ...formData, annotations: updatedAnnotations };
+    setFormData(updated);
+    onSave(updated);
+    onOpenAnnotationEditor(updated);
   };
 
   const handleApplyStepCrop = (
@@ -181,7 +180,13 @@ export const StepEditorModal: React.FC<StepEditorModalProps> = ({
   };
 
   const handleSave = () => {
-    onSave(formData);
+    const cleaned = cleanStepTitle(formData.title);
+    const formattedTitle = formatStepOperativeTitle(cleaned, formData.stepNumber);
+    const updated = {
+      ...formData,
+      title: formattedTitle,
+    };
+    onSave(updated);
     onClose();
   };
 
@@ -649,14 +654,15 @@ export const StepEditorModal: React.FC<StepEditorModalProps> = ({
                       style={{
                         left: `${ann.x}%`,
                         top: `${ann.y}%`,
+                        transform: 'translate(-50%, -50%)',
                         borderColor: ann.color || '#ef4444',
                       }}
-                      className="absolute -translate-x-1/2 -translate-y-1/2 w-6 h-6 rounded-full border-2 bg-red-500/20 pointer-events-none"
+                      className="absolute w-6 h-6 rounded-full border-2 bg-red-500/20 pointer-events-none"
                     />
                   ))}
                 </div>
 
-                <div className="absolute inset-0 bg-slate-950/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white font-semibold text-xs backdrop-blur-2xs">
+                <div className="absolute inset-0 bg-slate-950/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white font-semibold text-xs backdrop-blur-2xs pointer-events-none">
                   <Crosshair className="w-4 h-4 text-red-400" />
                   <span>Clic para editar recuadros, flechas y censura</span>
                 </div>

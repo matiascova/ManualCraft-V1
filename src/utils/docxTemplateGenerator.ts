@@ -18,7 +18,7 @@ import {
   TabStopType,
   LeaderType,
 } from 'docx';
-import { UserManual, getActionTypeSpanish } from '../types/manual';
+import { UserManual, getActionTypeSpanish, formatStepOperativeTitle } from '../types/manual';
 import { Project } from '../types/project';
 import { OrganizationBranding } from '../types/branding';
 import { renderAnnotatedScreenshotForPdf } from './exportUtils';
@@ -602,7 +602,7 @@ export async function exportToDocxWithTemplateStructure(
   manual.steps.forEach((st, sIdx) => {
     const stepNum = 3 + sIdx;
     tocItems.push({
-      title: `${stepNum} ${st.title.toUpperCase()}`,
+      title: `${stepNum} ${formatStepOperativeTitle(st.title, sIdx + 1).toUpperCase()}`,
       pageNum: 5 + sIdx,
       level: 1,
     });
@@ -1027,7 +1027,7 @@ export async function exportToDocxWithTemplateStructure(
                   new Paragraph({
                     children: [
                       new TextRun({
-                        text: st.title,
+                        text: formatStepOperativeTitle(st.title, sIdx + 1),
                         bold: true,
                         size: 17,
                         color: '0F172A',
@@ -1104,7 +1104,7 @@ export async function exportToDocxWithTemplateStructure(
                   new Paragraph({
                     children: [
                       new TextRun({
-                        text: st.title,
+                        text: formatStepOperativeTitle(st.title, sIdx + 1),
                         bold: true,
                         size: 17,
                         color: '0F172A',
@@ -1187,7 +1187,7 @@ export async function exportToDocxWithTemplateStructure(
               new Paragraph({
                 children: [
                   new TextRun({
-                    text: st.title,
+                    text: formatStepOperativeTitle(st.title, sIdx + 1),
                     bold: true,
                     size: 17,
                     color: '0F172A',
@@ -1307,7 +1307,7 @@ export async function exportToDocxWithTemplateStructure(
                   new Paragraph({
                     children: [
                       new TextRun({
-                        text: step.title,
+                        text: formatStepOperativeTitle(step.title, i + 1),
                         bold: true,
                         color: 'FFFFFF',
                         size: 30, // 15pt

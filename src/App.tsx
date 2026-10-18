@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useCallback, Suspense, lazy } from 'react';
-import { UserManual, ManualStep } from './types/manual';
+import { UserManual, ManualStep, reindexManualSteps } from './types/manual';
 import { Project } from './types/project';
 import { OrganizationBranding, DEFAULT_ORGANIZATION_BRANDING } from './types/branding';
 import { SAMPLE_MANUALS } from './data/sampleManuals';
@@ -214,9 +214,11 @@ export default function App() {
     setManuals((prev) =>
       prev.map((m) => {
         if (!m.steps.some((s) => s.id === updatedStep.id)) return m;
+        const newSteps = m.steps.map((s) => (s.id === updatedStep.id ? updatedStep : s));
+        const reindexed = reindexManualSteps(newSteps);
         return {
           ...m,
-          steps: m.steps.map((s) => (s.id === updatedStep.id ? updatedStep : s)),
+          steps: reindexed,
           updatedAt: new Date().toISOString(),
         };
       })
@@ -243,9 +245,10 @@ export default function App() {
       expectedResult: 'El sistema confirmará la operación realizada.',
       annotations: [],
     };
+    const updatedSteps = reindexManualSteps([...activeManual.steps, newStep]);
     handleUpdateManual({
       ...activeManual,
-      steps: [...activeManual.steps, newStep],
+      steps: updatedSteps,
       updatedAt: new Date().toISOString(),
     });
     setEditingStep(newStep);

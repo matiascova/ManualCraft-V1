@@ -169,7 +169,42 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
       return;
     }
 
-    // Default MOVE mode: Reposition the active focal point directly to the exact clicked coordinates!
+    // Default MOVE / RELOCATE mode for focal point:
+    // If toolMode is circle or active annotation is circle, ensure the focal hotspot moves right to (x, y)
+    if (toolMode === 'circle' || activeAnnotation?.shape === 'circle') {
+      const targetCircle = localAnnotations.find((a) => a.id === selectedId && a.shape === 'circle') ||
+        localAnnotations.find((a) => a.shape === 'circle');
+
+      if (targetCircle) {
+        const updated = localAnnotationsRef.current.map((a) =>
+          a.id === targetCircle.id ? { ...a, x, y } : a
+        );
+        setLocalAnnotations(updated);
+        onChange(updated);
+        setSelectedId(targetCircle.id);
+        return;
+      }
+
+      // If no circle exists yet, create one directly at clicked coordinates
+      const newAnnotation: VisualAnnotation = {
+        id: `ann-${Date.now()}`,
+        x,
+        y,
+        shape: 'circle',
+        color: activeColor,
+        label: `Paso ${localAnnotations.length + 1}`,
+        labelPosition: y < 18 ? 'bottom' : 'top',
+        labelOffsetX: 0,
+        labelOffsetY: 0,
+      };
+      const updated = [...localAnnotations, newAnnotation];
+      setLocalAnnotations(updated);
+      onChange(updated);
+      setSelectedId(newAnnotation.id);
+      return;
+    }
+
+    // Otherwise reposition the currently selected annotation (rect, etc.)
     updateActive({ x, y }, true);
   };
 
@@ -600,8 +635,9 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                 style={{
                   left: `${clickRipple.x}%`,
                   top: `${clickRipple.y}%`,
+                  transform: 'translate(-50%, -50%)',
                 }}
-                className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-none z-50 flex items-center justify-center"
+                className="absolute pointer-events-none z-50 flex items-center justify-center"
               >
                 <div className="w-12 h-12 rounded-full border-2 border-red-500 animate-ping opacity-90" />
                 <div className="w-4 h-4 rounded-full bg-red-600 shadow-xl border-2 border-white absolute" />
@@ -723,12 +759,13 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                   style={{
                     left: `${ann.x}%`,
                     top: `${ann.y}%`,
+                    transform: 'translate(-50%, -50%)',
                     borderColor: ann.color || '#ef4444',
                   }}
-                  className={`absolute -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full border-3 flex items-center justify-center cursor-grab active:cursor-grabbing transition-transform ${
+                  className={`absolute w-8 h-8 rounded-full border-3 flex items-center justify-center cursor-grab active:cursor-grabbing transition-shadow ${
                     isSelected
-                      ? 'ring-4 ring-white scale-125 z-20 shadow-2xl'
-                      : 'hover:scale-110 z-10'
+                      ? 'ring-4 ring-white z-20 shadow-2xl scale-110'
+                      : 'hover:ring-2 hover:ring-white/80 z-10'
                   }`}
                 >
                   <div

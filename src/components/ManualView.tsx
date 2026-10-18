@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, memo } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, memo } from 'react';
 import {
   UserManual,
   ManualStep,
@@ -6,6 +6,9 @@ import {
   transformAnnotationsForCrop,
   CropArea,
   VisualAnnotation,
+  cleanStepTitle,
+  formatStepOperativeTitle,
+  reindexManualSteps,
 } from '../types/manual';
 import {
   Sparkles,
@@ -239,6 +242,27 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
     });
   }, [manual.steps, searchQuery]);
 
+  // Auto-align step correlatives starting strictly at 1 whenever steps are loaded or updated
+  useEffect(() => {
+    if (!manual || !manual.steps || manual.steps.length === 0) return;
+    const isOutOfSync = manual.steps.some((s, idx) => {
+      const expectedNum = idx + 1;
+      const expectedPrefix = `Paso ${expectedNum}:`;
+      return (
+        s.stepNumber !== expectedNum ||
+        (s.title.toLowerCase().startsWith('paso ') && !s.title.startsWith(expectedPrefix))
+      );
+    });
+
+    if (isOutOfSync) {
+      const normalizedSteps = reindexManualSteps(manual.steps);
+      onUpdateManual({
+        ...manual,
+        steps: normalizedSteps,
+      });
+    }
+  }, [manual, onUpdateManual]);
+
   const moveStep = useCallback((index: number, direction: 'up' | 'down') => {
     const newSteps = [...manual.steps];
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
@@ -248,14 +272,10 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
     newSteps[index] = newSteps[targetIndex];
     newSteps[targetIndex] = temp;
 
-    // Renumber
-    newSteps.forEach((s, idx) => {
-      s.stepNumber = idx + 1;
-    });
-
+    const reindexedSteps = reindexManualSteps(newSteps);
     onUpdateManual({
       ...manual,
-      steps: newSteps,
+      steps: reindexedSteps,
       updatedAt: new Date().toISOString(),
     });
   }, [manual, onUpdateManual]);
@@ -264,16 +284,61 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
     if (manual.steps.length <= 1) {
       return;
     }
-    const newSteps = manual.steps.filter((s) => s.id !== stepId);
-    newSteps.forEach((s, idx) => {
-      s.stepNumber = idx + 1;
-    });
+    const remainingSteps = manual.steps.filter((s) => s.id !== stepId);
+    const reindexedSteps = reindexManualSteps(remainingSteps);
     onUpdateManual({
       ...manual,
-      steps: newSteps,
+      steps: reindexedSteps,
       updatedAt: new Date().toISOString(),
     });
   }, [manual, onUpdateManual]);
+
+  const handleStepImageClick = useCallback((e: React.MouseEvent<HTMLDivElement>, step: ManualStep) => {
+    const imgEl = e.currentTarget.querySelector('img');
+    if (!imgEl) {
+      onEditStep(step);
+      return;
+    }
+    const rect = imgEl.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
+      if (clickX >= 0 && clickX <= rect.width && clickY >= 0 && clickY <= rect.height) {
+        const x = Math.round(((clickX / rect.width) * 100) * 10) / 10;
+        const y = Math.round(((clickY / rect.height) * 100) * 10) / 10;
+        const currentAnns = step.annotations || [];
+        const circleAnn = currentAnns.find((a) => a.shape === 'circle');
+        let updatedAnns: VisualAnnotation[];
+        if (circleAnn) {
+          updatedAnns = currentAnns.map((a) => (a.id === circleAnn.id ? { ...a, x, y } : a));
+        } else {
+          updatedAnns = [
+            ...currentAnns,
+            {
+              id: `ann-${Date.now()}`,
+              x,
+              y,
+              shape: 'circle',
+              color: '#ef4444',
+              label: `Paso ${step.stepNumber}`,
+              labelPosition: y < 18 ? 'bottom' : 'top',
+              labelOffsetX: 0,
+              labelOffsetY: 0,
+            },
+          ];
+        }
+        const updatedStep = { ...step, annotations: updatedAnns };
+        onUpdateManual({
+          ...manual,
+          steps: manual.steps.map((s) => (s.id === step.id ? updatedStep : s)),
+          updatedAt: new Date().toISOString(),
+        });
+        onAnnotateStep(updatedStep);
+        return;
+      }
+    }
+    onEditStep(step);
+  }, [manual, onUpdateManual, onAnnotateStep, onEditStep]);
 
   const toggleChecklistItem = useCallback((idx: number) => {
     setCheckedChecklist((prev) => ({
@@ -608,7 +673,9 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
                 <span className="w-4 h-4 rounded-full bg-slate-100 text-slate-600 text-[10px] font-bold flex items-center justify-center flex-shrink-0">
                   {idx + 1}
                 </span>
-                <span className="truncate">{step.title}</span>
+                <span className="truncate">
+                  {formatStepOperativeTitle(step.title, idx + 1)}
+                </span>
               </a>
             ))}
             {manual.troubleshooting && manual.troubleshooting.length > 0 && (
@@ -956,14 +1023,14 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
                           </span>
                         </td>
 
-                        {/* Step Title */}
+                        {/* Step Title aligned to correlatives */}
                         <td className="py-2.5 px-4 font-bold text-slate-900 border-r border-slate-200/80">
                           <a
                             href={`#step-${st.id}`}
                             className="hover:text-indigo-600 transition-colors block"
                             title="Ir al paso en el manual"
                           >
-                            {st.title}
+                            {formatStepOperativeTitle(st.title, sIdx + 1)}
                           </a>
                         </td>
 
@@ -997,15 +1064,34 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
                           {st.expectedResult || st.description}
                         </td>
 
-                        {/* Actions: View step or test */}
+                        {/* Actions: View step, edit or delete */}
                         <td className="py-2.5 px-3 text-center">
-                          <a
-                            href={`#step-${st.id}`}
-                            className="inline-flex items-center justify-center p-1.5 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition-colors"
-                            title="Ver detalle del paso"
-                          >
-                            <ExternalLink className="w-3.5 h-3.5" />
-                          </a>
+                          <div className="flex items-center justify-center gap-1">
+                            <a
+                              href={`#step-${st.id}`}
+                              className="inline-flex items-center justify-center p-1.5 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition-colors"
+                              title="Ver detalle del paso"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() => onEditStep(st)}
+                              className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+                              title="Editar contenido y captura del paso"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => deleteStep(st.id)}
+                              disabled={manual.steps.length <= 1}
+                              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 rounded-lg transition-colors"
+                              title="Eliminar esta pantalla/paso (reajusta correlativos automáticamente iniciando en 1)"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -1070,7 +1156,7 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
                         )}
                       </div>
                       <h2 className="text-lg font-bold text-slate-900 leading-snug">
-                        {step.title}
+                        {formatStepOperativeTitle(step.title, idx + 1)}
                       </h2>
                     </div>
                   </div>
@@ -1361,9 +1447,9 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
                   {/* Step Annotated Screenshot */}
                   {step.image && (
                     <div
-                      onClick={() => onEditStep(step)}
-                      className="rounded-xl overflow-hidden border border-slate-200 bg-slate-950 shadow-xs group flex items-center justify-center p-1 sm:p-2 cursor-pointer relative"
-                      title="Haz clic para editar este paso y sus puntos focales"
+                      onClick={(e) => handleStepImageClick(e, step)}
+                      className="rounded-xl overflow-hidden border border-slate-200 bg-slate-950 shadow-xs group flex items-center justify-center p-1 sm:p-2 cursor-crosshair relative"
+                      title="Haz clic en cualquier punto para ubicar el punto focal exactamente allí y abrir el editor"
                     >
                       <div className="relative inline-block max-w-full">
                         <img
@@ -1451,9 +1537,10 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
                               style={{
                                 left: `${ann.x}%`,
                                 top: `${ann.y}%`,
+                                transform: 'translate(-50%, -50%)',
                                 borderColor: ann.color || '#ef4444',
                               }}
-                              className="absolute -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full border-3 flex items-center justify-center pointer-events-none shadow-lg"
+                              className="absolute w-8 h-8 rounded-full border-3 flex items-center justify-center pointer-events-none shadow-lg"
                             >
                               <div
                                 style={{ backgroundColor: ann.color || '#ef4444' }}
