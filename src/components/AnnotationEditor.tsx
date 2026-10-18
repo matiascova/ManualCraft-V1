@@ -57,6 +57,8 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
 
   // Tool mode: 'circle' (drop focal hotspot), 'rect', 'blur', or 'select'
   const [toolMode, setToolMode] = useState<'circle' | 'rect' | 'blur' | 'select'>('circle');
+  // 'move' repositions current focal point on click; 'add' creates a new annotation on next click
+  const [clickPlacementMode, setClickPlacementMode] = useState<'move' | 'add'>('move');
   const [clickRipple, setClickRipple] = useState<{ x: number; y: number } | null>(null);
 
   // New item defaults
@@ -133,68 +135,50 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
 
     // Show instant visual confirmation ripple
     setClickRipple({ x, y });
-    setTimeout(() => setClickRipple(null), 550);
+    setTimeout(() => setClickRipple(null), 650);
 
-    // If a circular focal point is already selected and in select or circle mode:
-    // Move it directly to the exact clicked coordinates!
-    if (activeAnnotation && activeAnnotation.shape === 'circle' && toolMode !== 'place-rect' && toolMode !== 'place-blur') {
-      updateActive({ x, y }, true);
+    // If in ADD mode, or if there are no annotations yet, or if toolMode is rect or blur:
+    if (
+      clickPlacementMode === 'add' ||
+      localAnnotations.length === 0 ||
+      toolMode === 'rect' ||
+      toolMode === 'blur'
+    ) {
+      const shapeToCreate = toolMode === 'select' ? 'circle' : toolMode;
+      const labelText = shapeToCreate === 'blur' ? '' : `Paso ${localAnnotations.length + 1}`;
+
+      const newAnnotation: VisualAnnotation = {
+        id: `ann-${Date.now()}`,
+        x,
+        y,
+        shape: shapeToCreate,
+        color: activeColor,
+        label: labelText,
+        labelPosition: y < 18 ? 'bottom' : 'top',
+        width: shapeToCreate === 'circle' ? undefined : (shapeToCreate === 'blur' ? 22 : 22),
+        height: shapeToCreate === 'circle' ? undefined : (shapeToCreate === 'blur' ? 12 : 14),
+        labelOffsetX: 0,
+        labelOffsetY: 0,
+      };
+
+      const updated = [...localAnnotations, newAnnotation];
+      setLocalAnnotations(updated);
+      onChange(updated);
+      setSelectedId(newAnnotation.id);
+      setClickPlacementMode('move');
       return;
     }
 
-    // Otherwise create new element precisely where clicked:
-    const shapeToCreate = toolMode === 'select' ? 'circle' : toolMode;
-    const labelText = shapeToCreate === 'blur' ? '' : `Paso ${localAnnotations.length + 1}`;
-
-    const newAnnotation: VisualAnnotation = {
-      id: `ann-${Date.now()}`,
-      x,
-      y,
-      shape: shapeToCreate,
-      color: activeColor,
-      label: labelText,
-      labelPosition: y < 18 ? 'bottom' : 'top',
-      width: shapeToCreate === 'circle' ? undefined : (shapeToCreate === 'blur' ? 22 : 22),
-      height: shapeToCreate === 'circle' ? undefined : (shapeToCreate === 'blur' ? 12 : 14),
-      labelOffsetX: 0,
-      labelOffsetY: 0,
-    };
-
-    const updated = [...localAnnotations, newAnnotation];
-    setLocalAnnotations(updated);
-    onChange(updated);
-    setSelectedId(newAnnotation.id);
+    // Default MOVE mode: Reposition the active focal point directly to the exact clicked coordinates!
+    updateActive({ x, y }, true);
   };
 
-  // Explicit function to add a new annotation via button
+  // Explicit function to activate adding a new annotation via click or instant drop
   const handleAddNewAnnotation = (shapeOverride?: 'circle' | 'rect' | 'blur') => {
     const shape = shapeOverride || activeShape;
     setToolMode(shape);
-    const offset = (localAnnotations.length % 5) * 6;
-    const x = Math.min(75, 25 + offset);
-    const y = Math.min(75, 20 + offset);
-
-    const labelText = shape === 'blur' ? '' : `Paso ${localAnnotations.length + 1}`;
-
-    const newAnnotation: VisualAnnotation = {
-      id: `ann-${Date.now()}`,
-      x,
-      y,
-      shape,
-      color: activeColor,
-      label: labelText,
-      labelPosition: y < 18 ? 'bottom' : 'top',
-      width: shape === 'circle' ? undefined : 22,
-      height: shape === 'circle' ? undefined : 14,
-      labelOffsetX: 0,
-      labelOffsetY: 0,
-    };
-
-    const updated = [...localAnnotations, newAnnotation];
-    setLocalAnnotations(updated);
-    onChange(updated);
-    setSelectedId(newAnnotation.id);
     setActiveShape(shape);
+    setClickPlacementMode('add');
   };
 
   // Duplicate current annotation
@@ -449,42 +433,64 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
         {/* Center: Quick Creation Palette */}
         <div className="flex items-center gap-1.5 bg-slate-800/80 p-1 rounded-xl border border-slate-700/80">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1 hidden md:inline">
-            Añadir:
+            Puntos Focales:
           </span>
+
+          {/* 1. Precision Relocate Mode (Default) */}
+          <button
+            type="button"
+            onClick={() => {
+              setToolMode('circle');
+              setClickPlacementMode('move');
+            }}
+            className={`py-1 px-2.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs ${
+              clickPlacementMode === 'move' && activeAnnotation?.shape === 'circle'
+                ? 'bg-indigo-600 text-white shadow-xs'
+                : 'bg-slate-700/60 hover:bg-slate-700 text-slate-200'
+            }`}
+            title="Haz clic en cualquier punto de la captura para ubicar el punto focal exactamente allí"
+          >
+            <Crosshair className="w-3.5 h-3.5 text-red-400" />
+            <span className="text-[11px]">Ubicar con Clic</span>
+          </button>
+
+          {/* 2. Add New Focal Hotspot */}
+          <button
+            type="button"
+            onClick={() => handleAddNewAnnotation('circle')}
+            className={`py-1 px-2.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs ${
+              clickPlacementMode === 'add' && toolMode === 'circle'
+                ? 'bg-red-600 text-white shadow-xs ring-2 ring-red-400 animate-pulse'
+                : 'bg-slate-700/60 hover:bg-slate-700 text-slate-200'
+            }`}
+            title="Añadir nuevo punto focal: activa este botón y haz clic en la captura"
+          >
+            <Circle className="w-3.5 h-3.5 text-red-300" />
+            <span className="text-[11px]">+ Punto Focal</span>
+          </button>
+
+          {/* 3. Add Rectangle */}
           <button
             type="button"
             onClick={() => handleAddNewAnnotation('rect')}
             className={`py-1 px-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs ${
-              activeAnnotation?.shape === 'rect'
-                ? 'bg-indigo-600 text-white shadow-xs'
+              clickPlacementMode === 'add' && toolMode === 'rect'
+                ? 'bg-indigo-600 text-white shadow-xs ring-2 ring-indigo-400'
                 : 'bg-slate-700/60 hover:bg-slate-700 text-slate-200'
             }`}
-            title="Añadir Recuadro de Enfoque (para resaltar botones, campos o menús)"
+            title="Añadir Recuadro de Enfoque: haz clic en la captura para colocarlo"
           >
             <Square className="w-3.5 h-3.5 text-indigo-300" />
             <span className="text-[11px]">+ Recuadro</span>
           </button>
 
-          <button
-            type="button"
-            onClick={() => handleAddNewAnnotation('circle')}
-            className={`py-1 px-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs ${
-              activeAnnotation?.shape === 'circle'
-                ? 'bg-indigo-600 text-white shadow-xs'
-                : 'bg-slate-700/60 hover:bg-slate-700 text-slate-200'
-            }`}
-            title="Añadir Punto Focal Circular (hotspot)"
-          >
-            <Circle className="w-3.5 h-3.5 text-red-400" />
-            <span className="text-[11px]">+ Punto Focal</span>
-          </button>
-
+          {/* 4. Add Blur Box */}
           <button
             type="button"
             onClick={() => handleAddNewAnnotation('blur')}
             className={`py-1 px-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs ${
-              activeAnnotation?.shape === 'blur'
-                ? 'bg-indigo-600 text-white shadow-xs'
+              clickPlacementMode === 'add' && toolMode === 'blur'
+                ? 'bg-amber-600 text-white shadow-xs ring-2 ring-amber-400'
                 : 'bg-slate-700/60 hover:bg-slate-700 text-slate-200'
             }`}
             title="Añadir Difuminado para ocultar datos privados o sensibles"
@@ -564,9 +570,20 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
           ref={canvasContainerRef}
           className="flex-1 flex flex-col items-center justify-center p-3 relative overflow-hidden min-h-0 min-w-0"
         >
+          {/* Floating Guidance Banner */}
+          <div className="absolute top-2.5 bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-full px-3.5 py-1 flex items-center gap-2 text-white shadow-xl z-20 pointer-events-none">
+            <span className={`w-2 h-2 rounded-full ${clickPlacementMode === 'add' ? 'bg-amber-400 animate-ping' : 'bg-red-500 animate-pulse'}`} />
+            <span className="font-semibold text-[11px] text-slate-200">
+              {clickPlacementMode === 'add'
+                ? '🎯 Modo Añadir Activo: Haz clic en la captura para colocar el nuevo elemento'
+                : '🎯 Haz clic en cualquier parte de la imagen para posicionar el punto focal allí'}
+            </span>
+          </div>
+
           {/* Zoomable Image Container */}
           <div
-            className="relative inline-block cursor-default shadow-2xl rounded-lg overflow-visible border border-slate-800 max-h-full max-w-full transition-transform duration-150"
+            onClick={handleCanvasClick}
+            className="relative inline-block cursor-crosshair shadow-2xl rounded-lg overflow-visible border border-slate-800 max-h-full max-w-full transition-transform duration-150 select-none"
             style={{ transform: `scale(${zoomLevel})` }}
           >
             <img
@@ -574,7 +591,22 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
               src={imageSrc}
               alt="Captura a anotar"
               className="max-h-[calc(100vh-80px)] max-w-full w-auto h-auto block pointer-events-none rounded select-none shadow-2xl"
+              draggable={false}
             />
+
+            {/* Instant Click Ripple Feedback */}
+            {clickRipple && (
+              <div
+                style={{
+                  left: `${clickRipple.x}%`,
+                  top: `${clickRipple.y}%`,
+                }}
+                className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-none z-50 flex items-center justify-center"
+              >
+                <div className="w-12 h-12 rounded-full border-2 border-red-500 animate-ping opacity-90" />
+                <div className="w-4 h-4 rounded-full bg-red-600 shadow-xl border-2 border-white absolute" />
+              </div>
+            )}
 
             {/* Render Annotations Overlay */}
             {localAnnotations.map((ann) => {
@@ -587,7 +619,10 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                 return (
                   <div
                     key={ann.id}
-                    onClick={() => setSelectedId(ann.id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedId(ann.id);
+                    }}
                     onMouseDown={(e) => handleStartDragAnnotation(e, ann)}
                     style={{
                       left: `${ann.x}%`,
@@ -645,7 +680,10 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                 return (
                   <div
                     key={ann.id}
-                    onClick={() => setSelectedId(ann.id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedId(ann.id);
+                    }}
                     onMouseDown={(e) => handleStartDragAnnotation(e, ann)}
                     style={{
                       left: `${ann.x}%`,
@@ -677,7 +715,10 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
               return (
                 <div
                   key={ann.id}
-                  onClick={() => setSelectedId(ann.id)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedId(ann.id);
+                  }}
                   onMouseDown={(e) => handleStartDragAnnotation(e, ann)}
                   style={{
                     left: `${ann.x}%`,

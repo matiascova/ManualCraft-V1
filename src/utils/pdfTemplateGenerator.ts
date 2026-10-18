@@ -4,6 +4,12 @@ import { Project } from '../types/project';
 import { OrganizationBranding } from '../types/branding';
 import { renderAnnotatedScreenshotForPdf } from './exportUtils';
 import { getEffectiveInstructorContent } from './instructorUtils';
+import {
+  isSapManual,
+  detectSapTransactionCode,
+  detectSapModuleCode,
+  isZMMT0020Transaction,
+} from './sapProcessMatrix';
 
 export interface LogoDim {
   width: number;
@@ -248,12 +254,8 @@ export async function exportToPdfWithTemplateStructure(
   const effectiveClientLogo = project?.clientLogo;
   const effectiveClientName = project?.clientName;
 
-  const isSap = Boolean(
-    (manual.title && manual.title.toUpperCase().includes('SAP')) ||
-    (manual.category && manual.category.toUpperCase().includes('SAP')) ||
-    (project?.category && project.category.toUpperCase().includes('SAP')) ||
-    manual.steps.some((s) => s.sapTransaction)
-  );
+  const isSap = isSapManual(manual, project);
+  const isZ20 = isZMMT0020Transaction(manual);
 
   // Measure natural dimensions of logos to eliminate any stretching or distortion
   const [ourLogoDim, clientLogoDim] = await Promise.all([
@@ -607,7 +609,9 @@ export async function exportToPdfWithTemplateStructure(
   doc.setTextColor(51, 65, 85);
   doc.text(
     isSap
-      ? 'La siguiente tabla resume la secuencia completa del proceso, el módulo SAP y la transacción a utilizar en cada paso.'
+      ? isZ20
+        ? 'La siguiente tabla resume la secuencia completa del proceso y la transacción a utilizar en cada paso (Transacción ZMMT0020).'
+        : 'La siguiente tabla resume el módulo SAP, la secuencia cronológica de pasos y la transacción a utilizar en cada paso.'
       : 'La siguiente tabla resume la secuencia cronológica de pasos, acciones e interacciones registradas en el sistema.',
     marginX,
     currentY
@@ -615,7 +619,13 @@ export async function exportToPdfWithTemplateStructure(
   currentY += 6;
 
   // Process Flow Table Header
-  const flowColW = isSap ? [10, 68, 30, 18, 52] : [10, 68, 28, 32, 40];
+  // REGLA: Adicionar el módulo de SAP para presentarlo en esta página y dejarlo como primera columna.
+  // Si estamos en la transacción ZMMT0020, no es necesario que se muestre esa columna.
+  const flowColW = isSap
+    ? isZ20
+      ? [12, 74, 38, 54] // ZMMT0020: Módulo omitido (# [12], Paso [74], Transacción [38], Observación [54]) = 178
+      : [18, 10, 64, 32, 54] // SAP estándar: Módulo como PRIMERA COLUMNA (Módulo [18], # [10], Paso [64], Transacción [32], Observación [54]) = 178
+    : [10, 68, 28, 32, 40];
   const flowH = 7.5;
 
   const renderFlowHeader = (targetY: number) => {
@@ -626,15 +636,43 @@ export async function exportToPdfWithTemplateStructure(
     doc.setTextColor(255, 255, 255);
 
     let fX = marginX;
-    doc.text('#', fX + 3.5, targetY + 4.8);
-    fX += flowColW[0];
-    doc.text('Paso', fX + 2.5, targetY + 4.8);
-    fX += flowColW[1];
-    doc.text(isSap ? 'Transacción' : 'Acción', fX + 2.5, targetY + 4.8);
-    fX += flowColW[2];
-    doc.text(isSap ? 'Módulo' : 'Elemento / Interfaz', fX + 2.5, targetY + 4.8);
-    fX += flowColW[3];
-    doc.text(isSap ? 'Observación' : 'Resultado Esperado', fX + 2.5, targetY + 4.8);
+    if (isSap) {
+      if (!isZ20) {
+        // Columna 1: Módulo SAP
+        doc.text('Módulo', fX + 3.5, targetY + 4.8);
+        fX += flowColW[0];
+        // Columna 2: #
+        doc.text('#', fX + 3.5, targetY + 4.8);
+        fX += flowColW[1];
+        // Columna 3: Paso
+        doc.text('Paso Operativo', fX + 2.5, targetY + 4.8);
+        fX += flowColW[2];
+        // Columna 4: Transacción
+        doc.text('Transacción', fX + 2.5, targetY + 4.8);
+        fX += flowColW[3];
+        // Columna 5: Observación
+        doc.text('Observación / Campo Clave', fX + 2.5, targetY + 4.8);
+      } else {
+        // ZMMT0020: Sin columna de módulo
+        doc.text('#', fX + 4.5, targetY + 4.8);
+        fX += flowColW[0];
+        doc.text('Paso Operativo', fX + 2.5, targetY + 4.8);
+        fX += flowColW[1];
+        doc.text('Transacción', fX + 2.5, targetY + 4.8);
+        fX += flowColW[2];
+        doc.text('Observación / Campo Clave', fX + 2.5, targetY + 4.8);
+      }
+    } else {
+      doc.text('#', fX + 3.5, targetY + 4.8);
+      fX += flowColW[0];
+      doc.text('Paso', fX + 2.5, targetY + 4.8);
+      fX += flowColW[1];
+      doc.text('Acción', fX + 2.5, targetY + 4.8);
+      fX += flowColW[2];
+      doc.text('Elemento / Interfaz', fX + 2.5, targetY + 4.8);
+      fX += flowColW[3];
+      doc.text('Resultado Esperado', fX + 2.5, targetY + 4.8);
+    }
   };
 
   renderFlowHeader(currentY);
@@ -654,52 +692,105 @@ export async function exportToPdfWithTemplateStructure(
     doc.setFillColor(isEven ? 248 : 255, isEven ? 250 : 255, isEven ? 252 : 255);
     doc.rect(marginX, currentY, contentWidth, flowH, 'FD');
 
-    // Number Badge
-    doc.setFillColor(navyColor[0], navyColor[1], navyColor[2]);
-    doc.roundedRect(marginX + 1.5, currentY + 1.5, 7, 4.5, 0.8, 0.8, 'F');
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(6.5);
-    doc.setTextColor(255, 255, 255);
-    doc.text(`${sIdx + 1}`, marginX + 5, currentY + 4.6, { align: 'center' });
-
-    // Step Title
-    let curColX = marginX + flowColW[0];
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7.5);
-    doc.setTextColor(30, 41, 59);
-    const stepShortTitle = doc.splitTextToSize(step.title, flowColW[1] - 4)[0];
-    doc.text(stepShortTitle, curColX + 2, currentY + 4.8);
-
-    curColX += flowColW[1];
-
     if (isSap) {
-      // Transaction Code
-      const txCode = step.sapTransaction || 'GUI';
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7.5);
-      doc.setTextColor(24, 59, 108);
-      doc.text(txCode, curColX + 2, currentY + 4.8);
+      const txCode = detectSapTransactionCode(manual, step);
+      const modStr = detectSapModuleCode(manual, step, txCode);
+      const obsText = step.expectedResult || step.description;
 
-      // Module Badge
-      curColX += flowColW[2];
-      const modStr = step.sapModule || 'General';
-      doc.setFillColor(37, 99, 235);
-      doc.roundedRect(curColX + 2, currentY + 1.5, 12, 4.5, 0.8, 0.8, 'F');
+      if (!isZ20) {
+        // Columna 1: Módulo SAP (PRIMERA COLUMNA)
+        let curColX = marginX;
+        doc.setFillColor(37, 99, 235);
+        doc.roundedRect(curColX + 2, currentY + 1.5, 14, 4.5, 0.8, 0.8, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(6.5);
+        doc.setTextColor(255, 255, 255);
+        doc.text(modStr.slice(0, 5), curColX + 9, currentY + 4.6, { align: 'center' });
+
+        // Columna 2: #
+        curColX += flowColW[0];
+        doc.setFillColor(navyColor[0], navyColor[1], navyColor[2]);
+        doc.roundedRect(curColX + 1.5, currentY + 1.5, 7, 4.5, 0.8, 0.8, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(6.5);
+        doc.setTextColor(255, 255, 255);
+        doc.text(`${sIdx + 1}`, curColX + 5, currentY + 4.6, { align: 'center' });
+
+        // Columna 3: Paso
+        curColX += flowColW[1];
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(30, 41, 59);
+        const stepShortTitle = doc.splitTextToSize(step.title, flowColW[2] - 4)[0];
+        doc.text(stepShortTitle, curColX + 2, currentY + 4.8);
+
+        // Columna 4: Transacción
+        curColX += flowColW[2];
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(24, 59, 108);
+        doc.text(txCode, curColX + 2, currentY + 4.8);
+
+        // Columna 5: Observación
+        curColX += flowColW[3];
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7);
+        doc.setTextColor(71, 85, 105);
+        const shortObs = doc.splitTextToSize(obsText, flowColW[4] - 4)[0];
+        doc.text(shortObs, curColX + 2, currentY + 4.8);
+      } else {
+        // ZMMT0020: Módulo omitido
+        // Columna 1: #
+        let curColX = marginX;
+        doc.setFillColor(navyColor[0], navyColor[1], navyColor[2]);
+        doc.roundedRect(curColX + 2, currentY + 1.5, 8, 4.5, 0.8, 0.8, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(6.5);
+        doc.setTextColor(255, 255, 255);
+        doc.text(`${sIdx + 1}`, curColX + 6, currentY + 4.6, { align: 'center' });
+
+        // Columna 2: Paso
+        curColX += flowColW[0];
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(30, 41, 59);
+        const stepShortTitle = doc.splitTextToSize(step.title, flowColW[1] - 4)[0];
+        doc.text(stepShortTitle, curColX + 2, currentY + 4.8);
+
+        // Columna 3: Transacción
+        curColX += flowColW[1];
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(24, 59, 108);
+        doc.text(txCode || 'ZMMT0020', curColX + 2, currentY + 4.8);
+
+        // Columna 4: Observación
+        curColX += flowColW[2];
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7);
+        doc.setTextColor(71, 85, 105);
+        const shortObs = doc.splitTextToSize(obsText, flowColW[3] - 4)[0];
+        doc.text(shortObs, curColX + 2, currentY + 4.8);
+      }
+    } else {
+      // Number Badge
+      doc.setFillColor(navyColor[0], navyColor[1], navyColor[2]);
+      doc.roundedRect(marginX + 1.5, currentY + 1.5, 7, 4.5, 0.8, 0.8, 'F');
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(6.5);
       doc.setTextColor(255, 255, 255);
-      doc.text(modStr.slice(0, 5), curColX + 8, currentY + 4.6, { align: 'center' });
+      doc.text(`${sIdx + 1}`, marginX + 5, currentY + 4.6, { align: 'center' });
 
-      // Observación
-      curColX += flowColW[3];
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7);
-      doc.setTextColor(71, 85, 105);
-      const obsText = step.expectedResult || step.description;
-      const shortObs = doc.splitTextToSize(obsText, flowColW[4] - 4)[0];
-      doc.text(shortObs, curColX + 2, currentY + 4.8);
-    } else {
+      // Step Title
+      let curColX = marginX + flowColW[0];
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(30, 41, 59);
+      const stepShortTitle = doc.splitTextToSize(step.title, flowColW[1] - 4)[0];
+      doc.text(stepShortTitle, curColX + 2, currentY + 4.8);
+
       // Action Type Badge
+      curColX += flowColW[1];
       const actionName = getActionTypeSpanish(step.actionType);
       doc.setFillColor(37, 99, 235);
       doc.roundedRect(curColX + 1.5, currentY + 1.5, flowColW[2] - 3, 4.5, 0.8, 0.8, 'F');

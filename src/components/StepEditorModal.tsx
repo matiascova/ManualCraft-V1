@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   ManualStep,
   ActionType,
@@ -32,7 +32,7 @@ interface StepEditorModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (updatedStep: ManualStep) => void;
-  onOpenAnnotationEditor: () => void;
+  onOpenAnnotationEditor: (stepToAnnotate?: ManualStep) => void;
 }
 
 const ACTION_TYPES: Array<{ value: ActionType; label: string }> = [
@@ -59,6 +59,60 @@ export const StepEditorModal: React.FC<StepEditorModalProps> = ({
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [aiMessage, setAiMessage] = useState<string | null>(null);
   const [isCropModalOpen, setIsCropModalOpen] = useState(false);
+  const previewImgRef = useRef<HTMLImageElement>(null);
+
+  const handlePreviewClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!previewImgRef.current || !formData.image) {
+      onSave(formData);
+      onOpenAnnotationEditor(formData);
+      return;
+    }
+    const rect = previewImgRef.current.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const clickY = e.clientY - rect.top;
+
+    if (
+      clickX >= 0 &&
+      clickX <= rect.width &&
+      clickY >= 0 &&
+      clickY <= rect.height &&
+      rect.width > 0 &&
+      rect.height > 0
+    ) {
+      const x = Math.round(((clickX / rect.width) * 100) * 10) / 10;
+      const y = Math.round(((clickY / rect.height) * 100) * 10) / 10;
+
+      const currentAnnotations = formData.annotations || [];
+      let updatedAnnotations: VisualAnnotation[];
+      const circleAnn = currentAnnotations.find((a) => a.shape === 'circle');
+
+      if (circleAnn) {
+        updatedAnnotations = currentAnnotations.map((a) =>
+          a.id === circleAnn.id ? { ...a, x, y } : a
+        );
+      } else {
+        const newAnn: VisualAnnotation = {
+          id: `ann-${Date.now()}`,
+          x,
+          y,
+          shape: 'circle',
+          color: '#ef4444',
+          label: `Paso ${formData.stepNumber}`,
+          labelPosition: y < 18 ? 'bottom' : 'top',
+        };
+        updatedAnnotations = [...currentAnnotations, newAnn];
+      }
+
+      const updated = { ...formData, annotations: updatedAnnotations };
+      setFormData(updated);
+      onSave(updated);
+      onOpenAnnotationEditor(updated);
+      return;
+    }
+
+    onSave(formData);
+    onOpenAnnotationEditor(formData);
+  };
 
   const handleApplyStepCrop = (
     croppedDataUrl: string,
@@ -290,6 +344,51 @@ export const StepEditorModal: React.FC<StepEditorModalProps> = ({
               </div>
             </div>
 
+            {/* Row 2.5: Parámetros SAP (Transacción y Módulo) */}
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 shrink-0">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[11px] font-bold text-[#183B6C] flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-blue-600" />
+                  <span>Configuración SAP (Transacción &amp; Módulo)</span>
+                </span>
+                <span className="text-[10px] text-slate-500">
+                  {formData.sapTransaction?.toUpperCase().includes('ZMMT0020')
+                    ? 'Transacción ZMMT0020: Módulo se ocultará en la 1ª columna'
+                    : '1ª Columna en Matriz: Módulo SAP'}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label className="text-[10.5px] font-bold text-slate-700 block mb-0.5">
+                    Código de Transacción SAP
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.sapTransaction || ''}
+                    onChange={(e) =>
+                      setFormData({ ...formData, sapTransaction: e.target.value.toUpperCase() })
+                    }
+                    placeholder="Ej. ZMMT0033, ZMMT0020, MIRO, ME22N"
+                    className="w-full text-xs font-mono font-bold px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-[#183B6C]"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10.5px] font-bold text-slate-700 block mb-0.5">
+                    Módulo de SAP
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.sapModule || ''}
+                    onChange={(e) =>
+                      setFormData({ ...formData, sapModule: e.target.value.toUpperCase() })
+                    }
+                    placeholder="Ej. MM, SD, FI, CO (omitido si es ZMMT0020)"
+                    className="w-full text-xs font-mono font-bold px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-blue-700"
+                  />
+                </div>
+              </div>
+            </div>
+
             {/* Row 3: Description */}
             <div className="flex flex-col shrink-0">
               <div className="flex items-center justify-between mb-1">
@@ -518,7 +617,7 @@ export const StepEditorModal: React.FC<StepEditorModalProps> = ({
                     type="button"
                     onClick={() => {
                       onSave(formData);
-                      onOpenAnnotationEditor();
+                      onOpenAnnotationEditor(formData);
                     }}
                     className="py-1.5 px-3 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98]"
                   >
@@ -531,18 +630,16 @@ export const StepEditorModal: React.FC<StepEditorModalProps> = ({
 
             {formData.image ? (
               <div
-                onClick={() => {
-                  onSave(formData);
-                  onOpenAnnotationEditor();
-                }}
-                className="relative flex-1 bg-slate-950 rounded-xl overflow-hidden border border-slate-300 group cursor-pointer shadow-inner flex items-center justify-center p-1 min-h-0"
-                title="Haz clic para abrir el editor de enfoque visual sin scroll"
+                onClick={handlePreviewClick}
+                className="relative flex-1 bg-slate-950 rounded-xl overflow-hidden border border-slate-300 group cursor-crosshair shadow-inner flex items-center justify-center p-1 min-h-0"
+                title="Haz clic en cualquier punto para ubicar el punto focal exactamente aquí y abrir el editor"
               >
                 <div className="relative inline-block max-w-full max-h-full">
                   <img
+                    ref={previewImgRef}
                     src={formData.image}
                     alt="Captura del paso"
-                    className="max-h-full max-w-full w-auto h-auto block rounded"
+                    className="max-h-full max-w-full w-auto h-auto block rounded pointer-events-none select-none"
                   />
 
                   {/* Hotspots mini-preview */}

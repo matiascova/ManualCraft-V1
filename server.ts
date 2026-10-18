@@ -332,6 +332,14 @@ Asegúrate de responder estrictamente en el formato JSON estructurado solicitado
                 },
                 hotspotX: { type: Type.NUMBER, description: 'Posición X porcentual (0 a 100) del elemento' },
                 hotspotY: { type: Type.NUMBER, description: 'Posición Y porcentual (0 a 100) del elemento' },
+                sapTransaction: {
+                  type: Type.STRING,
+                  description: 'Código de transacción de SAP si aplica (ej. ZMMT0033, ZMMT0020, MIRO, ME22N, VA01) o vacío ("") si no es SAP',
+                },
+                sapModule: {
+                  type: Type.STRING,
+                  description: 'Módulo de SAP si aplica (ej. MM, SD, FI, CO) o vacío ("") si no es SAP',
+                },
               },
               required: ['stepIndex', 'title', 'actionType', 'description'],
             },
@@ -550,6 +558,8 @@ Asegúrate de responder estrictamente en el formato JSON estructurado solicitado
         warning: s.warning || '',
         instructorNotes: finalInstructorNote,
         instructorAudioQuote: finalInstructorQuote,
+        sapTransaction: s.sapTransaction ? String(s.sapTransaction).trim().toUpperCase() : undefined,
+        sapModule: s.sapModule ? String(s.sapModule).trim().toUpperCase() : undefined,
         image: matchedImage?.dataUrl,
         imageName: matchedImage?.label,
         timestamp: matchedImage?.timestamp,

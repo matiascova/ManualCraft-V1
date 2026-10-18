@@ -424,8 +424,8 @@ export default function App() {
             isOpen={true}
             onClose={() => setEditingStep(null)}
             onSave={handleSaveStep}
-            onOpenAnnotationEditor={() => {
-              setAnnotatingStep(editingStep);
+            onOpenAnnotationEditor={(stepToAnnotate) => {
+              setAnnotatingStep(stepToAnnotate || editingStep);
               setEditingStep(null);
             }}
           />

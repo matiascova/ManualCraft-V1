@@ -23,6 +23,12 @@ import { Project } from '../types/project';
 import { OrganizationBranding } from '../types/branding';
 import { renderAnnotatedScreenshotForPdf } from './exportUtils';
 import { getEffectiveInstructorContent } from './instructorUtils';
+import {
+  isSapManual,
+  detectSapTransactionCode,
+  detectSapModuleCode,
+  isZMMT0020Transaction,
+} from './sapProcessMatrix';
 
 /**
  * Converts a base64 / dataUrl string to Uint8Array for docx ImageRun
@@ -312,12 +318,8 @@ export async function exportToDocxWithTemplateStructure(
   const authorName = manual.author || project?.author || 'Equipo de Procesos';
   const docVersion = manual.version || project?.version || '1.0';
 
-  const isSap = Boolean(
-    (manual.title && manual.title.toUpperCase().includes('SAP')) ||
-    (manual.category && manual.category.toUpperCase().includes('SAP')) ||
-    (project?.category && project.category.toUpperCase().includes('SAP')) ||
-    manual.steps.some((s) => s.sapTransaction)
-  );
+  const isSap = isSapManual(manual, project);
+  const isZ20 = isZMMT0020Transaction(manual);
 
   const dateObj = new Date(manual.updatedAt || manual.createdAt || Date.now());
   const dateFormatted =
@@ -851,22 +853,28 @@ export async function exportToDocxWithTemplateStructure(
     })
   );
 
-  const matrixHeaders = isSap
-    ? ['#', 'Paso Operativo', 'Transacción', 'Módulo', 'Acción / Campo Clave']
-    : ['#', 'Paso Operativo', 'Tipo de Acción', 'Elemento de Interfaz', 'Resultado / Observación'];
-
-  const matrixRows: TableRow[] = [
-    new TableRow({
-      children: [
+  // REGLA: Adicionar el módulo de SAP para presentarlo en esta página y dejarlo como primera columna.
+  // Si estamos en la transacción ZMMT0020, no es necesario que se muestre esa columna.
+  let headerCells: TableCell[] = [];
+  if (isSap) {
+    if (!isZ20) {
+      headerCells = [
         new TableCell({
-          width: { size: 8, type: WidthType.PERCENTAGE },
+          width: { size: 14, type: WidthType.PERCENTAGE },
+          shading: { fill: '183B6C' },
+          borders: tableBordersAll,
+          margins: { top: 80, bottom: 80, left: 80, right: 80 },
+          children: [new Paragraph({ children: [new TextRun({ text: 'Módulo', bold: true, size: 16, color: 'FFFFFF' })] })],
+        }),
+        new TableCell({
+          width: { size: 7, type: WidthType.PERCENTAGE },
           shading: { fill: '183B6C' },
           borders: tableBordersAll,
           margins: { top: 80, bottom: 80, left: 80, right: 80 },
           children: [new Paragraph({ children: [new TextRun({ text: '#', bold: true, size: 16, color: 'FFFFFF' })] })],
         }),
         new TableCell({
-          width: { size: 36, type: WidthType.PERCENTAGE },
+          width: { size: 37, type: WidthType.PERCENTAGE },
           shading: { fill: '183B6C' },
           borders: tableBordersAll,
           margins: { top: 80, bottom: 80, left: 100, right: 100 },
@@ -877,35 +885,278 @@ export async function exportToDocxWithTemplateStructure(
           shading: { fill: '183B6C' },
           borders: tableBordersAll,
           margins: { top: 80, bottom: 80, left: 100, right: 100 },
-          children: [new Paragraph({ children: [new TextRun({ text: isSap ? 'Transacción' : 'Tipo de Acción', bold: true, size: 16, color: 'FFFFFF' })] })],
+          children: [new Paragraph({ children: [new TextRun({ text: 'Transacción', bold: true, size: 16, color: 'FFFFFF' })] })],
         }),
         new TableCell({
-          width: { size: 18, type: WidthType.PERCENTAGE },
+          width: { size: 24, type: WidthType.PERCENTAGE },
+          shading: { fill: '183B6C' },
+          borders: tableBordersAll,
+          margins: { top: 80, bottom: 80, left: 100, right: 100 },
+          children: [new Paragraph({ children: [new TextRun({ text: 'Acción / Campo Clave', bold: true, size: 16, color: 'FFFFFF' })] })],
+        }),
+      ];
+    } else {
+      // ZMMT0020: Módulo omitido
+      headerCells = [
+        new TableCell({
+          width: { size: 8, type: WidthType.PERCENTAGE },
           shading: { fill: '183B6C' },
           borders: tableBordersAll,
           margins: { top: 80, bottom: 80, left: 80, right: 80 },
-          children: [new Paragraph({ children: [new TextRun({ text: isSap ? 'Módulo' : 'Elemento / Interfaz', bold: true, size: 16, color: 'FFFFFF' })] })],
+          children: [new Paragraph({ children: [new TextRun({ text: '#', bold: true, size: 16, color: 'FFFFFF' })] })],
+        }),
+        new TableCell({
+          width: { size: 46, type: WidthType.PERCENTAGE },
+          shading: { fill: '183B6C' },
+          borders: tableBordersAll,
+          margins: { top: 80, bottom: 80, left: 100, right: 100 },
+          children: [new Paragraph({ children: [new TextRun({ text: 'Paso Operativo', bold: true, size: 16, color: 'FFFFFF' })] })],
         }),
         new TableCell({
           width: { size: 20, type: WidthType.PERCENTAGE },
           shading: { fill: '183B6C' },
           borders: tableBordersAll,
           margins: { top: 80, bottom: 80, left: 100, right: 100 },
-          children: [new Paragraph({ children: [new TextRun({ text: isSap ? 'Acción / Campo' : 'Resultado Esperado', bold: true, size: 16, color: 'FFFFFF' })] })],
+          children: [new Paragraph({ children: [new TextRun({ text: 'Transacción', bold: true, size: 16, color: 'FFFFFF' })] })],
         }),
-      ],
-    }),
+        new TableCell({
+          width: { size: 26, type: WidthType.PERCENTAGE },
+          shading: { fill: '183B6C' },
+          borders: tableBordersAll,
+          margins: { top: 80, bottom: 80, left: 100, right: 100 },
+          children: [new Paragraph({ children: [new TextRun({ text: 'Acción / Campo Clave', bold: true, size: 16, color: 'FFFFFF' })] })],
+        }),
+      ];
+    }
+  } else {
+    headerCells = [
+      new TableCell({
+        width: { size: 8, type: WidthType.PERCENTAGE },
+        shading: { fill: '183B6C' },
+        borders: tableBordersAll,
+        margins: { top: 80, bottom: 80, left: 80, right: 80 },
+        children: [new Paragraph({ children: [new TextRun({ text: '#', bold: true, size: 16, color: 'FFFFFF' })] })],
+      }),
+      new TableCell({
+        width: { size: 36, type: WidthType.PERCENTAGE },
+        shading: { fill: '183B6C' },
+        borders: tableBordersAll,
+        margins: { top: 80, bottom: 80, left: 100, right: 100 },
+        children: [new Paragraph({ children: [new TextRun({ text: 'Paso Operativo', bold: true, size: 16, color: 'FFFFFF' })] })],
+      }),
+      new TableCell({
+        width: { size: 18, type: WidthType.PERCENTAGE },
+        shading: { fill: '183B6C' },
+        borders: tableBordersAll,
+        margins: { top: 80, bottom: 80, left: 100, right: 100 },
+        children: [new Paragraph({ children: [new TextRun({ text: 'Tipo de Acción', bold: true, size: 16, color: 'FFFFFF' })] })],
+      }),
+      new TableCell({
+        width: { size: 18, type: WidthType.PERCENTAGE },
+        shading: { fill: '183B6C' },
+        borders: tableBordersAll,
+        margins: { top: 80, bottom: 80, left: 80, right: 80 },
+        children: [new Paragraph({ children: [new TextRun({ text: 'Elemento / Interfaz', bold: true, size: 16, color: 'FFFFFF' })] })],
+      }),
+      new TableCell({
+        width: { size: 20, type: WidthType.PERCENTAGE },
+        shading: { fill: '183B6C' },
+        borders: tableBordersAll,
+        margins: { top: 80, bottom: 80, left: 100, right: 100 },
+        children: [new Paragraph({ children: [new TextRun({ text: 'Resultado Esperado', bold: true, size: 16, color: 'FFFFFF' })] })],
+      }),
+    ];
+  }
+
+  const matrixRows: TableRow[] = [
+    new TableRow({ children: headerCells }),
     ...manual.steps.map((st, sIdx) => {
       const isEven = sIdx % 2 === 0;
-      const col3Text = isSap
-        ? (st.sapTransaction || 'GUI')
-        : getActionTypeSpanish(st.actionType);
-      const col4Text = isSap
-        ? (st.sapModule || 'General')
-        : (st.targetElement || 'Interfaz / Pantalla');
-      const col5Text = isSap
-        ? `${getActionTypeSpanish(st.actionType)}${st.targetElement ? `: ${st.targetElement}` : ''}`
-        : (st.expectedResult || st.description.slice(0, 95));
+
+      if (isSap) {
+        const txCode = detectSapTransactionCode(manual, st);
+        const modStr = detectSapModuleCode(manual, st, txCode);
+        const actionCol = `${getActionTypeSpanish(st.actionType)}${st.targetElement ? `: ${st.targetElement}` : ''}`;
+
+        if (!isZ20) {
+          // Col 1: Módulo SAP
+          return new TableRow({
+            children: [
+              new TableCell({
+                width: { size: 14, type: WidthType.PERCENTAGE },
+                shading: { fill: isEven ? 'EFF6FF' : 'F8FAFC' },
+                borders: tableBordersAll,
+                margins: { top: 70, bottom: 70, left: 80, right: 80 },
+                children: [
+                  new Paragraph({
+                    children: [
+                      new TextRun({
+                        text: modStr,
+                        bold: true,
+                        size: 16,
+                        color: '1D4ED8',
+                      }),
+                    ],
+                  }),
+                ],
+              }),
+              new TableCell({
+                width: { size: 7, type: WidthType.PERCENTAGE },
+                shading: { fill: isEven ? 'F8FAFC' : 'FFFFFF' },
+                borders: tableBordersAll,
+                margins: { top: 70, bottom: 70, left: 80, right: 80 },
+                children: [
+                  new Paragraph({
+                    children: [
+                      new TextRun({
+                        text: `${sIdx + 1}`,
+                        bold: true,
+                        size: 17,
+                        color: '183B6C',
+                      }),
+                    ],
+                  }),
+                ],
+              }),
+              new TableCell({
+                width: { size: 37, type: WidthType.PERCENTAGE },
+                shading: { fill: isEven ? 'F8FAFC' : 'FFFFFF' },
+                borders: tableBordersAll,
+                margins: { top: 70, bottom: 70, left: 100, right: 100 },
+                children: [
+                  new Paragraph({
+                    children: [
+                      new TextRun({
+                        text: st.title,
+                        bold: true,
+                        size: 17,
+                        color: '0F172A',
+                      }),
+                    ],
+                  }),
+                ],
+              }),
+              new TableCell({
+                width: { size: 18, type: WidthType.PERCENTAGE },
+                shading: { fill: isEven ? 'F8FAFC' : 'FFFFFF' },
+                borders: tableBordersAll,
+                margins: { top: 70, bottom: 70, left: 100, right: 100 },
+                children: [
+                  new Paragraph({
+                    children: [
+                      new TextRun({
+                        text: txCode,
+                        bold: true,
+                        size: 16,
+                        color: '183B6C',
+                      }),
+                    ],
+                  }),
+                ],
+              }),
+              new TableCell({
+                width: { size: 24, type: WidthType.PERCENTAGE },
+                shading: { fill: isEven ? 'F8FAFC' : 'FFFFFF' },
+                borders: tableBordersAll,
+                margins: { top: 70, bottom: 70, left: 100, right: 100 },
+                children: [
+                  new Paragraph({
+                    children: [
+                      new TextRun({
+                        text: actionCol,
+                        size: 15,
+                        color: '64748B',
+                      }),
+                    ],
+                  }),
+                ],
+              }),
+            ],
+          });
+        } else {
+          // ZMMT0020: Módulo omitido
+          return new TableRow({
+            children: [
+              new TableCell({
+                width: { size: 8, type: WidthType.PERCENTAGE },
+                shading: { fill: isEven ? 'F8FAFC' : 'FFFFFF' },
+                borders: tableBordersAll,
+                margins: { top: 70, bottom: 70, left: 80, right: 80 },
+                children: [
+                  new Paragraph({
+                    children: [
+                      new TextRun({
+                        text: `${sIdx + 1}`,
+                        bold: true,
+                        size: 17,
+                        color: '183B6C',
+                      }),
+                    ],
+                  }),
+                ],
+              }),
+              new TableCell({
+                width: { size: 46, type: WidthType.PERCENTAGE },
+                shading: { fill: isEven ? 'F8FAFC' : 'FFFFFF' },
+                borders: tableBordersAll,
+                margins: { top: 70, bottom: 70, left: 100, right: 100 },
+                children: [
+                  new Paragraph({
+                    children: [
+                      new TextRun({
+                        text: st.title,
+                        bold: true,
+                        size: 17,
+                        color: '0F172A',
+                      }),
+                    ],
+                  }),
+                ],
+              }),
+              new TableCell({
+                width: { size: 20, type: WidthType.PERCENTAGE },
+                shading: { fill: isEven ? 'F8FAFC' : 'FFFFFF' },
+                borders: tableBordersAll,
+                margins: { top: 70, bottom: 70, left: 100, right: 100 },
+                children: [
+                  new Paragraph({
+                    children: [
+                      new TextRun({
+                        text: txCode || 'ZMMT0020',
+                        bold: true,
+                        size: 16,
+                        color: '183B6C',
+                      }),
+                    ],
+                  }),
+                ],
+              }),
+              new TableCell({
+                width: { size: 26, type: WidthType.PERCENTAGE },
+                shading: { fill: isEven ? 'F8FAFC' : 'FFFFFF' },
+                borders: tableBordersAll,
+                margins: { top: 70, bottom: 70, left: 100, right: 100 },
+                children: [
+                  new Paragraph({
+                    children: [
+                      new TextRun({
+                        text: actionCol,
+                        size: 15,
+                        color: '64748B',
+                      }),
+                    ],
+                  }),
+                ],
+              }),
+            ],
+          });
+        }
+      }
+
+      // Non-SAP
+      const col3Text = getActionTypeSpanish(st.actionType);
+      const col4Text = st.targetElement || 'Interfaz / Pantalla';
+      const col5Text = st.expectedResult || st.description.slice(0, 95);
 
       return new TableRow({
         children: [
