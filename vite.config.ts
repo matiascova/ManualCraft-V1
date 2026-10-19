@@ -26,6 +26,12 @@ export default defineConfig(() => {
             if (id.includes('node_modules/jspdf/')) {
               return 'vendor-pdf';
             }
+            if (id.includes('node_modules/firebase/')) {
+              return 'vendor-firebase';
+            }
+            if (id.includes('node_modules/html2canvas/')) {
+              return 'vendor-html2canvas';
+            }
             if (id.includes('node_modules/lucide-react/')) {
               return 'vendor-icons';
             }

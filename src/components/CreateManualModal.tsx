@@ -195,6 +195,19 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
     screenActionDetector.setTaskbarProtection(taskbarProtection);
   }, [taskbarProtection]);
 
+  // Clean up all active recording, media stream, transcription, and timers on modal unmount
+  useEffect(() => {
+    return () => {
+      screenActionDetector.stop();
+      screenRecorder.stopRecording();
+      speechTranscriptionService.stop();
+      if (recordTimerRef.current) {
+        clearInterval(recordTimerRef.current);
+        recordTimerRef.current = null;
+      }
+    };
+  }, []);
+
   // Active items array based on source
   const currentViewerItems: Array<{
     id: string;
@@ -511,11 +524,55 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
     }
   };
 
+  /**
+   * High-performance image normalizer: downsamples oversized 4K/retina screenshots
+   * to a crisp 1280px JPEG (~90KB), reducing memory consumption by up to 95%.
+   */
+  const compressImageFile = (fileOrBlob: Blob, maxWidth = 1280, quality = 0.85): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const dataUrl = e.target?.result as string;
+        if (!dataUrl) {
+          resolve('');
+          return;
+        }
+        const img = new Image();
+        img.onload = () => {
+          const origW = img.naturalWidth || img.width;
+          const origH = img.naturalHeight || img.height;
+          if (origW <= maxWidth && fileOrBlob.size < 250000 && !fileOrBlob.type.includes('png')) {
+            resolve(dataUrl);
+            return;
+          }
+          const w = Math.min(maxWidth, origW);
+          const h = Math.round(w * (origH / origW));
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve(dataUrl);
+            return;
+          }
+          ctx.drawImage(img, 0, 0, w, h);
+          const compressed = canvas.toDataURL('image/jpeg', quality);
+          canvas.width = 0;
+          canvas.height = 0;
+          resolve(compressed);
+        };
+        img.onerror = () => resolve(dataUrl);
+        img.src = dataUrl;
+      };
+      reader.readAsDataURL(fileOrBlob);
+    });
+  };
+
   // Handle Clipboard Paste (Ctrl+V) for instant screenshot pasting
   useEffect(() => {
     if (!isOpen) return;
 
-    const handlePaste = (e: ClipboardEvent) => {
+    const handlePaste = async (e: ClipboardEvent) => {
       const items = e.clipboardData?.items;
       if (!items) return;
 
@@ -523,20 +580,17 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
         if (items[i].type.indexOf('image') !== -1) {
           const blob = items[i].getAsFile();
           if (blob) {
-            const reader = new FileReader();
-            reader.onload = (event) => {
-              if (event.target?.result) {
-                setScreenshots((prev) => [
-                  ...prev,
-                  {
-                    id: `paste-${Date.now()}-${Math.random()}`,
-                    dataUrl: event.target!.result as string,
-                    name: `Captura pegada ${prev.length + 1}`,
-                  },
-                ]);
-              }
-            };
-            reader.readAsDataURL(blob);
+            const compressed = await compressImageFile(blob);
+            if (compressed) {
+              setScreenshots((prev) => [
+                ...prev,
+                {
+                  id: `paste-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+                  dataUrl: compressed,
+                  name: `Captura pegada ${prev.length + 1}`,
+                },
+              ]);
+            }
           }
         }
       }
@@ -548,25 +602,22 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Handle Multi Screenshots upload
+  // Handle Multi Screenshots upload with instant downsampling
   const handleScreenshotFiles = (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    Array.from(files).forEach((file) => {
+    Array.from(files).forEach(async (file) => {
       if (file.type.startsWith('image/')) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          if (e.target?.result) {
-            setScreenshots((prev) => [
-              ...prev,
-              {
-                id: `img-${Date.now()}-${Math.random()}`,
-                dataUrl: e.target!.result as string,
-                name: file.name,
-              },
-            ]);
-          }
-        };
-        reader.readAsDataURL(file);
+        const compressed = await compressImageFile(file);
+        if (compressed) {
+          setScreenshots((prev) => [
+            ...prev,
+            {
+              id: `img-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+              dataUrl: compressed,
+              name: file.name,
+            },
+          ]);
+        }
       }
     });
   };

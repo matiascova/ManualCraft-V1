@@ -114,6 +114,9 @@ app.get('/api/health', (req: Request, res: Response) => {
 app.post('/api/generate-manual', async (req: Request, res: Response) => {
   const release = await aiSemaphore.acquire();
   try {
+    if (req.destroyed || res.writableEnded) {
+      return;
+    }
     const {
       topic = '',
       context = '',
@@ -389,6 +392,9 @@ Asegúrate de responder estrictamente en el formato JSON estructurado solicitado
       const maxAttempts = 2;
 
       while (attempts < maxAttempts) {
+        if (req.destroyed || res.writableEnded) {
+          break;
+        }
         try {
           attempts++;
           const response = await ai.models.generateContent({

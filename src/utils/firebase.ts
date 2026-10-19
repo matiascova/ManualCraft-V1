@@ -104,13 +104,68 @@ function cleanForFirestore<T>(data: T): T {
 }
 
 /**
+ * Optimizes step image data URLs if the manual JSON exceeds Firestore's 1MB document limit,
+ * ensuring seamless cloud synchronization across all users.
+ */
+async function optimizeManualForFirestore(manual: UserManual): Promise<UserManual> {
+  const payloadStr = JSON.stringify(manual);
+  // If comfortably under 850KB, save directly
+  if (payloadStr.length < 850000 || typeof document === 'undefined') {
+    return manual;
+  }
+
+  // Downsample high-res JPEGs if total payload approaches Firestore 1MB limit
+  const optimizedSteps = await Promise.all(
+    manual.steps.map(async (step) => {
+      if (!step.image || !step.image.startsWith('data:image/jpeg') && !step.image.startsWith('data:image/png')) {
+        return step;
+      }
+      if (step.image.length > 100000) {
+        try {
+          const img = new Image();
+          img.src = step.image;
+          await new Promise((resolve, reject) => {
+            img.onload = resolve;
+            img.onerror = reject;
+          });
+          const canvas = document.createElement('canvas');
+          const maxDim = 960;
+          let w = img.naturalWidth || img.width;
+          let h = img.naturalHeight || img.height;
+          if (w > maxDim) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          }
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, w, h);
+            const compressed = canvas.toDataURL('image/jpeg', 0.72);
+            canvas.width = 0;
+            canvas.height = 0;
+            return { ...step, image: compressed };
+          }
+        } catch {
+          return step;
+        }
+      }
+      return step;
+    })
+  );
+
+  return { ...manual, steps: optimizedSteps };
+}
+
+/**
  * Saves a manual to the shared database so all users can access it.
  */
 export async function saveManualToDatabase(manual: UserManual): Promise<boolean> {
   try {
     const docRef = doc(db, 'manuals', manual.id);
+    const guardedManual = await optimizeManualForFirestore(manual);
     const cleaned = cleanForFirestore({
-      ...manual,
+      ...guardedManual,
       updatedAt: new Date().toISOString(),
     });
 

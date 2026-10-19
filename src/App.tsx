@@ -74,13 +74,15 @@ export default function App() {
       setIsDbConnected(connected);
     });
 
+    let hasAttemptedManualSeed = false;
+    let hasAttemptedProjectSeed = false;
+
     // Real-time subscription to shared manuals collection
     const unsubManuals = subscribeToSharedManuals((remoteManuals) => {
       if (remoteManuals && remoteManuals.length > 0) {
         setManuals(remoteManuals);
-        manualStorage.saveManuals(remoteManuals);
-      } else {
-        // Initial bootstrap: seed initial manuals to Firestore so all users have them
+      } else if (!hasAttemptedManualSeed) {
+        hasAttemptedManualSeed = true;
         const local = manualStorage.loadManuals(SAMPLE_MANUALS);
         local.forEach((m) => {
           saveManualToDatabase(m).catch(() => {});
@@ -92,9 +94,8 @@ export default function App() {
     const unsubProjects = subscribeToSharedProjects((remoteProjects) => {
       if (remoteProjects && remoteProjects.length > 0) {
         setProjects(remoteProjects);
-        manualStorage.saveProjects(remoteProjects);
-      } else {
-        // Initial bootstrap: seed projects to Firestore
+      } else if (!hasAttemptedProjectSeed) {
+        hasAttemptedProjectSeed = true;
         const local = manualStorage.loadProjects(SAMPLE_PROJECTS);
         local.forEach((p) => {
           saveProjectToDatabase(p).catch(() => {});
