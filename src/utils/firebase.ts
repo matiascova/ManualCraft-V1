@@ -90,15 +90,31 @@ export function subscribeToSharedManuals(
 }
 
 /**
+ * Safely strips all undefined properties recursively from objects or arrays
+ * before writing to Firestore, preventing 'Unsupported field value: undefined' errors.
+ */
+function cleanForFirestore<T>(data: T): T {
+  if (data === null || data === undefined) return data;
+  return JSON.parse(
+    JSON.stringify(data, (_, value) => {
+      if (value === undefined) return null;
+      return value;
+    })
+  );
+}
+
+/**
  * Saves a manual to the shared database so all users can access it.
  */
 export async function saveManualToDatabase(manual: UserManual): Promise<boolean> {
   try {
     const docRef = doc(db, 'manuals', manual.id);
-    await setDoc(docRef, {
+    const cleaned = cleanForFirestore({
       ...manual,
       updatedAt: new Date().toISOString(),
-    }, { merge: true });
+    });
+
+    await setDoc(docRef, cleaned, { merge: true });
     return true;
   } catch (err) {
     console.error('[Firebase] Failed to save manual to shared database:', err);
@@ -150,10 +166,12 @@ export function subscribeToSharedProjects(
 export async function saveProjectToDatabase(project: Project): Promise<boolean> {
   try {
     const docRef = doc(db, 'projects', project.id);
-    await setDoc(docRef, {
+    const cleaned = cleanForFirestore({
       ...project,
       updatedAt: new Date().toISOString(),
-    }, { merge: true });
+    });
+
+    await setDoc(docRef, cleaned, { merge: true });
     return true;
   } catch (err) {
     console.error('[Firebase] Failed to save project to shared database:', err);

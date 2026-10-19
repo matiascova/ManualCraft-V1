@@ -1069,7 +1069,7 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
             y: img.focalY !== undefined ? img.focalY : 50,
             shape: 'circle' as const,
             color: '#ef4444',
-            label: `Paso ${idx + 1}`,
+            label: img.label || `Paso ${idx + 1}`,
           },
         ],
       };
@@ -1214,7 +1214,7 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
             y: img.focalY !== undefined ? img.focalY : 50,
             shape: 'circle' as const,
             color: '#ef4444',
-            label: `Paso ${idx + 1}`,
+            label: img.label || `Paso ${idx + 1}`,
           },
         ],
       };

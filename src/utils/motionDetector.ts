@@ -41,14 +41,14 @@ export class ScreenActionDetector {
   private pendingCaptureTimeout: any = null;
   private onSnapshotCallback: ((snapshot: AutoCapturedSnapshot) => void) | null = null;
 
-  // Fine-grained grid dimensions for localized micro-interaction detection (table rows, checkboxes, dialogs, inputs)
-  private readonly sampleWidth = 160;
-  private readonly sampleHeight = 90;
-  private readonly gridCols = 12;
+  // High-fidelity grid dimensions for localized micro-interaction detection (typing letters, clicking buttons, checkboxes, inputs)
+  private readonly sampleWidth = 320;
+  private readonly sampleHeight = 180;
+  private readonly gridCols = 16;
   private readonly gridRows = 9;
 
   // Thresholds
-  public minCooldownMs = 600; // Responsive cooldown between distinct actions
+  public minCooldownMs = 500; // Responsive cooldown between distinct actions
   public maxTimeWithoutCaptureMs = 9000; // Max time on active work screen before taking an anchor snapshot
   private lastSubtleActivityTime = 0;
 
@@ -367,23 +367,25 @@ export class ScreenActionDetector {
       }
 
       // Update the active focal point if a localized UI interaction was pinpointed
-      if (blockAnalysis.focalPoint && (blockAnalysis.maxRatio > 0.015 || baselineDiff > 0.001)) {
+      if (blockAnalysis.focalPoint && (blockAnalysis.maxRatio > 0.015 || baselineDiff > 0.0005)) {
         this.lastDetectedFocal = blockAnalysis.focalPoint;
-      } else if (instantBlockAnalysis.focalPoint && instantBlockAnalysis.maxRatio > 0.02) {
+      } else if (instantBlockAnalysis.focalPoint && instantBlockAnalysis.maxRatio > 0.018) {
         this.lastDetectedFocal = instantBlockAnalysis.focalPoint;
       }
 
       // Action detection conditions:
       // Condition A: Significant global transition (page/transaction navigation, large table load)
-      const hasGlobalChange = baselineDiff > 0.010;
+      const hasGlobalChange = baselineDiff > 0.008;
 
       // Condition B: Localized micro-interaction on the screen (e.g. typing "VOLC" in Sociedad,
       // clicking Aceptar, checking a checkbox, selecting a row)
-      // Typing 3-4 letters or clicking a button changes > 1.6% of an individual 12x9 block!
-      const hasLocalMicroAction = maxBlockBaselineDiff > 0.016 && baselineDiff > 0.0004;
+      // High-resolution grid ensures short typed words and buttons reliably trigger detection!
+      const hasLocalMicroAction =
+        (maxBlockBaselineDiff > 0.018 && baselineDiff > 0.00015) ||
+        (blockAnalysis.focalPoint !== null && maxBlockBaselineDiff > 0.028);
 
       // Condition C: Sudden burst of action settled (e.g. clicked button or opened popup menu)
-      const hasInstantAction = maxBlockInstantDiff > 0.03 || instantDiff > 0.006;
+      const hasInstantAction = maxBlockInstantDiff > 0.025 || instantDiff > 0.004;
 
       // If change detected and cooled down
       if ((hasGlobalChange || hasLocalMicroAction || hasInstantAction) && timeSinceLastCapture > this.minCooldownMs) {
@@ -392,7 +394,7 @@ export class ScreenActionDetector {
 
         const capturedFocal = this.lastDetectedFocal;
 
-        // Wait 300ms for typing or click animation to settle before taking snapshot
+        // Wait 250ms for typing or click animation to settle before taking snapshot
         if (!this.pendingCaptureTimeout) {
           this.pendingCaptureTimeout = setTimeout(() => {
             if (this.isDetecting && this.video) {
@@ -403,7 +405,7 @@ export class ScreenActionDetector {
               this.captureNow('change_detected', actionLabel, capturedFocal || undefined);
             }
             this.pendingCaptureTimeout = null;
-          }, 300);
+          }, 250);
         }
       }
 
@@ -431,8 +433,8 @@ export class ScreenActionDetector {
       const rDiff = Math.abs(data1[i] - data2[i]);
       const gDiff = Math.abs(data1[i + 1] - data2[i + 1]);
       const bDiff = Math.abs(data1[i + 2] - data2[i + 2]);
-      // Threshold 34 captures subtle typing, text edits, input focus rings, and buttons
-      if (rDiff + gDiff + bDiff > 34) {
+      // Threshold 28 captures subtle typing, antialiased text fonts, input focus rings, and buttons
+      if (rDiff + gDiff + bDiff > 28) {
         changedPixels++;
       }
     }
@@ -441,7 +443,7 @@ export class ScreenActionDetector {
   }
 
   /**
-   * Divides the frame into an 12x9 grid of 108 spatial blocks and returns
+   * Divides the frame into a 16x9 grid of 144 spatial blocks and returns
    * the maximum percentage change, plus the precise centroid (focalX, focalY)
    * where the user typed or clicked!
    */
@@ -480,7 +482,7 @@ export class ScreenActionDetector {
         const gDiff = Math.abs(data1[pixelIdx + 1] - data2[pixelIdx + 1]);
         const bDiff = Math.abs(data1[pixelIdx + 2] - data2[pixelIdx + 2]);
 
-        if (rDiff + gDiff + bDiff > 34) {
+        if (rDiff + gDiff + bDiff > 28) {
           blockChangedCounts[blockIndex]++;
           sumX += x;
           sumY += y;
@@ -504,30 +506,32 @@ export class ScreenActionDetector {
     }
 
     let focalPoint: { x: number; y: number; width?: number; height?: number } | null = null;
-    if (changedCount > 6) {
+    const effectiveH = this.taskbarProtection === 'crop' ? this.sampleHeight * (1 - 0.052) : this.sampleHeight;
+
+    if (changedCount >= 4) {
       // Calculate geometric centroid of the changed interaction
       const avgX = sumX / changedCount;
       const avgY = sumY / changedCount;
 
       const normX = Math.round((avgX / this.sampleWidth) * 100);
-      const normY = Math.round((avgY / this.sampleHeight) * 100);
-      const spanW = Math.max(12, Math.round(((maxX - minX + 8) / this.sampleWidth) * 100));
-      const spanH = Math.max(6, Math.round(((maxY - minY + 6) / this.sampleHeight) * 100));
+      const normY = Math.round((avgY / effectiveH) * 100);
+      const spanW = Math.max(10, Math.round(((maxX - minX + 8) / this.sampleWidth) * 100));
+      const spanH = Math.max(5, Math.round(((maxY - minY + 6) / effectiveH) * 100));
 
       focalPoint = {
-        x: Math.max(5, Math.min(95, normX)),
-        y: Math.max(5, Math.min(95, normY)),
+        x: Math.max(4, Math.min(96, normX)),
+        y: Math.max(4, Math.min(96, normY)),
         width: Math.min(60, spanW),
         height: Math.min(35, spanH),
       };
-    } else if (mostActiveBlockIdx >= 0 && maxRatio > 0.01) {
+    } else if (mostActiveBlockIdx >= 0 && maxRatio > 0.015) {
       const activeRow = Math.floor(mostActiveBlockIdx / this.gridCols);
       const activeCol = mostActiveBlockIdx % this.gridCols;
       focalPoint = {
         x: Math.round(((activeCol + 0.5) / this.gridCols) * 100),
-        y: Math.round(((activeRow + 0.5) / this.gridRows) * 100),
-        width: 16,
-        height: 8,
+        y: Math.round((((activeRow + 0.5) * blockH) / effectiveH) * 100),
+        width: 14,
+        height: 7,
       };
     }
 
