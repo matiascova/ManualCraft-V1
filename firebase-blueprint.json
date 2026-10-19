@@ -1,0 +1,48 @@
+{
+  "entities": {
+    "UserManual": {
+      "title": "UserManual",
+      "description": "Procedimiento operativo o manual de usuario con capturas, anotaciones visuales y pasos",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "projectId": { "type": "string" },
+        "title": { "type": "string" },
+        "subtitle": { "type": "string" },
+        "overview": { "type": "string" },
+        "targetAudience": { "type": "string" },
+        "estimatedMinutes": { "type": "number" },
+        "difficulty": { "type": "string" },
+        "version": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "title"]
+    },
+    "Project": {
+      "title": "Project",
+      "description": "Proyecto o categoría organizativa de manuales",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "color": { "type": "string" },
+        "icon": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    }
+  },
+  "firestore": {
+    "/manuals/{manualId}": {
+      "schema": "UserManual",
+      "description": "Colección compartida de manuales accesibles para todos los colaboradores de la organización"
+    },
+    "/projects/{projectId}": {
+      "schema": "Project",
+      "description": "Proyectos colaborativos para agrupar manuales"
+    }
+  }
+}

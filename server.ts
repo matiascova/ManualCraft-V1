@@ -217,13 +217,28 @@ CONTROL CRÍTICO DE PANTALLAS Y MULTI-ACTIVIDADES EN LA MISMA VENTANA (ANTI-REDU
 3. ALINEACIÓN TOTAL CON LA TRANSCRIPCIÓN:
    Cada actividad que el instructor describe en el audio (como ingresar sociedad POLK, indicar solicitud de embarque, cotejar montos de $60 y $120, registrar $140,000, aceptar confirmación, gestionar provisión de $500 / $178 y revisar remanente de $88) DEBE quedar fielmente reflejada en los pasos del manual con sus notas de instructor correspondientes.
 
-CAPA DE ANÁLISIS FUNCIONAL E INTENCIÓN PEDAGÓGICA (MODELO 4C/ID):
-No te limites a describir la acción física pasiva. Cada paso debe estructurarse con:
-1. TÍTULO ACCIONABLE (Orientado a metas con verbo en imperativo): Ej. "Completar el formulario de registro", "Seleccionar la opción de exportar", "Confirmar y guardar los cambios".
-2. PROPÓSITO Y JUSTIFICACIÓN ('purpose' - El "Por qué"): Explica la intención funcional de negocio detrás de este paso en el contexto del proceso grabado.
-3. DESCRIPCIÓN CLARA: Instrucciones amables, paso a paso, enriquecidas con la terminología real de la aplicación y las indicaciones del instructor.
-4. ELEMENTO DE ATENCIÓN: Nombre exacto del botón, selector o campo y coordenadas estimadas (hotspotX, hotspotY de 0 a 100).
-5. RESULTADO ESPERADO ('expectedResult'): Qué estado o confirmación visual comprueba que el paso fue exitoso.
+CAPA DE ANÁLISIS FUNCIONAL, OCR DE PRECISIÓN Y DETECCIÓN DE INTERACCIONES:
+1. IDENTIFICACIÓN DE TEXTO DIGITADO Y CAMPOS LLENADOS (OCR DE ALTA PRECISIÓN):
+   - Examina minuciosamente los campos de entrada de texto, formularios, casillas y tablas en cada captura.
+   - DETECTA EXACTAMENTE QUÉ TEXTO DIGITÓ EL USUARIO:
+     * Si en la pantalla aparece escrito un código de sociedad (por ejemplo 'VOLC'), un número de documento/solicitud (ej. '100007'), un monto, una fecha o un usuario: DEBES IDENTIFICARLO CLARAMENTE y mencionarlo tanto en el 'title' como en la 'description'.
+     * Si la acción es de tipo 'type', redacta el título y la descripción indicando con exactitud el valor ingresado y el nombre del campo.
+       Ejemplos:
+       - Título: "Ingresar la sociedad 'VOLC' en el campo Sociedad" / Descripción: "Ubícate en la sección superior y digita el código de sociedad 'VOLC' en el campo correspondiente."
+       - Título: "Hacer clic en el botón '✓ Aceptar'" / Descripción: "Presiona el botón '✓ Aceptar' en la barra superior para ejecutar la consulta."
+   - Si el usuario interactúa con un botón (ej. 'Aceptar', 'Ejecutar', 'Grabar', 'Buscar', 'Continuar'), identifícalo con su nombre exacto en 'targetElement' y describe la acción.
+
+2. UBICACIÓN GEOMÉTRICA EXACTA DEL PUNTERO / PUNTO FOCAL ('hotspotX', 'hotspotY'):
+   - Calcula con PRECISIÓN (coordenadas porcentuales de 0 a 100 de izquierda a derecha y de arriba a abajo) el centro del elemento operado:
+     * Si se digitó en un campo de texto (ej. Sociedad 'VOLC'): 'hotspotX' y 'hotspotY' DEBEN apuntar al centro de esa caja de texto específica, NO al centro de la pantalla.
+     * Si se presionó un botón (ej. '✓ Aceptar'): 'hotspotX' y 'hotspotY' DEBEN apuntar al centro exacto de ese botón.
+     * Si la captura de pantalla incluye una indicación de zona de acción detectada (focalX, focalY), úsala como referencia primordial para ubicar el puntero visual.
+
+3. TÍTULO ACCIONABLE (Orientado a metas con verbo en imperativo): Ej. "Completar el campo Sociedad con 'VOLC'", "Hacer clic en Aceptar", "Seleccionar la fila de factura".
+4. PROPÓSITO Y JUSTIFICACIÓN ('purpose' - El "Por qué"): Explica la intención funcional de negocio detrás de este paso en el contexto del proceso grabado.
+5. DESCRIPCIÓN CLARA: Instrucciones amables, paso a paso, enriquecidas con la terminología real de la aplicación y las indicaciones del instructor.
+6. ELEMENTO DE ATENCIÓN: Nombre exacto del botón, selector o campo ('targetElement').
+7. RESULTADO ESPERADO ('expectedResult'): Qué estado o confirmación visual comprueba que el paso fue exitoso.
 
 CAPA DE ANONIMIZACIÓN Y PRIVACIDAD AUTOMÁTICA (DETECCIÓN DE PII):
 Inspecciona detenidamente los datos que aparecen visibles en cada captura.
@@ -262,8 +277,11 @@ Asegúrate de responder estrictamente en el formato JSON estructurado solicitado
               data: base64Data,
             },
           });
+          const focalInfo = (img as any).focalX !== undefined && (img as any).focalY !== undefined
+            ? ` - Zona de acción física detectada en torno a (${(img as any).focalX}%, ${(img as any).focalY}%)`
+            : '';
           parts.push({
-            text: `[Captura de Pantalla ${idx + 1}${img.timestamp !== undefined ? ` - Minuto ${img.timestamp}s` : ''}${img.label ? ` - Nota: ${img.label}` : ''}]`,
+            text: `[Captura de Pantalla ${idx + 1}${img.timestamp !== undefined ? ` - Minuto ${img.timestamp}s` : ''}${img.label ? ` - Nota: ${img.label}` : ''}${focalInfo}]`,
           });
         }
       }
@@ -429,6 +447,9 @@ Asegúrate de responder estrictamente en el formato JSON estructurado solicitado
           }
         }
 
+        const focalX = typeof (img as any).focalX === 'number' ? (img as any).focalX : 50;
+        const focalY = typeof (img as any).focalY === 'number' ? (img as any).focalY : 50;
+
         return {
           stepIndex: idx,
           title: `Paso ${idx + 1}: ${label}`,
@@ -438,8 +459,8 @@ Asegúrate de responder estrictamente en el formato JSON estructurado solicitado
           expectedResult: 'El sistema valida la acción y avanza al siguiente paso.',
           instructorNotes: stepInstructorNote,
           instructorAudioQuote: stepInstructorQuote,
-          hotspotX: 50,
-          hotspotY: 50,
+          hotspotX: focalX,
+          hotspotY: focalY,
         };
       });
 
@@ -470,11 +491,22 @@ Asegúrate de responder estrictamente en el formato JSON estructurado solicitado
       const annotations: any[] = [];
 
       // 1. Hotspot annotation for primary action
-      if (typeof s.hotspotX === 'number' && typeof s.hotspotY === 'number') {
+      let targetX = typeof s.hotspotX === 'number' ? s.hotspotX : undefined;
+      let targetY = typeof s.hotspotY === 'number' ? s.hotspotY : undefined;
+
+      // If AI didn't provide coordinates or returned generic 50/50, prioritize the motion-detected focal coordinates
+      if ((targetX === undefined || targetY === undefined || (targetX === 50 && targetY === 50)) && matchedImage) {
+        if (typeof (matchedImage as any).focalX === 'number' && typeof (matchedImage as any).focalY === 'number') {
+          targetX = (matchedImage as any).focalX;
+          targetY = (matchedImage as any).focalY;
+        }
+      }
+
+      if (targetX !== undefined && targetY !== undefined) {
         annotations.push({
           id: `ann-${idx}-${Date.now()}`,
-          x: Math.max(5, Math.min(95, s.hotspotX)),
-          y: Math.max(5, Math.min(95, s.hotspotY)),
+          x: Math.max(5, Math.min(95, targetX)),
+          y: Math.max(5, Math.min(95, targetY)),
           shape: 'circle' as const,
           color: '#ef4444',
           label: s.targetElement || `Paso ${idx + 1}`,

@@ -943,7 +943,7 @@ export const AnnotationEditor: React.FC<AnnotationEditorProps> = ({
                     transform: 'translate(-50%, -50%)',
                     borderColor: ann.color || '#ef4444',
                   }}
-                  className={`absolute w-8 h-8 rounded-full border-3 flex items-center justify-center cursor-grab active:cursor-grabbing transition-shadow ${
+                  className={`absolute w-8 h-8 rounded-full border-[3px] flex items-center justify-center cursor-grab active:cursor-grabbing transition-shadow ${
                     isSelected
                       ? 'ring-4 ring-white z-20 shadow-2xl scale-110'
                       : 'hover:ring-2 hover:ring-white/80 z-10'

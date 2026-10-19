@@ -870,7 +870,7 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
         label: s.name,
       }));
     } else {
-      let candidatePool = extractedFrames;
+      let candidatePool: Array<any> = extractedFrames;
       if (candidatePool.length === 0 && autoSnapshots.length > 0) {
         candidatePool = autoSnapshots.map((s, idx) => ({
           id: s.id,
@@ -878,6 +878,8 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
           dataUrl: s.dataUrl,
           selected: true,
           label: s.label || `Acción ${idx + 1}`,
+          focalX: s.focalX,
+          focalY: s.focalY,
         }));
       }
       const selected = candidatePool.filter((f) => f.selected);
@@ -889,6 +891,8 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
         dataUrl: f.dataUrl,
         label: f.label,
         timestamp: f.timestamp,
+        focalX: f.focalX,
+        focalY: f.focalY,
       }));
     }
 
@@ -1005,12 +1009,28 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
 
   // Immediate manual compilation from screenshots without external API wait, also enriched with instructor audio!
   const handleGenerateDirectManual = () => {
-    let images: Array<{ dataUrl: string; label?: string; timestamp?: number }> = [];
+    let images: Array<{ dataUrl: string; label?: string; timestamp?: number; focalX?: number; focalY?: number }> = [];
     if (activeTab === 'screenshots') {
       images = screenshots.map((s) => ({ dataUrl: s.dataUrl, label: s.name }));
     } else {
-      const selected = extractedFrames.filter((f) => f.selected);
-      images = selected.map((f) => ({ dataUrl: f.dataUrl, label: f.label, timestamp: f.timestamp }));
+      if (autoSnapshots.length > 0) {
+        images = autoSnapshots.map((s) => ({
+          dataUrl: s.dataUrl,
+          label: s.label,
+          timestamp: s.timestamp,
+          focalX: s.focalX,
+          focalY: s.focalY,
+        }));
+      } else {
+        const selected = extractedFrames.filter((f) => f.selected);
+        images = selected.map((f: any) => ({
+          dataUrl: f.dataUrl,
+          label: f.label,
+          timestamp: f.timestamp,
+          focalX: f.focalX,
+          focalY: f.focalY,
+        }));
+      }
     }
 
     if (images.length === 0) return;
@@ -1045,8 +1065,8 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
         annotations: [
           {
             id: `ann-${idx}`,
-            x: 50,
-            y: 50,
+            x: img.focalX !== undefined ? img.focalX : 50,
+            y: img.focalY !== undefined ? img.focalY : 50,
             shape: 'circle' as const,
             color: '#ef4444',
             label: `Paso ${idx + 1}`,
@@ -1127,26 +1147,36 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
 
   // Guardar Borrador: Salva inmediatamente los fotogramas, audio y textos en un borrador editable
   const handleSaveDraftManual = () => {
-    let images: Array<{ dataUrl: string; label?: string; timestamp?: number }> = [];
+    let images: Array<{ dataUrl: string; label?: string; timestamp?: number; focalX?: number; focalY?: number }> = [];
     if (activeTab === 'screenshots') {
       images = screenshots.map((s) => ({ dataUrl: s.dataUrl, label: s.name }));
     } else if (activeTab === 'video') {
       const selected = extractedFrames.filter((f) => f.selected);
-      images = (selected.length > 0 ? selected : extractedFrames).map((f) => ({
+      images = (selected.length > 0 ? selected : extractedFrames).map((f: any) => ({
         dataUrl: f.dataUrl,
         label: f.label,
         timestamp: f.timestamp,
+        focalX: f.focalX,
+        focalY: f.focalY,
       }));
     } else {
       // record tab: autoSnapshots or extractedFrames
       if (autoSnapshots.length > 0) {
-        images = autoSnapshots.map((s) => ({ dataUrl: s.dataUrl, label: s.label, timestamp: s.timestamp }));
+        images = autoSnapshots.map((s) => ({
+          dataUrl: s.dataUrl,
+          label: s.label,
+          timestamp: s.timestamp,
+          focalX: s.focalX,
+          focalY: s.focalY,
+        }));
       } else if (extractedFrames.length > 0) {
         const selected = extractedFrames.filter((f) => f.selected);
-        images = (selected.length > 0 ? selected : extractedFrames).map((f) => ({
+        images = (selected.length > 0 ? selected : extractedFrames).map((f: any) => ({
           dataUrl: f.dataUrl,
           label: f.label,
           timestamp: f.timestamp,
+          focalX: f.focalX,
+          focalY: f.focalY,
         }));
       }
     }
@@ -1180,8 +1210,8 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
         annotations: [
           {
             id: `ann-${idx}`,
-            x: 50,
-            y: 50,
+            x: img.focalX !== undefined ? img.focalX : 50,
+            y: img.focalY !== undefined ? img.focalY : 50,
             shape: 'circle' as const,
             color: '#ef4444',
             label: `Paso ${idx + 1}`,

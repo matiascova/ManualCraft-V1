@@ -33,6 +33,7 @@ interface NavbarProps {
   onOpenOurLogoModal: () => void;
   viewMode: 'project' | 'manual';
   onChangeViewMode: (mode: 'project' | 'manual') => void;
+  isDbConnected?: boolean;
 }
 
 const NavbarComponent: React.FC<NavbarProps> = ({
@@ -51,6 +52,7 @@ const NavbarComponent: React.FC<NavbarProps> = ({
   onOpenOurLogoModal,
   viewMode,
   onChangeViewMode,
+  isDbConnected = true,
 }) => {
   const activeProject = useMemo(() => {
     return projects.find((p) => p.id === activeProjectId) || projects[0];
@@ -198,6 +200,27 @@ const NavbarComponent: React.FC<NavbarProps> = ({
               Nuestro Logo
             </span>
           </button>
+
+          {/* Cloud Database Sync Indicator */}
+          <div
+            className={`hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-semibold rounded-lg border transition-colors ${
+              isDbConnected
+                ? 'bg-emerald-50/90 text-emerald-700 border-emerald-200'
+                : 'bg-amber-50/90 text-amber-700 border-amber-200'
+            }`}
+            title={
+              isDbConnected
+                ? 'Conectado a la base de datos Firestore · Acceso compartido para todos los usuarios'
+                : 'Conectando con la base de datos compartida...'
+            }
+          >
+            <span
+              className={`w-2 h-2 rounded-full ${
+                isDbConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'
+              }`}
+            />
+            <span>{isDbConnected ? 'BD Compartida Activa' : 'Conectando BD...'}</span>
+          </div>
 
           <button
             onClick={onOpenSimulator}

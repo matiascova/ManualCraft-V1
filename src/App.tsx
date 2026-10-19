@@ -26,6 +26,15 @@ import {
 } from 'lucide-react';
 
 import { manualStorage } from './utils/storage';
+import {
+  subscribeToSharedManuals,
+  saveManualToDatabase,
+  deleteManualFromDatabase,
+  subscribeToSharedProjects,
+  saveProjectToDatabase,
+  deleteProjectFromDatabase,
+  onFirestoreConnectionChange,
+} from './utils/firebase';
 
 // Dynamic code-splitting for heavy modals to reduce initial bundle and memory footprint
 const ProjectModal = lazy(() => import('./components/ProjectModal').then((m) => ({ default: m.ProjectModal })));
@@ -38,6 +47,9 @@ const AnnotationEditor = lazy(() => import('./components/AnnotationEditor').then
 const InteractiveWorkflowSimulator = lazy(() => import('./components/InteractiveWorkflowSimulator').then((m) => ({ default: m.InteractiveWorkflowSimulator })));
 
 export default function App() {
+  // Database connection status
+  const [isDbConnected, setIsDbConnected] = useState(false);
+
   // Projects state
   const [projects, setProjects] = useState<Project[]>(() => {
     return manualStorage.loadProjects(SAMPLE_PROJECTS);
@@ -55,6 +67,47 @@ export default function App() {
   const [activeManualId, setActiveManualId] = useState<string>(() => {
     return SAMPLE_MANUALS[0]?.id || manuals[0]?.id || '';
   });
+
+  // Real-time synchronization with Firestore shared database (Accessible to all users)
+  useEffect(() => {
+    const unsubConn = onFirestoreConnectionChange((connected) => {
+      setIsDbConnected(connected);
+    });
+
+    // Real-time subscription to shared manuals collection
+    const unsubManuals = subscribeToSharedManuals((remoteManuals) => {
+      if (remoteManuals && remoteManuals.length > 0) {
+        setManuals(remoteManuals);
+        manualStorage.saveManuals(remoteManuals);
+      } else {
+        // Initial bootstrap: seed initial manuals to Firestore so all users have them
+        const local = manualStorage.loadManuals(SAMPLE_MANUALS);
+        local.forEach((m) => {
+          saveManualToDatabase(m).catch(() => {});
+        });
+      }
+    });
+
+    // Real-time subscription to shared projects collection
+    const unsubProjects = subscribeToSharedProjects((remoteProjects) => {
+      if (remoteProjects && remoteProjects.length > 0) {
+        setProjects(remoteProjects);
+        manualStorage.saveProjects(remoteProjects);
+      } else {
+        // Initial bootstrap: seed projects to Firestore
+        const local = manualStorage.loadProjects(SAMPLE_PROJECTS);
+        local.forEach((p) => {
+          saveProjectToDatabase(p).catch(() => {});
+        });
+      }
+    });
+
+    return () => {
+      unsubConn();
+      unsubManuals();
+      unsubProjects();
+    };
+  }, []);
 
   // Navigation mode: 'project' (Project Workspace & Solution view) | 'manual' (individual manual editor)
   const [viewMode, setViewMode] = useState<'project' | 'manual'>('project');
@@ -85,12 +138,12 @@ export default function App() {
   const [editingStep, setEditingStep] = useState<ManualStep | null>(null);
   const [annotatingStep, setAnnotatingStep] = useState<ManualStep | null>(null);
 
-  // Sync projects with localStorage
+  // Sync projects with localStorage cache
   useEffect(() => {
     manualStorage.saveProjects(projects);
   }, [projects]);
 
-  // Sync manuals with localStorage
+  // Sync manuals with localStorage cache
   useEffect(() => {
     manualStorage.saveManuals(manuals);
   }, [manuals]);
@@ -113,7 +166,7 @@ export default function App() {
     return manualsInActiveProject[0] || manuals[0] || null;
   }, [manuals, activeManualId, manualsInActiveProject]);
 
-  // Handler: Save Project (create or edit)
+  // Handler: Save Project (create or edit) - persisted to Firestore
   const handleSaveProject = useCallback((savedProject: Project) => {
     setProjects((prev) => {
       const exists = prev.some((p) => p.id === savedProject.id);
@@ -122,6 +175,7 @@ export default function App() {
       }
       return [savedProject, ...prev];
     });
+    saveProjectToDatabase(savedProject);
     setActiveProjectId(savedProject.id);
     setViewMode('project');
   }, []);
@@ -168,6 +222,7 @@ export default function App() {
     setManuals((prev) => {
       const updated = prev.filter((m) => m.id !== manualId);
       manualStorage.deleteManual(manualId, updated);
+      deleteManualFromDatabase(manualId);
       return updated;
     });
 
@@ -175,12 +230,17 @@ export default function App() {
     setViewMode('project');
   }, []);
 
-  // Handler: Unlink manual from project (safe in-app action without window.confirm)
+  // Handler: Unlink manual from project
   const handleUnlinkManualFromProject = useCallback((manualId: string) => {
     setManuals((prev) => {
-      const updated = prev.map((m) =>
-        m.id === manualId ? { ...m, projectId: undefined, updatedAt: new Date().toISOString() } : m
-      );
+      const updated = prev.map((m) => {
+        if (m.id === manualId) {
+          const mod = { ...m, projectId: undefined, updatedAt: new Date().toISOString() };
+          saveManualToDatabase(mod);
+          return mod;
+        }
+        return m;
+      });
       manualStorage.saveManuals(updated);
       return updated;
     });
@@ -197,12 +257,16 @@ export default function App() {
       setManuals((prev) => [manualWithProject, ...prev]);
       setActiveManualId(manualWithProject.id);
       setViewMode('manual');
+      // Save directly to shared Firestore database
+      saveManualToDatabase(manualWithProject);
       return targetProjectId;
     });
   }, []);
 
   const handleUpdateManual = useCallback((updated: UserManual) => {
     setManuals((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+    // Save directly to shared Firestore database
+    saveManualToDatabase(updated);
   }, []);
 
   const handleStartInteractivePlayer = useCallback((stepIndex = 0) => {
@@ -216,11 +280,13 @@ export default function App() {
         if (!m.steps.some((s) => s.id === updatedStep.id)) return m;
         const newSteps = m.steps.map((s) => (s.id === updatedStep.id ? updatedStep : s));
         const reindexed = reindexManualSteps(newSteps);
-        return {
+        const updatedManual = {
           ...m,
           steps: reindexed,
           updatedAt: new Date().toISOString(),
         };
+        saveManualToDatabase(updatedManual);
+        return updatedManual;
       })
     );
   }, []);
@@ -279,6 +345,7 @@ export default function App() {
         onOpenOurLogoModal={() => setIsOurLogoModalOpen(true)}
         viewMode={viewMode}
         onChangeViewMode={setViewMode}
+        isDbConnected={isDbConnected}
       />
 
       {/* Main Content Area: Project Workspace vs Manual View */}

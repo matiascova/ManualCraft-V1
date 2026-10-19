@@ -1602,7 +1602,7 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
                                 transform: 'translate(-50%, -50%)',
                                 borderColor: ann.color || '#ef4444',
                               }}
-                              className="absolute w-8 h-8 rounded-full border-3 flex items-center justify-center pointer-events-none shadow-lg"
+                              className="absolute w-8 h-8 rounded-full border-[3px] flex items-center justify-center pointer-events-none shadow-lg"
                             >
                               <div
                                 style={{ backgroundColor: ann.color || '#ef4444' }}
