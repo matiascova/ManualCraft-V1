@@ -41,6 +41,7 @@ import {
   onFirestoreConnectionChange,
 } from './utils/firebase';
 import { generateClientMasterIndexHtml } from './utils/masterIndexGenerator';
+import { LandingPage } from './components/LandingPage';
 
 // Dynamic code-splitting for heavy modals to reduce initial bundle and memory footprint
 const ClientModal = lazy(() => import('./components/ClientModal').then((m) => ({ default: m.ClientModal })));
@@ -151,8 +152,8 @@ export default function App() {
     };
   }, []);
 
-  // Navigation mode: 'project' (Project Workspace & Solution view) | 'manual' (individual manual editor)
-  const [viewMode, setViewMode] = useState<'project' | 'manual'>('project');
+  // Navigation mode: 'landing' (Presentation & Value Proposition) | 'project' (Project Workspace) | 'manual' (individual manual editor)
+  const [viewMode, setViewMode] = useState<'landing' | 'project' | 'manual'>('landing');
 
   // Modals state
   const [isClientModalOpen, setIsClientModalOpen] = useState(false);
@@ -263,6 +264,20 @@ export default function App() {
       setViewMode('project');
     },
     [projects, manuals]
+  );
+
+  // Direct launcher from Landing Page into the Manual workspace
+  const handleEnterApp = useCallback(
+    (clientId?: string, projectId?: string) => {
+      if (clientId) {
+        handleSelectClient(clientId);
+      }
+      if (projectId) {
+        setActiveProjectId(projectId);
+      }
+      setViewMode('project');
+    },
+    [handleSelectClient]
   );
 
   // Handler: Save Client (create or edit) - persisted to Firestore
@@ -480,6 +495,19 @@ export default function App() {
     });
     setEditingStep(newStep);
   }, [activeManual, handleUpdateManual]);
+
+  // If on Landing Page, render the dedicated high-converting marketing & solution overview page
+  if (viewMode === 'landing') {
+    return (
+      <LandingPage
+        clients={clients}
+        projects={projects}
+        manuals={manuals}
+        branding={branding}
+        onEnterApp={handleEnterApp}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans">

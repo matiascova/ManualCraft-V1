@@ -35,8 +35,8 @@ interface NavbarProps {
   onOpenSimulator: () => void;
   branding?: OrganizationBranding;
   onOpenOurLogoModal: () => void;
-  viewMode: 'project' | 'manual';
-  onChangeViewMode: (mode: 'project' | 'manual') => void;
+  viewMode: 'landing' | 'project' | 'manual';
+  onChangeViewMode: (mode: 'landing' | 'project' | 'manual') => void;
   isDbConnected?: boolean;
 }
 
@@ -101,9 +101,9 @@ const NavbarComponent: React.FC<NavbarProps> = ({
         <div className="flex items-center gap-3 lg:gap-4 min-w-0">
           {/* Logo Brand */}
           <div
-            onClick={() => onChangeViewMode('project')}
+            onClick={() => onChangeViewMode('landing')}
             className="flex items-center gap-2 cursor-pointer select-none group flex-shrink-0"
-            title="ManualCraft AI · Ir al espacio de trabajo"
+            title="ManualCraft AI · Ir a la presentación y bondades de la solución"
           >
             <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-sm shadow-indigo-200 group-hover:scale-105 transition-transform">
               <FolderKanban className="w-4 h-4" />
@@ -208,24 +208,40 @@ const NavbarComponent: React.FC<NavbarProps> = ({
         </div>
 
         {/* ============================================================== */}
-        {/* Center: View Switch Tabs (Proyecto vs Manual) */}
+        {/* Center: View Switch Tabs (Inicio / Solución vs Workspace vs Manual) */}
         {/* ============================================================== */}
         <div className="hidden lg:flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-xs font-semibold">
           <button
+            type="button"
+            onClick={() => onChangeViewMode('landing')}
+            className={`px-2.5 py-1 rounded-md transition-all flex items-center gap-1.5 cursor-pointer ${
+              viewMode === 'landing'
+                ? 'bg-white text-indigo-700 shadow-2xs font-bold'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+            title="Conoce las bondades, características y simulador de la solución"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+            <span>Inicio / Solución</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => onChangeViewMode('project')}
-            className={`px-3 py-1 rounded-md transition-all flex items-center gap-1.5 ${
+            className={`px-3 py-1 rounded-md transition-all flex items-center gap-1.5 cursor-pointer ${
               viewMode === 'project'
                 ? 'bg-white text-indigo-700 shadow-2xs font-bold'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             <FolderKanban className="w-3.5 h-3.5" />
-            <span>Proyecto ({projectManuals.length})</span>
+            <span>Workspace ({projectManuals.length})</span>
           </button>
 
           <button
+            type="button"
             onClick={() => onChangeViewMode('manual')}
-            className={`px-3 py-1 rounded-md transition-all flex items-center gap-1.5 ${
+            className={`px-3 py-1 rounded-md transition-all flex items-center gap-1.5 cursor-pointer ${
               viewMode === 'manual'
                 ? 'bg-white text-indigo-700 shadow-2xs font-bold'
                 : 'text-slate-600 hover:text-slate-900'
