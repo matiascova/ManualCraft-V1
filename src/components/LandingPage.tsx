@@ -525,7 +525,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           {/* Asymmetric Bento Grid */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Card 1: Hierarchy (Col-span 2 for Marquee visual dominance) */}
-            <div className="md:col-span-2 p-6 sm:p-8 bg-slate-900 rounded-2xl border border-slate-800 hover:border-slate-700 transition-colors flex flex-col justify-between space-y-4">
+            <div id="jerarquia" className="md:col-span-2 p-6 sm:p-8 bg-slate-900 rounded-2xl border border-slate-800 hover:border-slate-700 transition-colors flex flex-col justify-between space-y-4 scroll-mt-24">
               <div className="space-y-3">
                 <div className="text-xs font-mono font-bold text-indigo-400">
                   01. GOBERNANZA MULTI-CLIENTE
@@ -585,7 +585,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             </div>
 
             {/* Card 3: Offline HTML Portals */}
-            <div className="p-6 sm:p-8 bg-slate-900 rounded-2xl border border-slate-800 hover:border-slate-700 transition-colors flex flex-col justify-between space-y-4">
+            <div id="formatos" className="p-6 sm:p-8 bg-slate-900 rounded-2xl border border-slate-800 hover:border-slate-700 transition-colors flex flex-col justify-between space-y-4 scroll-mt-24">
               <div className="space-y-3">
                 <div className="text-xs font-mono font-bold text-indigo-400">
                   03. PORTALES HTML OFFLINE

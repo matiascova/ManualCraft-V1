@@ -354,8 +354,19 @@ class ManualStorageService {
     return true;
   }
 
+  private lastSavedManualsFingerprint = '';
+
+  private getManualsFingerprint(manuals: UserManual[]): string {
+    return manuals.map((m) => `${m.id}:${m.updatedAt || ''}:${m.steps?.length || 0}`).join('|');
+  }
+
   public saveManuals(manuals: UserManual[]): boolean {
     this.inMemoryManualsFallback = manuals;
+
+    const currentFingerprint = this.getManualsFingerprint(manuals);
+    if (currentFingerprint === this.lastSavedManualsFingerprint) {
+      return true;
+    }
 
     if (this.manualsSaveTimer) {
       clearTimeout(this.manualsSaveTimer);
@@ -363,6 +374,7 @@ class ManualStorageService {
 
     // Debounced write with cooperative scheduling to avoid freezing the main thread
     this.manualsSaveTimer = setTimeout(() => {
+      this.lastSavedManualsFingerprint = currentFingerprint;
       // 1. Asynchronously persist to IndexedDB (off main thread)
       idb.set(MANUALS_STORAGE_KEY, manuals).catch(() => {});
 
