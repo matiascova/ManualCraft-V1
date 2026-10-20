@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useCallback, memo } from 'react';
 import { Project, ProjectDocumentOptions } from '../types/project';
 import { UserManual } from '../types/manual';
+import { Client } from '../types/client';
 import { OrganizationBranding } from '../types/branding';
 import {
   FolderKanban,
@@ -29,10 +30,13 @@ import {
   Unlink,
   AlertTriangle,
   Save,
+  FileCode2,
 } from 'lucide-react';
 
 interface ProjectWorkspaceProps {
   project: Project;
+  client?: Client | null;
+  activeClientId?: string;
   allProjects: Project[];
   manualsInProject: UserManual[];
   allManuals: UserManual[];
@@ -45,12 +49,16 @@ interface ProjectWorkspaceProps {
   onLinkManualToProject: (manualId: string, projectId: string) => void;
   onUnlinkManualFromProject: (manualId: string) => void;
   onDeleteManual?: (manualId: string) => void;
+  onOpenManageClientsModal?: () => void;
+  onDownloadMasterIndex?: (client: Client) => void;
   branding?: OrganizationBranding;
   onOpenOurLogoModal?: () => void;
 }
 
 const ProjectWorkspaceComponent: React.FC<ProjectWorkspaceProps> = ({
   project,
+  client,
+  activeClientId = '',
   allProjects,
   manualsInProject,
   allManuals,
@@ -63,6 +71,8 @@ const ProjectWorkspaceComponent: React.FC<ProjectWorkspaceProps> = ({
   onLinkManualToProject,
   onUnlinkManualFromProject,
   onDeleteManual,
+  onOpenManageClientsModal,
+  onDownloadMasterIndex,
   branding,
   onOpenOurLogoModal,
 }) => {
@@ -101,7 +111,8 @@ const ProjectWorkspaceComponent: React.FC<ProjectWorkspaceProps> = ({
   }, [project, onUpdateProject]);
 
   return (
-    <div className="w-[98%] max-w-[98vw] mx-auto px-2 sm:px-4 py-6 space-y-6">
+    <div className="w-[98%] max-w-[98vw] mx-auto px-2 sm:px-4 py-4 sm:py-5 space-y-5">
+
       {/* Project Hero Banner */}
       <div className="relative overflow-hidden bg-white rounded-2xl border border-slate-200/90 shadow-sm p-6 sm:p-8">
         {/* Subtle accent bar matching project color */}
@@ -214,29 +225,31 @@ const ProjectWorkspaceComponent: React.FC<ProjectWorkspaceProps> = ({
           </div>
 
           {/* Quick Actions */}
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3 self-stretch lg:self-auto justify-end">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 self-stretch lg:self-auto justify-end">
+            <button
+              onClick={() => onOpenExportProject(project)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-slate-700 hover:text-indigo-700 bg-white hover:bg-slate-50 border border-slate-200 hover:border-indigo-300 rounded-xl shadow-2xs transition-all cursor-pointer"
+              title="Exportar manuales en HTML por cliente, ZIP, PDF oficial y Word"
+            >
+              <Download className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Exportar Entregables</span>
+            </button>
+
             <button
               onClick={() => onOpenProjectSettings(project)}
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl shadow-xs transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl shadow-2xs transition-colors cursor-pointer"
+              title="Configuración y metadatos del proyecto"
             >
               <Settings className="w-3.5 h-3.5 text-slate-500" />
               <span>Configuración</span>
             </button>
 
             <button
-              onClick={() => onOpenExportProject(project)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-slate-800 bg-amber-50 hover:bg-amber-100 border border-amber-300 rounded-xl shadow-xs transition-colors"
-            >
-              <Download className="w-3.5 h-3.5 text-amber-700" />
-              <span>Exportar Solución</span>
-            </button>
-
-            <button
               onClick={() => onOpenCreateManualForProject(project.id)}
-              className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md shadow-indigo-100 hover:scale-[1.02] active:scale-[0.98] transition-all"
+              className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-sm shadow-indigo-200 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              <span>Crear Manual para este Proyecto</span>
+              <span>Crear Manual</span>
             </button>
           </div>
         </div>

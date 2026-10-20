@@ -1,12 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { UserManual } from '../types/manual';
 import { Project } from '../types/project';
+import { Client } from '../types/client';
 import {
   X,
   FileDown,
   Globe,
   Printer,
   FileCode,
+  FileCode2,
   FileJson,
   CheckCircle,
   Loader2,
@@ -19,6 +21,9 @@ import {
   Building2,
   FolderKanban,
   Settings,
+  Package,
+  ExternalLink,
+  BookOpen,
 } from 'lucide-react';
 import {
   exportToInteractiveHtml,
@@ -30,6 +35,10 @@ import {
   exportToDocx,
   exportProjectDossierDocx,
 } from '../utils/exportUtils';
+import {
+  exportClientMasterPortalHtml,
+  exportClientAllManualsHtmlZip,
+} from '../utils/clientExportUtils';
 import { OrganizationBranding } from '../types/branding';
 
 interface ExportModalProps {
@@ -40,6 +49,10 @@ interface ExportModalProps {
   manualsInProject?: UserManual[];
   branding?: OrganizationBranding;
   onOpenOurLogoModal?: () => void;
+  client?: Client | null;
+  clients?: Client[];
+  allProjects?: Project[];
+  allManuals?: UserManual[];
 }
 
 export const ExportModal: React.FC<ExportModalProps> = ({
@@ -50,7 +63,50 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   manualsInProject = [],
   branding,
   onOpenOurLogoModal,
+  client,
+  clients = [],
+  allProjects = [],
+  allManuals = [],
 }) => {
+  // State for client export
+  const [selectedClientId, setSelectedClientId] = useState<string>(() => {
+    return client?.id || project?.clientId || (clients[0]?.id ?? 'cli-weber');
+  });
+
+  const effectiveClient = useMemo(() => {
+    if (selectedClientId && selectedClientId !== 'all') {
+      const found = clients.find((c) => c.id === selectedClientId);
+      if (found) return found;
+    }
+    return client || clients[0] || null;
+  }, [selectedClientId, clients, client]);
+
+  // Projects strictly belonging to the effective client
+  const clientProjects = useMemo(() => {
+    if (!effectiveClient) return allProjects.length > 0 ? allProjects : (project ? [project] : []);
+    const filtered = allProjects.filter((p) => p.clientId === effectiveClient.id);
+    if (filtered.length > 0) return filtered;
+    return project && project.clientId === effectiveClient.id ? [project] : [];
+  }, [allProjects, effectiveClient, project]);
+
+  // Manuals strictly belonging to the effective client
+  const clientManuals = useMemo(() => {
+    if (!effectiveClient) return allManuals.length > 0 ? allManuals : (manualsInProject.length > 0 ? manualsInProject : [manual]);
+    const filtered = allManuals.filter((m) => clientProjects.some((p) => p.id === m.projectId));
+    if (filtered.length > 0) return filtered;
+    return manualsInProject.length > 0 ? manualsInProject : [manual];
+  }, [allManuals, clientProjects, manualsInProject, manual, effectiveClient]);
+
+  // Status states for Client HTML exports
+  const [isGeneratingClientHtmlPortal, setIsGeneratingClientHtmlPortal] = useState(false);
+  const [clientHtmlPortalStatus, setClientHtmlPortalStatus] = useState<string>('');
+  const [clientHtmlPortalSuccess, setClientHtmlPortalSuccess] = useState(false);
+
+  const [isGeneratingClientHtmlZip, setIsGeneratingClientHtmlZip] = useState(false);
+  const [clientHtmlZipStatus, setClientHtmlZipStatus] = useState<string>('');
+  const [clientHtmlZipSuccess, setClientHtmlZipSuccess] = useState(false);
+
+  // Status states for Project PDF / DOCX
   const [isGeneratingTemplatePdf, setIsGeneratingTemplatePdf] = useState(false);
   const [templatePdfStatus, setTemplatePdfStatus] = useState<string>('');
   const [templatePdfSuccess, setTemplatePdfSuccess] = useState(false);
@@ -80,9 +136,63 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     isGeneratingCompactPdf ||
     isGeneratingDocx ||
     isGeneratingDossierPdf ||
-    isGeneratingDossierDocx;
+    isGeneratingDossierDocx ||
+    isGeneratingClientHtmlPortal ||
+    isGeneratingClientHtmlZip;
 
-  // 1. Export using Official Corporate Template Structure
+  // 1. Export Client Standalone Master Portal HTML
+  const handleDownloadClientHtmlPortal = () => {
+    if (isBusy || !effectiveClient) return;
+    setIsGeneratingClientHtmlPortal(true);
+    setClientHtmlPortalStatus(`Generando Portal Maestro HTML para ${effectiveClient.name}...`);
+    setErrorMessage(null);
+    setClientHtmlPortalSuccess(false);
+
+    try {
+      exportClientMasterPortalHtml(effectiveClient, clientProjects, clientManuals, branding);
+      setClientHtmlPortalSuccess(true);
+      setClientHtmlPortalStatus(`¡Portal Maestro HTML de ${effectiveClient.name} generado con éxito!`);
+      setTimeout(() => {
+        setClientHtmlPortalSuccess(false);
+        setIsGeneratingClientHtmlPortal(false);
+      }, 2000);
+    } catch (err: any) {
+      console.error('Error generating client HTML portal:', err);
+      setErrorMessage(err.message || 'Ocurrió un error al generar el portal HTML del cliente.');
+      setIsGeneratingClientHtmlPortal(false);
+    }
+  };
+
+  // 2. Export Client All Manuals in HTML (ZIP Package)
+  const handleDownloadClientHtmlZip = async () => {
+    if (isBusy || !effectiveClient) return;
+    setIsGeneratingClientHtmlZip(true);
+    setClientHtmlZipStatus(`Iniciando compilación de todos los manuales HTML para ${effectiveClient.name}...`);
+    setErrorMessage(null);
+    setClientHtmlZipSuccess(false);
+
+    try {
+      await exportClientAllManualsHtmlZip(
+        effectiveClient,
+        clientProjects,
+        clientManuals,
+        branding,
+        (msg) => setClientHtmlZipStatus(msg)
+      );
+      setClientHtmlZipSuccess(true);
+      setClientHtmlZipStatus(`¡Paquete ZIP institucional de ${effectiveClient.name} descargado con éxito!`);
+      setTimeout(() => {
+        setClientHtmlZipSuccess(false);
+        setIsGeneratingClientHtmlZip(false);
+      }, 2500);
+    } catch (err: any) {
+      console.error('Error generating client HTML ZIP:', err);
+      setErrorMessage(err.message || 'Ocurrió un error al generar el archivo ZIP de manuales HTML.');
+      setIsGeneratingClientHtmlZip(false);
+    }
+  };
+
+  // 3. Export using Official Corporate Template Structure PDF
   const handleDownloadTemplatePdf = async () => {
     if (isBusy) return;
     setIsGeneratingTemplatePdf(true);
@@ -115,7 +225,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     }
   };
 
-  // 2. Export using Compact Procedural Format
+  // 4. Export Compact Procedural PDF
   const handleDownloadCompactPdf = async () => {
     if (isBusy) return;
     setIsGeneratingCompactPdf(true);
@@ -143,11 +253,11 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     }
   };
 
-  // 2b. Export Consolidated Project Dossier
+  // 5. Export Consolidated Project Dossier PDF
   const handleDownloadDossierPdf = async () => {
     if (!project || isBusy) return;
     setIsGeneratingDossierPdf(true);
-    setDossierPdfStatus(`Compilando dossier del proyecto para ${project.clientName}...`);
+    setDossierPdfStatus(`Compilando dossier del proyecto "${project.name}"...`);
     setErrorMessage(null);
     setDossierPdfSuccess(false);
 
@@ -177,7 +287,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     }
   };
 
-  // 3. Export to Word DOCX
+  // 6. Export Word DOCX Single Manual
   const handleDownloadDocx = async () => {
     if (isBusy) return;
     setIsGeneratingDocx(true);
@@ -210,7 +320,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     }
   };
 
-  // 4. Export Project Solution Dossier in Word DOCX
+  // 7. Export Project Solution Dossier Word DOCX
   const handleDownloadDossierDocx = async (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     if (isBusy || !project) return;
@@ -265,7 +375,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           <div>
             <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
               <FileDown className="w-5 h-5 text-indigo-600" />
-              <span>Exportar Manual de Usuario</span>
+              <span>Exportar Manuales &amp; Entregables Oficiales</span>
             </h3>
             <p className="text-xs text-slate-500">
               Elige el formato de publicación oficial para tu equipo, clientes, auditoría o repositorio institucional.
@@ -274,7 +384,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           <button
             onClick={onClose}
             disabled={isBusy}
-            className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-200/60 disabled:opacity-50 transition-colors"
+            className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-200/60 disabled:opacity-50 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -294,9 +404,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             {/* Nuestro Logo */}
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
-                🏢 Nuestro Logo:
+                🏢 Emisor:
               </span>
-              <div className="w-16 h-8 bg-white border border-slate-200 rounded-lg p-1 flex items-center justify-center overflow-hidden shadow-2xs">
+              <div className="w-14 h-7 bg-white border border-slate-200 rounded-lg p-0.5 flex items-center justify-center overflow-hidden shadow-2xs">
                 {branding?.logo ? (
                   <img
                     src={branding.logo}
@@ -308,28 +418,33 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 )}
               </div>
               <span className="font-bold text-slate-800">
-                {branding?.companyName || 'Saint-Gobain Weber'}
+                {branding?.companyName || 'HSBT'}
               </span>
             </div>
 
             {/* Logo Cliente */}
-            {project?.clientName && (
+            {effectiveClient && (
               <div className="flex items-center gap-2 sm:pl-3 sm:border-l border-slate-200">
                 <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
                   👥 Cliente:
                 </span>
-                <div className="w-16 h-8 bg-white border border-slate-200 rounded-lg p-1 flex items-center justify-center overflow-hidden shadow-2xs">
-                  {project.clientLogo ? (
+                <div className="w-14 h-7 bg-white border border-slate-200 rounded-lg p-0.5 flex items-center justify-center overflow-hidden shadow-2xs">
+                  {effectiveClient.logo ? (
                     <img
-                      src={project.clientLogo}
-                      alt={project.clientName}
+                      src={effectiveClient.logo}
+                      alt={effectiveClient.name}
                       className="max-w-full max-h-full object-contain"
                     />
                   ) : (
                     <span className="text-[9px] text-slate-400">Sin logo</span>
                   )}
                 </div>
-                <span className="font-bold text-slate-800">{project.clientName}</span>
+                <span className="font-bold text-slate-800">{effectiveClient.name}</span>
+                {effectiveClient.code && (
+                  <span className="text-[10px] font-mono text-indigo-600 bg-white px-1.5 py-0.5 rounded border border-indigo-200">
+                    {effectiveClient.code}
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -338,7 +453,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             <button
               type="button"
               onClick={onOpenOurLogoModal}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-indigo-50/80 text-indigo-700 hover:text-indigo-800 font-bold border border-slate-200 hover:border-indigo-300 rounded-lg text-xs shadow-2xs transition-colors self-start sm:self-auto"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-indigo-50/80 text-indigo-700 hover:text-indigo-800 font-bold border border-slate-200 hover:border-indigo-300 rounded-lg text-xs shadow-2xs transition-colors self-start sm:self-auto cursor-pointer"
               title="Cambiar o definir el logotipo de nuestra empresa"
             >
               <Settings className="w-3.5 h-3.5 text-indigo-600" />
@@ -349,23 +464,170 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
         {/* Options Grid */}
         <div className="p-6 overflow-y-auto space-y-4 flex-1">
-          {/* OPTION: Consolidated Project Dossier PDF (if project provided) */}
+          {/* ============================================================== */}
+          {/* NUEVA OPCIÓN PRINCIPAL: EXPORTAR POR CLIENTE TODOS LOS MANUALES EN HTML */}
+          {/* ============================================================== */}
+          {effectiveClient && (
+            <div className="p-5 rounded-2xl border-2 border-indigo-600 bg-gradient-to-br from-indigo-50/80 via-white to-blue-50/50 shadow-md relative">
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 rounded-xl bg-indigo-600 text-white flex items-center justify-center flex-shrink-0 shadow-md shadow-indigo-200">
+                  {isGeneratingClientHtmlZip || isGeneratingClientHtmlPortal ? (
+                    <Loader2 className="w-6 h-6 animate-spin" />
+                  ) : clientHtmlZipSuccess || clientHtmlPortalSuccess ? (
+                    <CheckCircle className="w-6 h-6 text-white" />
+                  ) : (
+                    <Globe className="w-6 h-6" />
+                  )}
+                </div>
+                <div className="flex-1">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-base font-extrabold text-slate-900">
+                        Exportar por Cliente · Todos los Manuales Interactivos en HTML
+                      </h4>
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-700 bg-indigo-100 border border-indigo-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                        <Sparkles className="w-3 h-3 text-indigo-600" />
+                        Cliente: {effectiveClient.name}
+                      </span>
+                    </div>
+                    <span className="text-xs font-bold text-indigo-800 bg-indigo-100 px-2.5 py-1 rounded-lg border border-indigo-200">
+                      Entregable de Cliente · 100% Offline
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                    Compila y exporta la colección completa de manuales operativos interactivos para <strong>{effectiveClient.name}</strong> ({clientManuals.length} manuales integrados en {clientProjects.length} proyectos). Diseñado para visualización interactiva en cualquier navegador web, publicación en SharePoint, intranet institucional o distribución sin conexión.
+                  </p>
+
+                  {/* Selector de Cliente si existen varios registrados */}
+                  {clients.length > 1 && (
+                    <div className="mt-3 flex items-center gap-2 p-2 bg-white/90 border border-indigo-100 rounded-xl text-xs">
+                      <Building2 className="w-4 h-4 text-indigo-600 flex-shrink-0" />
+                      <span className="font-bold text-slate-700">Cliente a exportar:</span>
+                      <select
+                        value={selectedClientId}
+                        onChange={(e) => setSelectedClientId(e.target.value)}
+                        className="font-bold text-indigo-900 bg-indigo-50/60 border border-indigo-200 rounded-lg px-2.5 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                      >
+                        {clients.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name} {c.code ? `(${c.code})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="text-slate-400 font-medium ml-auto hidden sm:inline">
+                        {clientProjects.length} proyectos · {clientManuals.length} manuales
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Highlights de la entrega */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 pt-3 border-t border-indigo-100 text-[11px] text-slate-700 font-medium">
+                    <div className="flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />
+                      <span>Portal Maestro (index.html)</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />
+                      <span>{clientManuals.length} Manuales en HTML</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />
+                      <span>Matriz &amp; Simulador SAP</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />
+                      <span>Listo para SharePoint / Intranet</span>
+                    </div>
+                  </div>
+
+                  {/* Botones de acción */}
+                  <div className="mt-3.5 pt-3 border-t border-indigo-100 flex flex-wrap items-center gap-2.5">
+                    {/* Botón 1: Descargar Portal Maestro HTML individual */}
+                    <button
+                      type="button"
+                      onClick={handleDownloadClientHtmlPortal}
+                      disabled={isBusy || clientManuals.length === 0}
+                      className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-xs flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+                      title="Descarga un único archivo HTML autocontenido con todos los manuales y proyectos del cliente"
+                    >
+                      {isGeneratingClientHtmlPortal ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <FileCode2 className="w-4 h-4" />
+                      )}
+                      <span>Descargar Portal Maestro HTML ({effectiveClient.name})</span>
+                    </button>
+
+                    {/* Botón 2: Descargar Paquete ZIP con todos los HTMLs */}
+                    <button
+                      type="button"
+                      onClick={handleDownloadClientHtmlZip}
+                      disabled={isBusy || clientManuals.length === 0}
+                      className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-xs flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+                      title="Descarga un archivo ZIP que incluye el portal index.html más cada manual interactivo individual en HTML"
+                    >
+                      {isGeneratingClientHtmlZip ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Package className="w-4 h-4 text-indigo-300" />
+                      )}
+                      <span>Descargar Paquete ZIP (Todos los HTMLs)</span>
+                    </button>
+                  </div>
+
+                  {/* Feedback en vivo: Portal HTML */}
+                  {isGeneratingClientHtmlPortal && (
+                    <div className="mt-3 p-2.5 bg-white/95 border border-indigo-200 rounded-xl flex items-center gap-2.5 text-xs text-indigo-900 font-semibold animate-pulse">
+                      <Loader2 className="w-4 h-4 animate-spin text-indigo-600 flex-shrink-0" />
+                      <span>{clientHtmlPortalStatus}</span>
+                    </div>
+                  )}
+
+                  {clientHtmlPortalSuccess && (
+                    <div className="mt-3 p-2.5 bg-emerald-50 border border-emerald-300 rounded-xl flex items-center gap-2 text-xs text-emerald-800 font-bold">
+                      <CheckCircle className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                      <span>{clientHtmlPortalStatus}</span>
+                    </div>
+                  )}
+
+                  {/* Feedback en vivo: Paquete ZIP */}
+                  {isGeneratingClientHtmlZip && (
+                    <div className="mt-3 p-2.5 bg-white/95 border border-indigo-200 rounded-xl flex items-center gap-2.5 text-xs text-indigo-900 font-semibold animate-pulse">
+                      <Loader2 className="w-4 h-4 animate-spin text-indigo-600 flex-shrink-0" />
+                      <span>{clientHtmlZipStatus}</span>
+                    </div>
+                  )}
+
+                  {clientHtmlZipSuccess && (
+                    <div className="mt-3 p-2.5 bg-emerald-50 border border-emerald-300 rounded-xl flex items-center gap-2 text-xs text-emerald-800 font-bold">
+                      <CheckCircle className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                      <span>{clientHtmlZipStatus}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ============================================================== */}
+          {/* OPTION: Consolidated Project Dossier PDF / Word */}
+          {/* ============================================================== */}
           {project && (
             <div
-              onClick={handleDownloadDossierPdf}
-              className={`group p-5 rounded-2xl border-2 transition-all cursor-pointer shadow-sm relative ${
-                isGeneratingDossierPdf
+              className={`group p-5 rounded-2xl border-2 transition-all shadow-sm relative ${
+                isGeneratingDossierPdf || isGeneratingDossierDocx
                   ? 'border-amber-500 bg-amber-50/70'
-                  : dossierPdfSuccess
+                  : dossierPdfSuccess || dossierDocxSuccess
                   ? 'border-emerald-500 bg-emerald-50/70'
-                  : 'border-amber-500/80 bg-gradient-to-br from-amber-50/50 via-white to-orange-50/30 hover:border-amber-600 hover:shadow-md'
+                  : 'border-amber-400/90 bg-gradient-to-br from-amber-50/40 via-white to-orange-50/30'
               }`}
             >
               <div className="flex items-start gap-4">
-                <div className="w-12 h-12 rounded-xl bg-amber-600 text-white flex items-center justify-center flex-shrink-0 shadow-sm group-hover:scale-105 transition-transform">
-                  {isGeneratingDossierPdf ? (
+                <div className="w-12 h-12 rounded-xl bg-amber-600 text-white flex items-center justify-center flex-shrink-0 shadow-sm">
+                  {isGeneratingDossierPdf || isGeneratingDossierDocx ? (
                     <Loader2 className="w-6 h-6 animate-spin" />
-                  ) : dossierPdfSuccess ? (
+                  ) : dossierPdfSuccess || dossierDocxSuccess ? (
                     <CheckCircle className="w-6 h-6 text-white" />
                   ) : (
                     <FolderKanban className="w-6 h-6" />
@@ -375,11 +637,11 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <h4 className="text-base font-bold text-slate-900">
-                        Dossier Consolidado del Proyecto: {project.clientName}
+                        Dossier Consolidado del Proyecto: {project.name}
                       </h4>
                       <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-800 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1">
                         <Sparkles className="w-3 h-3 text-amber-600" />
-                        Solución Completa ({manualsInProject.length || 1} manuales)
+                        {manualsInProject.length || 1} manuales integrados
                       </span>
                     </div>
                     <span className="text-xs font-bold text-amber-800 bg-amber-100/70 px-2.5 py-1 rounded-lg border border-amber-200">
@@ -387,7 +649,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                     </span>
                   </div>
                   <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                    Compila todos los manuales de este proyecto en un único documento corporativo con carátula oficial del cliente ({project.clientName}), índice consolidado, matriz unificada de procesos y las características de salida seleccionadas.
+                    Compila todos los manuales de este proyecto en un único documento corporativo con carátula oficial del cliente ({project.clientName || 'Cliente'}), índice consolidado, matriz unificada de procesos y las características de salida seleccionadas.
                   </p>
 
                   {/* Highlights */}
@@ -413,10 +675,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   <div className="mt-3.5 pt-3 border-t border-amber-200/80 flex flex-wrap items-center gap-2">
                     <button
                       type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDownloadDossierPdf();
-                      }}
+                      onClick={handleDownloadDossierPdf}
                       disabled={isBusy}
                       className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold shadow-xs flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
                     >
@@ -430,10 +689,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
                     <button
                       type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDownloadDossierDocx(e);
-                      }}
+                      onClick={(e) => handleDownloadDossierDocx(e)}
                       disabled={isBusy}
                       className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-xs flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
                     >
@@ -478,7 +734,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             </div>
           )}
 
-          {/* FEATURED OPTION: Official Corporate Template Structure */}
+          {/* ============================================================== */}
+          {/* FEATURED OPTION: Official Corporate Template Structure PDF */}
+          {/* ============================================================== */}
           <div
             onClick={handleDownloadTemplatePdf}
             className={`group p-5 rounded-2xl border-2 transition-all cursor-pointer shadow-sm relative ${
@@ -486,7 +744,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 ? 'border-indigo-500 bg-indigo-50/70'
                 : templatePdfSuccess
                 ? 'border-emerald-500 bg-emerald-50/70'
-                : 'border-indigo-600 bg-gradient-to-br from-indigo-50/40 via-white to-blue-50/30 hover:border-indigo-700 hover:shadow-md'
+                : 'border-slate-300 bg-white hover:border-indigo-600 hover:shadow-md'
             }`}
           >
             <div className="flex items-start gap-4">
@@ -515,7 +773,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   </span>
                 </div>
                 <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                  Reproduce con precisión milimétrica la estructura del manual modelo entregado: portada con logos institucionales (Weber Saint-Gobain + HSBT), ficha técnica de control documental de 4 columnas, índice formal con guías de puntos tabuladas y páginas exactas, Sección 1 (Introducción y Parámetros), Sección 2 (Matriz completa del Flujo de Proceso), y páginas procedimentales con franja de transacción, capturas enmarcadas y cajas de llamado.
+                  Reproduce con precisión milimétrica la estructura del manual modelo entregado: portada con logos institucionales ({effectiveClient?.name || 'Cliente'} + {branding?.companyName || 'HSBT'}), ficha técnica de control documental de 4 columnas, índice formal con guías de puntos tabuladas y páginas exactas, Sección 1 (Introducción y Parámetros), Sección 2 (Matriz completa del Flujo de Proceso), y páginas procedimentales con franja de transacción, capturas enmarcadas y cajas de llamado.
                 </p>
 
                 {/* Highlights pill tags */}
@@ -534,7 +792,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   </div>
                   <div className="flex items-center gap-1.5">
                     <Check className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />
-                    <span>Encabezados & Pág. X de Y</span>
+                    <span>Encabezados &amp; Pág. X de Y</span>
                   </div>
                 </div>
 
@@ -556,7 +814,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             </div>
           </div>
 
+          {/* ============================================================== */}
           {/* Secondary Options Grid */}
+          {/* ============================================================== */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Option B: Compact Procedural PDF */}
             <div
@@ -609,7 +869,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   <button
                     type="button"
                     onClick={handleNativePrint}
-                    className="text-[11px] text-slate-500 hover:text-slate-900 font-medium underline flex items-center gap-1"
+                    className="text-[11px] text-slate-500 hover:text-slate-900 font-medium underline flex items-center gap-1 cursor-pointer"
                   >
                     <Printer className="w-3 h-3" />
                     <span>Imprimir con el navegador</span>
@@ -667,16 +927,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               </div>
             </div>
 
-            {/* Option D: Standalone Interactive HTML */}
-            <div
-              onClick={() => {
-                if (isBusy) return;
-                exportToInteractiveHtml(manual);
-                onClose();
-              }}
-              className="group p-4 rounded-xl border border-indigo-200 bg-indigo-50/30 hover:bg-indigo-50 hover:border-indigo-400 cursor-pointer transition-all flex items-start gap-3.5 shadow-xs"
-            >
-              <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center flex-shrink-0 shadow-sm group-hover:scale-105 transition-transform">
+            {/* Option D: Standalone Interactive HTML (Single Manual or All) */}
+            <div className="group p-4 rounded-xl border border-indigo-200 bg-indigo-50/30 hover:border-indigo-400 transition-all flex items-start gap-3.5 shadow-xs">
+              <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center flex-shrink-0 shadow-sm">
                 <Globe className="w-5 h-5" />
               </div>
               <div className="flex-1">
@@ -691,6 +944,29 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 <p className="text-xs text-slate-600 mt-1">
                   Archivo HTML único con buscador en tiempo real, reproductor paso a paso interactivo y capturas incrustadas para uso sin internet.
                 </p>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isBusy) return;
+                      exportToInteractiveHtml(manual);
+                      onClose();
+                    }}
+                    className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-2xs transition-colors cursor-pointer"
+                  >
+                    Descargar Este Manual (.html)
+                  </button>
+                  {effectiveClient && (
+                    <button
+                      type="button"
+                      onClick={handleDownloadClientHtmlPortal}
+                      disabled={isBusy}
+                      className="px-2.5 py-1.5 bg-white hover:bg-indigo-100 text-indigo-700 border border-indigo-300 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                    >
+                      Exportar Todos de {effectiveClient.name} (.html)
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 

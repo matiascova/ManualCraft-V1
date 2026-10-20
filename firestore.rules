@@ -6,6 +6,11 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    // Colección de clientes corporativos (Nivel superior de la jerarquía)
+    match /clients/{clientId} {
+      allow read, write: if true;
+    }
+
     // Colección de proyectos de manuales compartidos
     match /projects/{projectId} {
       allow read, write: if true;

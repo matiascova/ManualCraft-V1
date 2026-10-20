@@ -6,6 +6,10 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type } from '@google/genai';
+import { SAMPLE_CLIENTS } from './src/data/sampleClients';
+import { SAMPLE_PROJECTS } from './src/data/sampleProjects';
+import { SAMPLE_MANUALS } from './src/data/sampleManuals';
+import { generateClientMasterIndexHtml } from './src/utils/masterIndexGenerator';
 
 dotenv.config();
 
@@ -108,6 +112,47 @@ app.get('/api/health', (req: Request, res: Response) => {
       heapTotal: Math.round(mem.heapTotal / (1024 * 1024)),
     },
   });
+});
+
+// =========================================================================
+// Endpoints Jerárquicos: Cliente -> Proyecto -> Manuales
+// =========================================================================
+
+// Endpoint: List all clients (Nivel Superior de la Jerarquía)
+app.get('/api/clients', (req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'public, max-age=60');
+  res.json({
+    status: 'ok',
+    total: SAMPLE_CLIENTS.length,
+    clients: SAMPLE_CLIENTS,
+  });
+});
+
+// Endpoint: List projects for a specific client
+app.get('/api/clients/:clientId/projects', (req: Request, res: Response) => {
+  const { clientId } = req.params;
+  const filtered = SAMPLE_PROJECTS.filter((p) => p.clientId === clientId);
+  res.setHeader('Cache-Control', 'public, max-age=60');
+  res.json({
+    status: 'ok',
+    clientId,
+    total: filtered.length,
+    projects: filtered,
+  });
+});
+
+// Endpoint: Generate or stream Master Index HTML for a specific client
+app.get('/api/clients/:clientId/master-index', (req: Request, res: Response) => {
+  const { clientId } = req.params;
+  const client = SAMPLE_CLIENTS.find((c) => c.id === clientId) || SAMPLE_CLIENTS[0];
+  const clientProjects = SAMPLE_PROJECTS.filter((p) => p.clientId === client.id);
+  const clientManuals = SAMPLE_MANUALS.filter((m) =>
+    clientProjects.some((p) => p.id === m.projectId)
+  );
+
+  const html = generateClientMasterIndexHtml(client, clientProjects, clientManuals);
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(html);
 });
 
 // Endpoint: Generate Manual from Screenshots / Video frames

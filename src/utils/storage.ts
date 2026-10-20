@@ -1,8 +1,11 @@
 import { UserManual } from '../types/manual';
-import { Project } from '../types/project';
+import { Project, normalizeProject } from '../types/project';
+import { Client } from '../types/client';
 import { OrganizationBranding, DEFAULT_ORGANIZATION_BRANDING } from '../types/branding';
 import { SAMPLE_PROJECTS } from '../data/sampleProjects';
+import { SAMPLE_CLIENTS } from '../data/sampleClients';
 
+const CLIENTS_STORAGE_KEY = 'manualcraft_user_clients_v1';
 const MANUALS_STORAGE_KEY = 'manualcraft_user_manuals_v1';
 const DELETED_MANUALS_KEY = 'manualcraft_deleted_manual_ids_v1';
 const PROJECTS_STORAGE_KEY = 'manualcraft_user_projects_v1';
@@ -105,9 +108,11 @@ const idb = new HighThroughputIdb();
  * Handles high traffic, prevents memory exhaustion and maintains sub-millisecond read access.
  */
 class ManualStorageService {
+  private inMemoryClientsFallback: Client[] | null = null;
   private inMemoryManualsFallback: UserManual[] | null = null;
   private inMemoryProjectsFallback: Project[] | null = null;
   private inMemoryDeletedIds: Set<string> = new Set();
+  private clientsSaveTimer: any = null;
   private manualsSaveTimer: any = null;
   private projectsSaveTimer: any = null;
 
@@ -127,6 +132,74 @@ class ManualStorageService {
     }
   }
 
+  public loadClients(defaultClients: Client[] = SAMPLE_CLIENTS): Client[] {
+    if (this.inMemoryClientsFallback) {
+      return this.inMemoryClientsFallback;
+    }
+
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const saved = localStorage.getItem(CLIENTS_STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const existingIds = new Set(parsed.map((c: Client) => c.id));
+            const missingDefaults = defaultClients.filter((c) => !existingIds.has(c.id));
+
+            if (missingDefaults.length > 0) {
+              const merged = [...parsed, ...missingDefaults];
+              this.saveClients(merged);
+              this.inMemoryClientsFallback = merged;
+              return merged;
+            }
+            this.inMemoryClientsFallback = parsed;
+            return parsed;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[ManualStorageService] Failed to read clients from localStorage:', err);
+    }
+
+    this.inMemoryClientsFallback = defaultClients;
+    return defaultClients;
+  }
+
+  public saveClients(clients: Client[]): boolean {
+    this.inMemoryClientsFallback = clients;
+    if (typeof window === 'undefined' || !window.localStorage) {
+      return true;
+    }
+
+    if (this.clientsSaveTimer) {
+      clearTimeout(this.clientsSaveTimer);
+    }
+
+    this.clientsSaveTimer = setTimeout(() => {
+      try {
+        localStorage.setItem(CLIENTS_STORAGE_KEY, JSON.stringify(clients));
+        idb.set(CLIENTS_STORAGE_KEY, clients).catch(() => {});
+      } catch (err) {
+        console.warn('[ManualStorageService] Error saving clients to localStorage:', err);
+      }
+    }, 150);
+
+    return true;
+  }
+
+  public deleteClient(clientId: string, updatedList: Client[]): boolean {
+    this.inMemoryClientsFallback = updatedList;
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        localStorage.setItem(CLIENTS_STORAGE_KEY, JSON.stringify(updatedList));
+      }
+      idb.set(CLIENTS_STORAGE_KEY, updatedList).catch(() => {});
+    } catch (err) {
+      console.warn('[ManualStorageService] Failed to delete client:', err);
+    }
+    return true;
+  }
+
   public loadProjects(defaultProjects: Project[] = SAMPLE_PROJECTS): Project[] {
     if (this.inMemoryProjectsFallback) {
       return this.inMemoryProjectsFallback;
@@ -138,17 +211,17 @@ class ManualStorageService {
         if (saved) {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            const existingIds = new Set(parsed.map((p: Project) => p.id));
-            const missingDefaults = defaultProjects.filter((p) => !existingIds.has(p.id));
+            const normalizedParsed = parsed.map(normalizeProject);
+            const existingIds = new Set(normalizedParsed.map((p: Project) => p.id));
+            const missingDefaults = defaultProjects
+              .map(normalizeProject)
+              .filter((p) => !existingIds.has(p.id));
 
-            if (missingDefaults.length > 0) {
-              const merged = [...parsed, ...missingDefaults];
-              this.saveProjects(merged);
-              this.inMemoryProjectsFallback = merged;
-              return merged;
-            }
-            this.inMemoryProjectsFallback = parsed;
-            return parsed;
+            const result =
+              missingDefaults.length > 0 ? [...normalizedParsed, ...missingDefaults] : normalizedParsed;
+            this.saveProjects(result);
+            this.inMemoryProjectsFallback = result;
+            return result;
           }
         }
       }
@@ -156,8 +229,9 @@ class ManualStorageService {
       console.warn('[ManualStorageService] Failed to read projects from localStorage:', err);
     }
 
-    this.inMemoryProjectsFallback = defaultProjects;
-    return defaultProjects;
+    const initial = defaultProjects.map(normalizeProject);
+    this.inMemoryProjectsFallback = initial;
+    return initial;
   }
 
   public saveProjects(projects: Project[]): boolean {

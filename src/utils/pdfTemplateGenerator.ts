@@ -1474,8 +1474,9 @@ export async function exportProjectDossierPdf(
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7.5);
     doc.setTextColor(51, 65, 85);
+    const clientUpper = (project.clientName || 'Cliente').toUpperCase();
     doc.text(
-      `DOSSIER DE SOLUCIÓN TÉCNICA · ${project.clientName.toUpperCase()} · ${manuals.length} MANUALES INCLUIDOS`,
+      `DOSSIER DE SOLUCIÓN TÉCNICA · ${clientUpper} · ${manuals.length} MANUALES INCLUIDOS`,
       marginX + 6,
       bannerY + bannerH + 5.5
     );
@@ -1491,7 +1492,7 @@ export async function exportProjectDossierPdf(
       doc.text('CONTROL DEL DOCUMENTO Y FICHA TÉCNICA DEL PROYECTO', marginX + 5, tableY + 5.5);
 
       const metaRows: [string, string][] = [
-        ['Cliente / Organización', project.clientName],
+        ['Cliente / Organización', project.clientName || 'Organización'],
         ['Código de Proyecto', project.code || 'PRJ-CORP-01'],
         ['Área / Módulos', project.category || 'Gestión Operativa y Procesos'],
         ['Versión de Solución', `Versión ${project.version || '1.0'}`],
@@ -1783,7 +1784,7 @@ export async function exportProjectDossierPdf(
     });
   }
 
-  const safeClientName = project.clientName
+  const safeClientName = (project.clientName || 'cliente')
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')

@@ -5,10 +5,12 @@
 
 import React, { useState, useEffect, useMemo, useCallback, Suspense, lazy } from 'react';
 import { UserManual, ManualStep, reindexManualSteps } from './types/manual';
-import { Project } from './types/project';
+import { Project, normalizeProject } from './types/project';
+import { Client } from './types/client';
 import { OrganizationBranding, DEFAULT_ORGANIZATION_BRANDING } from './types/branding';
 import { SAMPLE_MANUALS } from './data/sampleManuals';
 import { SAMPLE_PROJECTS } from './data/sampleProjects';
+import { SAMPLE_CLIENTS } from './data/sampleClients';
 import { Navbar } from './components/Navbar';
 import { ManualView } from './components/ManualView';
 import { ProjectWorkspace } from './components/ProjectWorkspace';
@@ -33,10 +35,16 @@ import {
   subscribeToSharedProjects,
   saveProjectToDatabase,
   deleteProjectFromDatabase,
+  subscribeToSharedClients,
+  saveClientToDatabase,
+  deleteClientFromDatabase,
   onFirestoreConnectionChange,
 } from './utils/firebase';
+import { generateClientMasterIndexHtml } from './utils/masterIndexGenerator';
 
 // Dynamic code-splitting for heavy modals to reduce initial bundle and memory footprint
+const ClientModal = lazy(() => import('./components/ClientModal').then((m) => ({ default: m.ClientModal })));
+const ClientManagementModal = lazy(() => import('./components/ClientManagementModal').then((m) => ({ default: m.ClientManagementModal })));
 const ProjectModal = lazy(() => import('./components/ProjectModal').then((m) => ({ default: m.ProjectModal })));
 const OrganizationLogoModal = lazy(() => import('./components/OrganizationLogoModal').then((m) => ({ default: m.OrganizationLogoModal })));
 const CreateManualModal = lazy(() => import('./components/CreateManualModal').then((m) => ({ default: m.CreateManualModal })));
@@ -50,16 +58,26 @@ export default function App() {
   // Database connection status
   const [isDbConnected, setIsDbConnected] = useState(false);
 
-  // Projects state
+  // 1. Clients State (Nivel Superior de la Jerarquía)
+  const [clients, setClients] = useState<Client[]>(() => {
+    return manualStorage.loadClients(SAMPLE_CLIENTS);
+  });
+
+  const [activeClientId, setActiveClientId] = useState<string>(() => {
+    return clients[0]?.id || SAMPLE_CLIENTS[0]?.id || 'cli-weber';
+  });
+
+  // 2. Projects State (Nivel Intermedio)
   const [projects, setProjects] = useState<Project[]>(() => {
-    return manualStorage.loadProjects(SAMPLE_PROJECTS);
+    return manualStorage.loadProjects(SAMPLE_PROJECTS).map(normalizeProject);
   });
 
   const [activeProjectId, setActiveProjectId] = useState<string>(() => {
-    return projects[0]?.id || SAMPLE_PROJECTS[0]?.id || 'prj-weber-sap';
+    const weberProjects = SAMPLE_PROJECTS.filter((p) => p.clientId === 'cli-weber');
+    return weberProjects[0]?.id || projects[0]?.id || 'prj-weber-wms-hu';
   });
 
-  // Manuals state
+  // 3. Manuals State (Nivel Operativo)
   const [manuals, setManuals] = useState<UserManual[]>(() => {
     return manualStorage.loadManuals(SAMPLE_MANUALS);
   });
@@ -74,8 +92,43 @@ export default function App() {
       setIsDbConnected(connected);
     });
 
-    let hasAttemptedManualSeed = false;
+    let hasAttemptedClientSeed = false;
     let hasAttemptedProjectSeed = false;
+    let hasAttemptedManualSeed = false;
+
+    // Real-time subscription to shared clients collection
+    const unsubClients = subscribeToSharedClients((remoteClients) => {
+      if (remoteClients && remoteClients.length > 0) {
+        setClients(remoteClients);
+      } else if (!hasAttemptedClientSeed) {
+        hasAttemptedClientSeed = true;
+        const local = manualStorage.loadClients(SAMPLE_CLIENTS);
+        local.forEach((c) => {
+          saveClientToDatabase(c).catch(() => {});
+        });
+      }
+    });
+
+    // Real-time subscription to shared projects collection
+    const unsubProjects = subscribeToSharedProjects((remoteProjects) => {
+      if (remoteProjects && remoteProjects.length > 0) {
+        const normalized = remoteProjects.map(normalizeProject);
+        setProjects(normalized);
+        // Sync any corrected clientIds back to Firestore
+        normalized.forEach((p) => {
+          const orig = remoteProjects.find((rp) => rp.id === p.id);
+          if (!orig || orig.clientId !== p.clientId || orig.clientName !== p.clientName) {
+            saveProjectToDatabase(p).catch(() => {});
+          }
+        });
+      } else if (!hasAttemptedProjectSeed) {
+        hasAttemptedProjectSeed = true;
+        const local = manualStorage.loadProjects(SAMPLE_PROJECTS).map(normalizeProject);
+        local.forEach((p) => {
+          saveProjectToDatabase(p).catch(() => {});
+        });
+      }
+    });
 
     // Real-time subscription to shared manuals collection
     const unsubManuals = subscribeToSharedManuals((remoteManuals) => {
@@ -90,23 +143,11 @@ export default function App() {
       }
     });
 
-    // Real-time subscription to shared projects collection
-    const unsubProjects = subscribeToSharedProjects((remoteProjects) => {
-      if (remoteProjects && remoteProjects.length > 0) {
-        setProjects(remoteProjects);
-      } else if (!hasAttemptedProjectSeed) {
-        hasAttemptedProjectSeed = true;
-        const local = manualStorage.loadProjects(SAMPLE_PROJECTS);
-        local.forEach((p) => {
-          saveProjectToDatabase(p).catch(() => {});
-        });
-      }
-    });
-
     return () => {
       unsubConn();
-      unsubManuals();
+      unsubClients();
       unsubProjects();
+      unsubManuals();
     };
   }, []);
 
@@ -114,6 +155,10 @@ export default function App() {
   const [viewMode, setViewMode] = useState<'project' | 'manual'>('project');
 
   // Modals state
+  const [isClientModalOpen, setIsClientModalOpen] = useState(false);
+  const [editingClient, setEditingClient] = useState<Client | null>(null);
+  const [isManageClientsModalOpen, setIsManageClientsModalOpen] = useState(false);
+
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
 
@@ -139,6 +184,11 @@ export default function App() {
   const [editingStep, setEditingStep] = useState<ManualStep | null>(null);
   const [annotatingStep, setAnnotatingStep] = useState<ManualStep | null>(null);
 
+  // Sync clients with localStorage / IndexedDB cache
+  useEffect(() => {
+    manualStorage.saveClients(clients);
+  }, [clients]);
+
   // Sync projects with localStorage cache
   useEffect(() => {
     manualStorage.saveProjects(projects);
@@ -149,11 +199,31 @@ export default function App() {
     manualStorage.saveManuals(manuals);
   }, [manuals]);
 
-  // Active Project and its associated manuals (memoized for high-scale performance)
-  const activeProject = useMemo(() => {
-    return projects.find((p) => p.id === activeProjectId) || projects[0] || SAMPLE_PROJECTS[0];
-  }, [projects, activeProjectId]);
+  // Active Client (null if activeClientId === 'all')
+  const activeClient = useMemo(() => {
+    if (activeClientId === 'all') {
+      return null;
+    }
+    return clients.find((c) => c.id === activeClientId) || clients[0] || SAMPLE_CLIENTS[0];
+  }, [clients, activeClientId]);
 
+  // Projects strictly belonging to the active client, or ALL projects if activeClientId === 'all'
+  const projectsInActiveClient = useMemo(() => {
+    if (activeClientId === 'all') {
+      return projects;
+    }
+    // Strict filter: ONLY projects belonging to the active client!
+    return projects.filter((p) => p.clientId === activeClientId);
+  }, [projects, activeClientId]);
+
+  // Active Project (memoized for high-scale performance)
+  const activeProject = useMemo(() => {
+    const found = projectsInActiveClient.find((p) => p.id === activeProjectId);
+    if (found) return found;
+    return projectsInActiveClient[0] || projects[0] || SAMPLE_PROJECTS[0];
+  }, [projectsInActiveClient, projects, activeProjectId]);
+
+  // Associated manuals in active project
   const manualsInActiveProject = useMemo(() => {
     return manuals.filter((m) => m.projectId === activeProject?.id);
   }, [manuals, activeProject?.id]);
@@ -167,19 +237,106 @@ export default function App() {
     return manualsInActiveProject[0] || manuals[0] || null;
   }, [manuals, activeManualId, manualsInActiveProject]);
 
-  // Handler: Save Project (create or edit) - persisted to Firestore
-  const handleSaveProject = useCallback((savedProject: Project) => {
-    setProjects((prev) => {
-      const exists = prev.some((p) => p.id === savedProject.id);
-      if (exists) {
-        return prev.map((p) => (p.id === savedProject.id ? savedProject : p));
+  // Handler: Select a Client
+  const handleSelectClient = useCallback(
+    (clientId: string) => {
+      setActiveClientId(clientId);
+      if (clientId === 'all') {
+        setActiveProjectId((cur) => {
+          if (projects.some((p) => p.id === cur)) return cur;
+          return projects[0]?.id || '';
+        });
+      } else {
+        const clientProjs = projects.filter((p) => p.clientId === clientId);
+        if (clientProjs.length > 0) {
+          setActiveProjectId((cur) => {
+            if (clientProjs.some((p) => p.id === cur)) return cur;
+            const newProjId = clientProjs[0].id;
+            const relatedManuals = manuals.filter((m) => m.projectId === newProjId);
+            if (relatedManuals.length > 0) {
+              setActiveManualId(relatedManuals[0].id);
+            }
+            return newProjId;
+          });
+        }
       }
-      return [savedProject, ...prev];
+      setViewMode('project');
+    },
+    [projects, manuals]
+  );
+
+  // Handler: Save Client (create or edit) - persisted to Firestore
+  const handleSaveClient = useCallback((savedClient: Client) => {
+    setClients((prev) => {
+      const exists = prev.some((c) => c.id === savedClient.id);
+      if (exists) {
+        return prev.map((c) => (c.id === savedClient.id ? savedClient : c));
+      }
+      return [savedClient, ...prev];
     });
-    saveProjectToDatabase(savedProject);
-    setActiveProjectId(savedProject.id);
-    setViewMode('project');
+    saveClientToDatabase(savedClient);
+    setActiveClientId(savedClient.id);
   }, []);
+
+  // Handler: Delete Client
+  const handleDeleteClient = useCallback(
+    (clientId: string) => {
+      setClients((prev) => {
+        const updated = prev.filter((c) => c.id !== clientId);
+        manualStorage.deleteClient(clientId, updated);
+        deleteClientFromDatabase(clientId);
+        return updated;
+      });
+      if (activeClientId === clientId) {
+        const remaining = clients.filter((c) => c.id !== clientId);
+        if (remaining.length > 0) {
+          handleSelectClient(remaining[0].id);
+        }
+      }
+    },
+    [activeClientId, clients, handleSelectClient]
+  );
+
+  // Handler: Download Master Index HTML for a Client
+  const handleDownloadMasterIndex = useCallback(
+    (client: Client) => {
+      const clientProjects =
+        client.id === 'all' ? projects : projects.filter((p) => p.clientId === client.id);
+      const clientManuals = manuals.filter((m) => clientProjects.some((p) => p.id === m.projectId));
+      const htmlContent = generateClientMasterIndexHtml(client, clientProjects, clientManuals, branding);
+
+      const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Indice_Maestro_${client.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_SAP.html`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    },
+    [projects, manuals, branding]
+  );
+
+  // Handler: Save Project (create or edit) - persisted to Firestore
+  const handleSaveProject = useCallback(
+    (savedProject: Project) => {
+      setProjects((prev) => {
+        const exists = prev.some((p) => p.id === savedProject.id);
+        if (exists) {
+          return prev.map((p) => (p.id === savedProject.id ? savedProject : p));
+        }
+        return [savedProject, ...prev];
+      });
+      saveProjectToDatabase(savedProject);
+      setActiveProjectId(savedProject.id);
+      if (savedProject.clientId && savedProject.clientId !== activeClientId) {
+        setActiveClientId(savedProject.clientId);
+      }
+      setViewMode('project');
+    },
+    [activeClientId]
+  );
 
   // Handler: Select a Project
   const handleSelectProject = useCallback((projectId: string) => {
@@ -292,12 +449,15 @@ export default function App() {
     );
   }, []);
 
-  const handleSaveAnnotations = useCallback((annotations: any[]) => {
-    if (!annotatingStep) return;
-    const updatedStep = { ...annotatingStep, annotations };
-    handleSaveStep(updatedStep);
-    setAnnotatingStep(updatedStep);
-  }, [annotatingStep, handleSaveStep]);
+  const handleSaveAnnotations = useCallback(
+    (annotations: any[]) => {
+      if (!annotatingStep) return;
+      const updatedStep = { ...annotatingStep, annotations };
+      handleSaveStep(updatedStep);
+      setAnnotatingStep(updatedStep);
+    },
+    [annotatingStep, handleSaveStep]
+  );
 
   const handleAddNewStep = useCallback(() => {
     if (!activeManual) return;
@@ -323,8 +483,17 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans">
-      {/* Top Navbar with Project selector & View Mode switch */}
+      {/* Top Navbar with 3-Tier Selector: Cliente -> Proyecto -> Manual */}
       <Navbar
+        clients={clients}
+        activeClientId={activeClientId}
+        onSelectClient={handleSelectClient}
+        onOpenNewClientModal={() => {
+          setEditingClient(null);
+          setIsClientModalOpen(true);
+        }}
+        onOpenManageClientsModal={() => setIsManageClientsModalOpen(true)}
+        onDownloadMasterIndex={handleDownloadMasterIndex}
         projects={projects}
         activeProjectId={activeProjectId}
         onSelectProject={handleSelectProject}
@@ -354,6 +523,7 @@ export default function App() {
         {viewMode === 'project' && activeProject ? (
           <ProjectWorkspace
             project={activeProject}
+            client={activeClient}
             allProjects={projects}
             manualsInProject={manualsInActiveProject}
             allManuals={manuals}
@@ -366,6 +536,8 @@ export default function App() {
             onLinkManualToProject={handleLinkManualToProject}
             onUnlinkManualFromProject={handleUnlinkManualFromProject}
             onDeleteManual={handleDeleteManual}
+            onOpenManageClientsModal={() => setIsManageClientsModalOpen(true)}
+            onDownloadMasterIndex={handleDownloadMasterIndex}
             branding={branding}
             onOpenOurLogoModal={() => setIsOurLogoModalOpen(true)}
           />
@@ -387,9 +559,9 @@ export default function App() {
         ) : (
           <div className="max-w-md mx-auto text-center py-24 px-4">
             <BookOpen className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-            <h3 className="text-base font-bold text-slate-900">No hay manuales creados</h3>
+            <h3 className="text-base font-bold text-slate-900">No hay manuales creados en este proyecto</h3>
             <p className="text-xs text-slate-500 mt-1 mb-4">
-              Crea tu primer manual subiendo capturas de pantalla o grabando un video de tu flujo.
+              Crea tu primer manual subiendo capturas de pantalla o grabando un video de tu flujo operativo SAP.
             </p>
             <button
               onClick={() => {
@@ -410,20 +582,56 @@ export default function App() {
           <div className="flex items-center gap-2">
             <span className="font-bold text-slate-800">ManualCraft AI</span>
             <span>·</span>
-            <span>Gestión de Proyectos, Clientes y Solución Integral de Manuales</span>
+            <span>Jerarquía Corporativa: Cliente → Proyectos → Manuales SAP</span>
           </div>
           <div className="flex items-center gap-4">
-            <span>Cliente &amp; Logo Personalizado</span>
+            <span>Cliente Activo: <strong className="text-slate-800">{activeClient?.name}</strong></span>
             <span>·</span>
             <span>Dossier Consolidado</span>
             <span>·</span>
-            <span>Exportación Oficial en PDF</span>
+            <span>Exportación Oficial en PDF &amp; HTML</span>
           </div>
         </div>
       </footer>
 
       {/* LAZY LOADED MODALS WITH SUSPENSE */}
       <Suspense fallback={null}>
+        {/* Modal de Crear / Editar Cliente */}
+        {isClientModalOpen && (
+          <ClientModal
+            isOpen={isClientModalOpen}
+            onClose={() => {
+              setIsClientModalOpen(false);
+              setEditingClient(null);
+            }}
+            onSaveClient={handleSaveClient}
+            existingClient={editingClient}
+          />
+        )}
+
+        {/* Modal de Gestión de Todos los Clientes */}
+        {isManageClientsModalOpen && (
+          <ClientManagementModal
+            isOpen={isManageClientsModalOpen}
+            onClose={() => setIsManageClientsModalOpen(false)}
+            clients={clients}
+            activeClientId={activeClientId}
+            onSelectClient={handleSelectClient}
+            onOpenNewClientModal={() => {
+              setEditingClient(null);
+              setIsClientModalOpen(true);
+            }}
+            onOpenEditClientModal={(client) => {
+              setEditingClient(client);
+              setIsClientModalOpen(true);
+            }}
+            onDeleteClient={handleDeleteClient}
+            projects={projects}
+            manuals={manuals}
+            onDownloadMasterIndex={handleDownloadMasterIndex}
+          />
+        )}
+
         {isOurLogoModalOpen && (
           <OrganizationLogoModal
             isOpen={isOurLogoModalOpen}
@@ -444,6 +652,8 @@ export default function App() {
             }}
             onSaveProject={handleSaveProject}
             existingProject={editingProject}
+            clients={clients}
+            activeClientId={activeClientId}
             branding={branding}
             onOpenOurLogoModal={() => setIsOurLogoModalOpen(true)}
           />
@@ -455,7 +665,7 @@ export default function App() {
             onClose={() => setIsCreateModalOpen(false)}
             onManualCreated={handleManualCreated}
             onOpenSimulator={() => setIsSimulatorOpen(true)}
-            projects={projects}
+            projects={projectsInActiveClient}
             activeProjectId={createManualProjectId || activeProjectId}
           />
         )}
@@ -476,15 +686,33 @@ export default function App() {
           />
         )}
 
-        {activeManual && isExportModalOpen && (
+        {isExportModalOpen && (
           <ExportModal
-            manual={activeManual}
+            manual={
+              activeManual ||
+              manualsInActiveProject[0] ||
+              manuals[0] || {
+                id: 'manual-default',
+                title: 'Manual de Usuario SAP',
+                description: '',
+                overview: '',
+                difficulty: 'Principiante',
+                estimatedMinutes: 5,
+                steps: [],
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              }
+            }
             isOpen={isExportModalOpen}
             onClose={() => setIsExportModalOpen(false)}
             project={activeProject}
             manualsInProject={manualsInActiveProject}
             branding={branding}
             onOpenOurLogoModal={() => setIsOurLogoModalOpen(true)}
+            client={activeClient}
+            clients={clients}
+            allProjects={projects}
+            allManuals={manuals}
           />
         )}
 

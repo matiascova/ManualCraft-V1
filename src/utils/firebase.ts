@@ -13,6 +13,7 @@ import {
 } from 'firebase/firestore';
 import type { UserManual } from '../types/manual';
 import type { Project } from '../types/project';
+import type { Client } from '../types/client';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 // Initialize Firebase App singleton
@@ -244,3 +245,58 @@ export async function deleteProjectFromDatabase(projectId: string): Promise<bool
     return false;
   }
 }
+
+// =========================================================================
+// Real-time Collaborative Sync for Clients (Nivel Superior de la Jerarquía)
+// =========================================================================
+
+export function subscribeToSharedClients(
+  onUpdate: (clients: Client[]) => void,
+  onError?: (error: Error) => void
+) {
+  const clientsCol = collection(db, 'clients');
+
+  return onSnapshot(
+    clientsCol,
+    (snapshot) => {
+      const list: Client[] = [];
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data() as Client;
+        list.push({ ...data, id: docSnap.id });
+      });
+      onUpdate(list);
+    },
+    (err) => {
+      console.error('[Firebase] Error synchronizing shared clients:', err);
+      if (onError) onError(err);
+    }
+  );
+}
+
+export async function saveClientToDatabase(client: Client): Promise<boolean> {
+  try {
+    const docRef = doc(db, 'clients', client.id);
+    const cleaned = cleanForFirestore({
+      ...client,
+      updatedAt: new Date().toISOString(),
+    });
+
+    await setDoc(docRef, cleaned, { merge: true });
+    return true;
+  } catch (err) {
+    console.error('[Firebase] Failed to save client to shared database:', err);
+    return false;
+  }
+}
+
+export async function deleteClientFromDatabase(clientId: string): Promise<boolean> {
+  try {
+    const docRef = doc(db, 'clients', clientId);
+    await deleteDoc(docRef);
+    return true;
+  } catch (err) {
+    console.error('[Firebase] Failed to delete client from shared database:', err);
+    return false;
+  }
+}
+

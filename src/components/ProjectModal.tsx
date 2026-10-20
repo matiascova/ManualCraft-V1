@@ -21,6 +21,7 @@ import {
   GLOBAL_TECH_LOGO,
 } from '../data/sampleProjects';
 import { OrganizationBranding } from '../types/branding';
+import { Client } from '../types/client';
 import { DictationButton } from './DictationButton';
 
 interface ProjectModalProps {
@@ -28,6 +29,8 @@ interface ProjectModalProps {
   onClose: () => void;
   onSaveProject: (project: Project) => void;
   existingProject?: Project | null;
+  clients?: Client[];
+  activeClientId?: string;
   branding?: OrganizationBranding;
   onOpenOurLogoModal?: () => void;
 }
@@ -37,11 +40,16 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
   onClose,
   onSaveProject,
   existingProject = null,
+  clients = [],
+  activeClientId = '',
   branding,
   onOpenOurLogoModal,
 }) => {
   const isEditing = !!existingProject;
 
+  const [clientId, setClientId] = useState<string>(
+    existingProject?.clientId || activeClientId || clients[0]?.id || 'cli-weber'
+  );
   const [name, setName] = useState(existingProject?.name || '');
   const [code, setCode] = useState(existingProject?.code || '');
   const [organizationName, setOrganizationName] = useState(existingProject?.organizationName || '');
@@ -118,6 +126,7 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
 
     const projectToSave: Project = {
       id: existingProject ? existingProject.id : `prj-${Date.now()}`,
+      clientId: clientId || 'cli-weber',
       name: name.trim(),
       code: code.trim() || `PRJ-${new Date().getFullYear()}-${Math.floor(Math.random() * 900 + 100)}`,
       organizationName: organizationName.trim() || undefined,
@@ -230,6 +239,42 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
             {activeTab === 'general' && (
               <div className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Selector de Cliente Corporativo (Nivel Superior de la Jerarquía) */}
+                  <div className="sm:col-span-2 p-3.5 bg-indigo-50/50 border border-indigo-100 rounded-xl">
+                    <label className="text-xs font-bold text-slate-800 mb-1 flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <Building2 className="w-4 h-4 text-indigo-600" />
+                        <span>Cliente Corporativo Propietario (Nivel Superior)</span> <span className="text-red-500">*</span>
+                      </span>
+                      <span className="text-[11px] font-medium text-indigo-600">
+                        Jerarquía: Cliente → Proyecto → Manuales
+                      </span>
+                    </label>
+                    <select
+                      value={clientId}
+                      onChange={(e) => {
+                        const selectedId = e.target.value;
+                        setClientId(selectedId);
+                        const chosen = clients.find((c) => c.id === selectedId);
+                        if (chosen) {
+                          setClientName(chosen.name);
+                          if (chosen.logo) setClientLogo(chosen.logo);
+                          if (chosen.brandColor) setColorTheme(chosen.brandColor);
+                        }
+                      }}
+                      className="w-full text-xs font-bold px-3 py-2 border border-indigo-200 rounded-lg bg-white text-slate-800 focus:ring-2 focus:ring-indigo-500 focus:outline-none shadow-xs"
+                    >
+                      {clients.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name} · {c.legalName || c.code} {c.sapMandante ? `(${c.sapMandante})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      Al cambiar de cliente se asocia automáticamente su logo institucional y su esquema de color oficial.
+                    </p>
+                  </div>
+
                   <div className="sm:col-span-2">
                     <div className="flex items-center justify-between mb-1">
                       <label className="text-xs font-bold text-slate-700">
