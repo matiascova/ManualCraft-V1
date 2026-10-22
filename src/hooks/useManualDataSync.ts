@@ -87,23 +87,32 @@ export function useManualDataSync(): UseManualDataSyncReturn {
 
     // Real-time subscription to shared projects collection
     const unsubProjects = subscribeToSharedProjects((remoteProjects) => {
-      if (remoteProjects && remoteProjects.length > 0) {
-        const normalized = remoteProjects.map(normalizeProject);
-        setProjects(normalized);
+      const nonDeleted = (remoteProjects || []).filter((p) => !manualStorage.isProjectDeleted(p.id));
+      const existingRemoteIds = new Set(nonDeleted.map((p) => p.id));
 
-        // Guarded normalization sync: ensure each corrected project is sent at most once
-        normalized.forEach((p) => {
-          const orig = remoteProjects.find((rp) => rp.id === p.id);
-          const needsFix = orig && (orig.clientId !== p.clientId || orig.clientName !== p.clientName);
-          if (needsFix && !correctedProjectsSyncSet.current.has(p.id)) {
-            correctedProjectsSyncSet.current.add(p.id);
-            saveProjectToDatabase(p).catch(() => {});
-          }
-        });
-      } else if (!hasAttemptedProjectSeed) {
+      // Also ensure any non-deleted sample projects that might be missing are preserved
+      const missingDefaults = SAMPLE_PROJECTS
+        .map(normalizeProject)
+        .filter((p) => !existingRemoteIds.has(p.id) && !manualStorage.isProjectDeleted(p.id));
+
+      const fullProjectList = [...nonDeleted.map(normalizeProject), ...missingDefaults];
+      setProjects(fullProjectList);
+      manualStorage.saveProjects(fullProjectList);
+
+      // Guarded normalization sync: ensure each corrected project is sent at most once
+      fullProjectList.forEach((p) => {
+        const orig = remoteProjects.find((rp) => rp.id === p.id);
+        const needsFix = orig && (orig.clientId !== p.clientId || orig.clientName !== p.clientName);
+        if (needsFix && !correctedProjectsSyncSet.current.has(p.id)) {
+          correctedProjectsSyncSet.current.add(p.id);
+          saveProjectToDatabase(p).catch(() => {});
+        }
+      });
+
+      // Seed missing defaults to Firestore once
+      if (!hasAttemptedProjectSeed && missingDefaults.length > 0) {
         hasAttemptedProjectSeed = true;
-        const local = manualStorage.loadProjects(SAMPLE_PROJECTS).map(normalizeProject);
-        local.forEach((p) => {
+        missingDefaults.forEach((p) => {
           saveProjectToDatabase(p).catch(() => {});
         });
       }
@@ -189,8 +198,14 @@ export function useManualDataSync(): UseManualDataSyncReturn {
   }, []);
 
   const handleDeleteProject = useCallback((projectId: string) => {
-    setProjects((prev) => prev.filter((p) => p.id !== projectId));
-    deleteProjectFromDatabase(projectId);
+    setProjects((prev) => {
+      const updated = prev.filter((p) => p.id !== projectId);
+      manualStorage.deleteProject(projectId, updated);
+      return updated;
+    });
+    deleteProjectFromDatabase(projectId).catch((err) => {
+      console.warn('[Firebase] deleteProjectFromDatabase error:', err);
+    });
   }, []);
 
   // Manual CRUD

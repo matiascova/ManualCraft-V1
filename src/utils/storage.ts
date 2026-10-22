@@ -9,6 +9,7 @@ const CLIENTS_STORAGE_KEY = 'manualcraft_user_clients_v1';
 const MANUALS_STORAGE_KEY = 'manualcraft_user_manuals_v1';
 const DELETED_MANUALS_KEY = 'manualcraft_deleted_manual_ids_v1';
 const PROJECTS_STORAGE_KEY = 'manualcraft_user_projects_v1';
+const DELETED_PROJECTS_KEY = 'manualcraft_deleted_project_ids_v1';
 const BRANDING_STORAGE_KEY = 'manualcraft_organization_branding_v1';
 
 // High-scale IndexedDB constants for unlimited storage quota
@@ -112,6 +113,7 @@ class ManualStorageService {
   private inMemoryManualsFallback: UserManual[] | null = null;
   private inMemoryProjectsFallback: Project[] | null = null;
   private inMemoryDeletedIds: Set<string> = new Set();
+  private inMemoryDeletedProjectIds: Set<string> = new Set();
   private clientsSaveTimer: any = null;
   private manualsSaveTimer: any = null;
   private projectsSaveTimer: any = null;
@@ -124,6 +126,18 @@ class ManualStorageService {
           const arr: string[] = JSON.parse(deletedRaw);
           if (Array.isArray(arr)) {
             this.inMemoryDeletedIds = new Set(arr);
+          }
+        }
+      } catch {
+        // Safe fallback
+      }
+
+      try {
+        const deletedProjectsRaw = localStorage.getItem(DELETED_PROJECTS_KEY);
+        if (deletedProjectsRaw) {
+          const arr: string[] = JSON.parse(deletedProjectsRaw);
+          if (Array.isArray(arr)) {
+            this.inMemoryDeletedProjectIds = new Set(arr);
           }
         }
       } catch {
@@ -200,9 +214,30 @@ class ManualStorageService {
     return true;
   }
 
+  public isProjectDeleted(projectId: string): boolean {
+    if (this.inMemoryDeletedProjectIds.has(projectId)) {
+      return true;
+    }
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        const raw = localStorage.getItem(DELETED_PROJECTS_KEY);
+        if (raw) {
+          const arr: string[] = JSON.parse(raw);
+          if (Array.isArray(arr) && arr.includes(projectId)) {
+            this.inMemoryDeletedProjectIds.add(projectId);
+            return true;
+          }
+        }
+      } catch {
+        // Safe fallback
+      }
+    }
+    return false;
+  }
+
   public loadProjects(defaultProjects: Project[] = SAMPLE_PROJECTS): Project[] {
     if (this.inMemoryProjectsFallback) {
-      return this.inMemoryProjectsFallback;
+      return this.inMemoryProjectsFallback.filter((p) => !this.isProjectDeleted(p.id));
     }
 
     try {
@@ -211,11 +246,13 @@ class ManualStorageService {
         if (saved) {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            const normalizedParsed = parsed.map(normalizeProject);
+            const normalizedParsed = parsed
+              .map(normalizeProject)
+              .filter((p: Project) => !this.isProjectDeleted(p.id));
             const existingIds = new Set(normalizedParsed.map((p: Project) => p.id));
             const missingDefaults = defaultProjects
               .map(normalizeProject)
-              .filter((p) => !existingIds.has(p.id));
+              .filter((p) => !existingIds.has(p.id) && !this.isProjectDeleted(p.id));
 
             const result =
               missingDefaults.length > 0 ? [...normalizedParsed, ...missingDefaults] : normalizedParsed;
@@ -229,13 +266,16 @@ class ManualStorageService {
       console.warn('[ManualStorageService] Failed to read projects from localStorage:', err);
     }
 
-    const initial = defaultProjects.map(normalizeProject);
+    const initial = defaultProjects
+      .map(normalizeProject)
+      .filter((p) => !this.isProjectDeleted(p.id));
     this.inMemoryProjectsFallback = initial;
     return initial;
   }
 
   public saveProjects(projects: Project[]): boolean {
-    this.inMemoryProjectsFallback = projects;
+    const sanitized = projects.filter((p) => !this.isProjectDeleted(p.id));
+    this.inMemoryProjectsFallback = sanitized;
     if (typeof window === 'undefined' || !window.localStorage) {
       return true;
     }
@@ -247,12 +287,36 @@ class ManualStorageService {
     // Schedule write on idle tick to avoid blocking frame render
     this.projectsSaveTimer = setTimeout(() => {
       try {
-        localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(projects));
-        idb.set(PROJECTS_STORAGE_KEY, projects).catch(() => {});
+        localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(sanitized));
+        idb.set(PROJECTS_STORAGE_KEY, sanitized).catch(() => {});
       } catch (err) {
         console.warn('[ManualStorageService] Error saving projects to localStorage:', err);
       }
     }, 150);
+
+    return true;
+  }
+
+  public deleteProject(projectId: string, updatedList: Project[]): boolean {
+    if (this.projectsSaveTimer) {
+      clearTimeout(this.projectsSaveTimer);
+      this.projectsSaveTimer = null;
+    }
+
+    this.inMemoryDeletedProjectIds.add(projectId);
+    const sanitized = updatedList.filter((p) => p.id !== projectId && !this.inMemoryDeletedProjectIds.has(p.id));
+    this.inMemoryProjectsFallback = sanitized;
+
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        localStorage.setItem(DELETED_PROJECTS_KEY, JSON.stringify(Array.from(this.inMemoryDeletedProjectIds)));
+        localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(sanitized));
+      }
+      idb.set(PROJECTS_STORAGE_KEY, sanitized).catch(() => {});
+      idb.set(DELETED_PROJECTS_KEY, Array.from(this.inMemoryDeletedProjectIds)).catch(() => {});
+    } catch (err) {
+      console.warn('[ManualStorageService] Failed to delete project from localStorage:', err);
+    }
 
     return true;
   }

@@ -82,12 +82,12 @@ export function useHierarchyNavigation({
     return projects.filter((p) => p.clientId === activeClientId);
   }, [projects, activeClientId, isAllClients]);
 
-  // Active Project entity (fallback to first valid project in filtered client scope)
+  // Active Project entity (strictly scoped to filtered client projects)
   const activeProject = useMemo(() => {
     const found = projectsInActiveClient.find((p) => p.id === activeProjectId);
     if (found) return found;
-    return projectsInActiveClient[0] || projects[0] || SAMPLE_PROJECTS[0];
-  }, [projectsInActiveClient, projects, activeProjectId]);
+    return projectsInActiveClient[0] || (isAllClients ? projects[0] : null) || null;
+  }, [projectsInActiveClient, projects, activeProjectId, isAllClients]);
 
   // Associated manuals in active project
   const manualsInActiveProject = useMemo(() => {

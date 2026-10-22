@@ -36,9 +36,27 @@ app.use((req, res, next) => {
   next();
 });
 
-// Limit body parsing to prevent memory exhaustion from oversized requests
-app.use(express.json({ limit: '60mb' }));
-app.use(express.urlencoded({ extended: true, limit: '60mb' }));
+// Generous body parsing limits for multi-screenshot recording payloads
+app.use(express.json({ limit: '200mb' }));
+app.use(express.urlencoded({ extended: true, limit: '200mb' }));
+
+// Dedicated error handler for body-parser to ensure JSON errors are returned instead of HTML error pages
+app.use((err: any, req: Request, res: Response, next: any) => {
+  if (err && (err.type === 'entity.too.large' || err.status === 413)) {
+    console.error('Payload too large error (413):', err.message);
+    return res.status(413).json({
+      success: false,
+      error: 'El volumen de capturas supera el límite del servidor (Error 413). Se ha activado la compresión automática.',
+    });
+  }
+  if (err && (err instanceof SyntaxError || err.status === 400)) {
+    return res.status(400).json({
+      success: false,
+      error: 'Formato de datos no válido en la solicitud.',
+    });
+  }
+  next(err);
+});
 
 // Safe Gemini client factory
 function getAiClient(): GoogleGenAI | null {
@@ -54,45 +72,6 @@ function getAiClient(): GoogleGenAI | null {
   });
 }
 
-// High-throughput concurrency limiter to protect against thundering herd & API quota exhaustion
-class AsyncSemaphore {
-  private capacity: number;
-  private running = 0;
-  private queue: (() => void)[] = [];
-
-  constructor(capacity: number) {
-    this.capacity = capacity;
-  }
-
-  async acquire(): Promise<() => void> {
-    if (this.running < this.capacity) {
-      this.running++;
-      return () => this.release();
-    }
-    return new Promise((resolve) => {
-      this.queue.push(() => {
-        this.running++;
-        resolve(() => this.release());
-      });
-    });
-  }
-
-  private release() {
-    this.running--;
-    const next = this.queue.shift();
-    if (next) {
-      next();
-    }
-  }
-
-  get stats() {
-    return { running: this.running, queued: this.queue.length, capacity: this.capacity };
-  }
-}
-
-// Limits simultaneous heavy Gemini multimodal calls to 4, queuing excess callers cleanly
-const aiSemaphore = new AsyncSemaphore(4);
-
 // Endpoint: Healthcheck with Container Telemetry
 app.get('/api/health', (req: Request, res: Response) => {
   const mem = process.memoryUsage();
@@ -101,11 +80,9 @@ app.get('/api/health', (req: Request, res: Response) => {
     status: 'ok',
     uptimeSec: Math.round(process.uptime()),
     hasApiKey: Boolean(process.env.GEMINI_API_KEY),
-    aiConcurrency: aiSemaphore.stats,
     memoryMb: {
       rss: Math.round(mem.rss / (1024 * 1024)),
       heapUsed: Math.round(mem.heapUsed / (1024 * 1024)),
-      heapTotal: Math.round(mem.heapTotal / (1024 * 1024)),
     },
   });
 });
@@ -144,7 +121,6 @@ app.get('/api/clients/:clientId/master-index', (req: Request, res: Response) => 
 
 // Endpoint: Generate Manual from Screenshots / Video frames
 app.post('/api/generate-manual', async (req: Request, res: Response) => {
-  const release = await aiSemaphore.acquire();
   try {
     if (req.destroyed || res.writableEnded) {
       return;
@@ -173,20 +149,9 @@ app.post('/api/generate-manual', async (req: Request, res: Response) => {
       });
     }
 
-    // Build multimodal parts for Gemini
-    // Deduplicate consecutive identical frames (e.g. repeated static initial screens)
-    const deduplicatedImages: typeof images = [];
-    for (let i = 0; i < images.length; i++) {
-      const cur = images[i];
-      const prev = deduplicatedImages[deduplicatedImages.length - 1];
-      if (prev && prev.dataUrl === cur.dataUrl) {
-        continue;
-      }
-      deduplicatedImages.push(cur);
-    }
-
-    // Limit to max 14 frames to prevent timeout and ensure high fidelity
-    const selectedImages = deduplicatedImages.slice(0, 14);
+    // Multi-modal processing: respect all captured frames provided by the user (every frame represents an intentional step)
+    const deduplicatedImages: typeof images = images;
+    const selectedImages = deduplicatedImages.slice(0, 75);
 
     const parts: any[] = [];
 
@@ -429,11 +394,17 @@ Asegúrate de responder estrictamente en el formato JSON estructurado solicitado
         }
         try {
           attempts++;
-          const response = await ai.models.generateContent({
+          const aiPromise = ai.models.generateContent({
             model: modelName,
             contents: { parts },
             config: schemaConfig as any,
           });
+
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error(`Timeout en ${modelName} tras 30 segundos`)), 30000)
+          );
+
+          const response = (await Promise.race([aiPromise, timeoutPromise])) as any;
 
           const rawJson = response.text || '{}';
           parsedData = JSON.parse(rawJson);
@@ -464,7 +435,7 @@ Asegúrate de responder estrictamente en el formato JSON estructurado solicitado
     // If Gemini still failed due to temporary high demand (503), construct a structured fallback
     // using the extracted frame labels, instructor transcripts, and user topic so the user never loses their screenshots!
     if (!parsedData || !parsedData.steps) {
-      const fallbackSteps = selectedImages.map((img, idx) => {
+      const fallbackSteps = deduplicatedImages.map((img, idx) => {
         const label = img.label || `Paso ${idx + 1}`;
         let actionType = 'click';
         if (label.toLowerCase().includes('enter')) actionType = 'enter';
@@ -506,7 +477,7 @@ Asegúrate de responder estrictamente en el formato JSON estructurado solicitado
         title: topic ? `Manual: ${topic}` : 'Manual de Usuario',
         subtitle: 'Guía paso a paso generada a partir de capturas de pantalla',
         overview: context || `Guía operativa para completar el procedimiento de ${topic || 'sistema'}.`,
-        estimatedMinutes: Math.max(3, selectedImages.length * 2),
+        estimatedMinutes: Math.max(3, deduplicatedImages.length * 2),
         difficulty: 'Principiante',
         prerequisites: ['Acceso con credenciales al sistema'],
         steps: fallbackSteps,
@@ -523,8 +494,8 @@ Asegúrate de responder estrictamente en el formato JSON estructurado solicitado
 
     // Map AI steps back with the actual image data
     const mappedSteps = (parsedData.steps || []).map((s: any, idx: number) => {
-      const sourceImageIndex = typeof s.stepIndex === 'number' && s.stepIndex < selectedImages.length ? s.stepIndex : idx;
-      const matchedImage = selectedImages[sourceImageIndex] || selectedImages[idx];
+      const sourceImageIndex = typeof s.stepIndex === 'number' && s.stepIndex < deduplicatedImages.length ? s.stepIndex : idx;
+      const matchedImage = deduplicatedImages[sourceImageIndex] || deduplicatedImages[idx];
 
       const annotations: any[] = [];
 
@@ -637,19 +608,54 @@ Asegúrate de responder estrictamente en el formato JSON estructurado solicitado
       };
     });
 
-    // If fewer AI steps than images, create fallback steps for the remaining images
-    if (mappedSteps.length < selectedImages.length) {
-      for (let i = mappedSteps.length; i < selectedImages.length; i++) {
+    // Ensure all deduplicated images recorded by the user are represented in the final manual steps!
+    if (mappedSteps.length < deduplicatedImages.length) {
+      for (let i = mappedSteps.length; i < deduplicatedImages.length; i++) {
+        const fallbackImg = deduplicatedImages[i];
+        const label = fallbackImg?.label || `Paso ${i + 1}`;
+        let fallbackAction: 'click' | 'type' | 'enter' | 'save' = 'click';
+        if (label.toLowerCase().includes('enter')) fallbackAction = 'enter';
+        else if (label.toLowerCase().includes('dato') || label.toLowerCase().includes('escribir')) fallbackAction = 'type';
+        else if (label.toLowerCase().includes('grabar') || label.toLowerCase().includes('guardar')) fallbackAction = 'save';
+
+        let stepInstructorNote = '';
+        if (transcriptItems.length > 0) {
+          const matchedTrans =
+            fallbackImg?.timestamp !== undefined
+              ? transcriptItems.find((t: any) => Math.abs(t.timestamp - fallbackImg.timestamp!) <= 4)
+              : transcriptItems[i] || transcriptItems[0];
+          if (matchedTrans) {
+            stepInstructorNote = matchedTrans.text;
+          }
+        }
+
+        const focalX = typeof (fallbackImg as any)?.focalX === 'number' ? (fallbackImg as any).focalX : 50;
+        const focalY = typeof (fallbackImg as any)?.focalY === 'number' ? (fallbackImg as any).focalY : 50;
+
         mappedSteps.push({
           id: `step-${i + 1}-${Date.now()}`,
           stepNumber: i + 1,
-          title: `Paso ${i + 1}: Continuar con el proceso`,
-          actionType: 'click',
-          description: 'Sigue las indicaciones mostradas en la pantalla.',
-          image: selectedImages[i]?.dataUrl,
-          imageName: selectedImages[i]?.label,
-          timestamp: selectedImages[i]?.timestamp,
-          annotations: [],
+          title: `Paso ${i + 1}: ${label}`,
+          actionType: fallbackAction,
+          description: `Realiza la acción correspondiente en la pantalla para continuar con el flujo de ${topic || 'la tarea'}.`,
+          purpose: `Asegurar la ejecución exitosa de la etapa ${i + 1}.`,
+          targetElement: label,
+          expectedResult: 'El sistema valida la acción y avanza al siguiente paso.',
+          instructorNotes: stepInstructorNote,
+          instructorAudioQuote: stepInstructorNote,
+          image: fallbackImg?.dataUrl,
+          imageName: fallbackImg?.label,
+          timestamp: fallbackImg?.timestamp,
+          annotations: [
+            {
+              id: `ann-${i}-${Date.now()}`,
+              x: Math.max(5, Math.min(95, focalX)),
+              y: Math.max(5, Math.min(95, focalY)),
+              shape: 'circle' as const,
+              color: '#ef4444',
+              label: label,
+            },
+          ],
         });
       }
     }
@@ -680,14 +686,11 @@ Asegúrate de responder estrictamente en el formato JSON estructurado solicitado
     res.status(500).json({
       error: error.message || 'Error al procesar el manual con inteligencia artificial',
     });
-  } finally {
-    release();
   }
 });
 
 // Endpoint: AI Enhance / Rewrite a Single Step
 app.post('/api/enhance-step', async (req: Request, res: Response) => {
-  const release = await aiSemaphore.acquire();
   try {
     const { step, instruction, context } = req.body;
 
@@ -735,9 +738,27 @@ Responde en formato JSON con la versión mejorada del paso.`;
   } catch (error: any) {
     console.error('Error enhancing step:', error);
     res.status(500).json({ error: error.message || 'Error al mejorar el paso' });
-  } finally {
-    release();
   }
+});
+
+// Explicit Error Handler for all API routes - Guarantees JSON response, NEVER HTML
+app.use('/api', (err: any, req: Request, res: Response, next: any) => {
+  console.error('API Error handler:', err);
+  if (res.headersSent) {
+    return next(err);
+  }
+  res.status(err.status || 500).json({
+    success: false,
+    error: err.message || 'Error en el servidor de inteligencia artificial.',
+  });
+});
+
+// Explicit 404 for API routes so unmatched endpoints never serve index.html
+app.all('/api/*', (req: Request, res: Response) => {
+  res.status(404).json({
+    success: false,
+    error: `Ruta API no encontrada: ${req.method} ${req.path}`,
+  });
 });
 
 // Serve frontend with Vite in development or static in production

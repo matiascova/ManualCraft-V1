@@ -115,27 +115,27 @@ export default function App() {
   const handleDeleteProjectAndNavigate = useCallback(
     (projectIdToDelete: string) => {
       handleDeleteProject(projectIdToDelete);
-      setActiveProjectId((currentId) => {
-        if (currentId === projectIdToDelete) {
-          const remainingInClient = projects.filter(
-            (p) => p.id !== projectIdToDelete && (activeClientId === 'all' || p.clientId === activeClientId)
-          );
-          if (remainingInClient.length > 0) {
-            return remainingInClient[0].id;
-          }
-          const anyRemaining = projects.filter((p) => p.id !== projectIdToDelete);
-          if (anyRemaining.length > 0) {
-            if (anyRemaining[0].clientId && anyRemaining[0].clientId !== activeClientId) {
-              setActiveClientId(anyRemaining[0].clientId);
-            }
-            return anyRemaining[0].id;
-          }
-          return '';
+
+      const remainingProjects = projects.filter((p) => p.id !== projectIdToDelete);
+      const remainingInClient = remainingProjects.filter(
+        (p) => activeClientId === 'all' || p.clientId === activeClientId
+      );
+
+      if (remainingInClient.length > 0) {
+        setActiveProjectId(remainingInClient[0].id);
+      } else if (remainingProjects.length > 0) {
+        const nextProject = remainingProjects[0];
+        if (nextProject.clientId && nextProject.clientId !== activeClientId && activeClientId !== 'all') {
+          setActiveClientId(nextProject.clientId);
         }
-        return currentId;
-      });
+        setActiveProjectId(nextProject.id);
+      } else {
+        setActiveProjectId('');
+      }
+
+      setViewMode('project');
     },
-    [handleDeleteProject, projects, activeClientId, setActiveProjectId, setActiveClientId]
+    [handleDeleteProject, projects, activeClientId, setActiveProjectId, setActiveClientId, setViewMode]
   );
   const handleDeleteManualAndNavigate = useCallback(
     (manualIdToDelete: string) => {
@@ -295,6 +295,7 @@ export default function App() {
             onSelectProject={handleSelectProject}
             onOpenManual={handleSelectManual}
             onOpenCreateManualForProject={handleOpenCreateManualForProject}
+            onManualCreated={handleManualCreated}
             onOpenProjectSettings={handleOpenProjectSettings}
             onOpenExportProject={() => modals.setIsExportModalOpen(true)}
             onUpdateProject={handleSaveProject}
@@ -384,6 +385,7 @@ export default function App() {
             clients={clients}
             activeClientId={activeClientId}
             onSelectClient={handleSelectClient}
+            onSaveClient={handleSaveClient}
             onOpenNewClientModal={() => {
               modals.setEditingClient(null);
               modals.setIsClientModalOpen(true);

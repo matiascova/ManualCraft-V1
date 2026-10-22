@@ -75,6 +75,42 @@ export interface CreateManualModalProps {
   activeProjectId?: string;
 }
 
+// Ultra-fast lightweight canvas compressor for AI payload
+async function compressImageForAi(dataUrl: string, maxDimension = 1280, quality = 0.75): Promise<string> {
+  return new Promise((resolve) => {
+    if (!dataUrl || !dataUrl.startsWith('data:image')) {
+      return resolve(dataUrl);
+    }
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+      if (width <= maxDimension && height <= maxDimension && dataUrl.length < 350000) {
+        return resolve(dataUrl);
+      }
+      if (width > height) {
+        if (width > maxDimension) {
+          height = Math.round((height * maxDimension) / width);
+          width = maxDimension;
+        }
+      } else {
+        if (height > maxDimension) {
+          width = Math.round((width * maxDimension) / height);
+          height = maxDimension;
+        }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return resolve(dataUrl);
+      ctx.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
 export const CreateManualModal: React.FC<CreateManualModalProps> = ({
   isOpen,
   onClose,
@@ -247,6 +283,13 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
   }, [fullscreenViewer.source, autoSnapshots, extractedFrames, screenshots]);
 
   const currentViewerItem = currentViewerItems[fullscreenViewer.currentIndex] || null;
+
+  // Active captures count across modes
+  const activeCapturesCount = useMemo(() => {
+    if (activeTab === 'screenshots') return screenshots.length;
+    if (autoSnapshots.length > 0) return autoSnapshots.length;
+    return extractedFrames.filter((f) => f.selected).length;
+  }, [activeTab, screenshots.length, autoSnapshots.length, extractedFrames]);
 
   // Keyboard navigation for Fullscreen Viewer
   useEffect(() => {
@@ -947,10 +990,22 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
       }));
     }
 
+    const originalImages = imagesToSend.map((img) => img.dataUrl);
+
     setIsGenerating(true);
-    setGenerationStage('Analizando capturas de pantalla y correlacionando con el audio del instructor...');
+    setGenerationStage('Optimizando capturas para procesamiento rápido...');
 
     try {
+      // Compress frames for fast network transmission without losing visual quality
+      const compressedImagesToSend = await Promise.all(
+        imagesToSend.map(async (img) => ({
+          ...img,
+          dataUrl: await compressImageForAi(img.dataUrl, 1280, 0.75),
+        }))
+      );
+
+      setGenerationStage('Analizando capturas de pantalla y correlacionando con el audio del instructor...');
+
       const timer1 = setTimeout(() => {
         setGenerationStage(
           instructorTranscripts.length > 0
@@ -975,7 +1030,7 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
           topic: topic.trim() || 'Procedimiento de Sistema',
           context: context.trim(),
           targetAudience: targetAudience.trim(),
-          images: imagesToSend,
+          images: compressedImagesToSend,
           instructorTranscription:
             instructorTranscripts.length > 0
               ? {
@@ -992,13 +1047,31 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
       clearTimeout(timer1);
       clearTimeout(timer2);
 
-      const data = await response.json();
+      const contentType = response.headers.get('content-type') || '';
+      let data: any;
+      if (contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        const rawText = await response.text();
+        console.error('Non-JSON response from /api/generate-manual:', rawText);
+        if (response.status === 413 || rawText.includes('Payload Too Large') || rawText.includes('too large')) {
+          throw new Error(`Las ${imagesToSend.length} capturas superan el límite del servidor. Usa "Crear Manual Directo" para armar el manual al instante con todas tus capturas.`);
+        }
+        throw new Error(`El servidor respondió con código ${response.status}. Puedes utilizar "Crear Manual Directo" para compilar tu manual de inmediato con todas tus capturas.`);
+      }
+
       if (!response.ok || !data.success) {
         throw new Error(data.error || 'No se pudo generar el manual.');
       }
 
       const generated = data.manual;
       if (generated && Array.isArray(generated.steps)) {
+        // Re-attach pristine high-resolution images to each step
+        generated.steps.forEach((step: any, idx: number) => {
+          if (originalImages[idx]) {
+            step.image = originalImages[idx];
+          }
+        });
         generated.steps = reindexManualSteps(generated.steps);
       }
       if (existingManual) {
@@ -2681,7 +2754,7 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
                   className="py-1.5 px-3 bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 font-semibold text-xs rounded-lg transition-colors shadow-xs"
                   title="Crea el manual con tus capturas inmediatamente sin esperar a la IA"
                 >
-                  Crear Manual Directo
+                  {activeCapturesCount > 0 ? `Crear Manual Directo (${activeCapturesCount} Pasos)` : 'Crear Manual Directo'}
                 </button>
               </div>
             </div>
@@ -2727,7 +2800,7 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
               className="py-2 px-3.5 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-800 font-semibold text-xs rounded-xl border border-slate-300 shadow-2xs transition-colors"
               title="Compila el manual de inmediato con tus capturas y transcripción de voz sin consultar a la IA"
             >
-              Creación Directa (Inmediata)
+              {activeCapturesCount > 0 ? `Creación Directa (${activeCapturesCount} Pasos)` : 'Creación Directa (Inmediata)'}
             </button>
 
             <button
