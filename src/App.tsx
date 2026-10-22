@@ -112,6 +112,42 @@ export default function App() {
     [modals]
   );
 
+  const handleDeleteProjectAndNavigate = useCallback(
+    (projectIdToDelete: string) => {
+      handleDeleteProject(projectIdToDelete);
+      setActiveProjectId((currentId) => {
+        if (currentId === projectIdToDelete) {
+          const remainingInClient = projects.filter(
+            (p) => p.id !== projectIdToDelete && (activeClientId === 'all' || p.clientId === activeClientId)
+          );
+          if (remainingInClient.length > 0) {
+            return remainingInClient[0].id;
+          }
+          const anyRemaining = projects.filter((p) => p.id !== projectIdToDelete);
+          if (anyRemaining.length > 0) {
+            if (anyRemaining[0].clientId && anyRemaining[0].clientId !== activeClientId) {
+              setActiveClientId(anyRemaining[0].clientId);
+            }
+            return anyRemaining[0].id;
+          }
+          return '';
+        }
+        return currentId;
+      });
+    },
+    [handleDeleteProject, projects, activeClientId, setActiveProjectId, setActiveClientId]
+  );
+  const handleDeleteManualAndNavigate = useCallback(
+    (manualIdToDelete: string) => {
+      handleDeleteManual(manualIdToDelete);
+      if (activeManualId === manualIdToDelete) {
+        setActiveManualId('');
+      }
+      setViewMode('project');
+    },
+    [handleDeleteManual, activeManualId, setActiveManualId, setViewMode]
+  );
+
   const handleOpenCreateManualForProject = useCallback(
     (projectId: string) => {
       modals.setCreateManualProjectId(projectId);
@@ -264,7 +300,8 @@ export default function App() {
             onUpdateProject={handleSaveProject}
             onLinkManualToProject={handleLinkManualToProject}
             onUnlinkManualFromProject={handleUnlinkManualFromProject}
-            onDeleteManual={handleDeleteManual}
+            onDeleteManual={handleDeleteManualAndNavigate}
+            onDeleteProject={handleDeleteProjectAndNavigate}
             onOpenManageClientsModal={() => modals.setIsManageClientsModalOpen(true)}
             onDownloadMasterIndex={handleDownloadMasterIndex}
             branding={branding}
@@ -276,7 +313,7 @@ export default function App() {
             project={activeProject}
             onBackToProject={() => setViewMode('project')}
             onUpdateManual={handleUpdateManual}
-            onDeleteManual={handleDeleteManual}
+            onDeleteManual={handleDeleteManualAndNavigate}
             onStartInteractivePlayer={handleStartInteractivePlayer}
             onOpenExportModal={() => modals.setIsExportModalOpen(true)}
             onEditStep={(step) => modals.setEditingStep(step)}
@@ -381,6 +418,8 @@ export default function App() {
               modals.setEditingProject(null);
             }}
             onSaveProject={handleSaveProject}
+            onDeleteProject={handleDeleteProjectAndNavigate}
+            manualsCount={manuals.filter((m) => m.projectId === modals.editingProject?.id).length}
             existingProject={modals.editingProject}
             clients={clients}
             activeClientId={activeClientId === 'all' ? (clients[0]?.id || 'cli-weber') : activeClientId}

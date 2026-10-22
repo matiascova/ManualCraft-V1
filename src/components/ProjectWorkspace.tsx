@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, memo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { Project, ProjectDocumentOptions } from '../types/project';
 import { UserManual } from '../types/manual';
 import { Client } from '../types/client';
@@ -49,6 +49,7 @@ interface ProjectWorkspaceProps {
   onLinkManualToProject: (manualId: string, projectId: string) => void;
   onUnlinkManualFromProject: (manualId: string) => void;
   onDeleteManual?: (manualId: string) => void;
+  onDeleteProject?: (projectId: string) => void;
   onOpenManageClientsModal?: () => void;
   onDownloadMasterIndex?: (client: Client) => void;
   branding?: OrganizationBranding;
@@ -71,6 +72,7 @@ const ProjectWorkspaceComponent: React.FC<ProjectWorkspaceProps> = ({
   onLinkManualToProject,
   onUnlinkManualFromProject,
   onDeleteManual,
+  onDeleteProject,
   onOpenManageClientsModal,
   onDownloadMasterIndex,
   branding,
@@ -79,6 +81,7 @@ const ProjectWorkspaceComponent: React.FC<ProjectWorkspaceProps> = ({
   const [activeTab, setActiveTab] = useState<'manuals' | 'features' | 'info'>('manuals');
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
   const [manualToDelete, setManualToDelete] = useState<UserManual | null>(null);
+  const [isDeleteProjectConfirmOpen, setIsDeleteProjectConfirmOpen] = useState(false);
 
   // Unlinked manuals or manuals from other projects (memoized)
   const availableManualsToLink = useMemo(() => {
@@ -110,6 +113,29 @@ const ProjectWorkspaceComponent: React.FC<ProjectWorkspaceProps> = ({
     });
   }, [project, onUpdateProject]);
 
+  // Live 24-hour clock (hora, minuto y segundo en formato 24H: HH:mm:ss)
+  const [currentClockTime, setCurrentClockTime] = useState<string>(() => {
+    const now = new Date();
+    const h = String(now.getHours()).padStart(2, '0');
+    const m = String(now.getMinutes()).padStart(2, '0');
+    const s = String(now.getSeconds()).padStart(2, '0');
+    return `${h}:${m}:${s}`;
+  });
+
+  useEffect(() => {
+    const updateTime = () => {
+      const now = new Date();
+      const h = String(now.getHours()).padStart(2, '0');
+      const m = String(now.getMinutes()).padStart(2, '0');
+      const s = String(now.getSeconds()).padStart(2, '0');
+      setCurrentClockTime(`${h}:${m}:${s}`);
+    };
+
+    updateTime();
+    const timer = setInterval(updateTime, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   return (
     <div className="w-[98%] max-w-[98vw] mx-auto px-2 sm:px-4 py-4 sm:py-5 space-y-5">
 
@@ -121,7 +147,21 @@ const ProjectWorkspaceComponent: React.FC<ProjectWorkspaceProps> = ({
           style={{ backgroundColor: project.colorTheme || '#0f3a60' }}
         />
 
-        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
+        {/* Zona designada: Reloj en vivo 24 Horas (HH:mm:ss) */}
+        <div
+          className="absolute top-3 sm:top-4 right-4 sm:right-6 z-10 flex items-center gap-2 px-3 py-1.5 bg-slate-50/95 hover:bg-slate-100 border border-slate-200/90 rounded-xl shadow-2xs backdrop-blur-xs transition-colors select-none"
+          title="Reloj en tiempo real (formato 24 horas: HH:mm:ss)"
+        >
+          <Clock className="w-4 h-4 text-indigo-600 animate-pulse" />
+          <span className="font-mono text-xs sm:text-sm font-black text-slate-800 tracking-wider">
+            {currentClockTime}
+          </span>
+          <span className="text-[9px] font-bold text-slate-500 bg-slate-200/80 px-1.5 py-0.5 rounded font-mono uppercase tracking-wide">
+            24H
+          </span>
+        </div>
+
+        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 pt-4 sm:pt-0">
           {/* Dual Branding & Project Title */}
           <div className="flex items-start sm:items-center gap-4 sm:gap-5">
             {/* Dual Logos Showcase */}
@@ -226,6 +266,31 @@ const ProjectWorkspaceComponent: React.FC<ProjectWorkspaceProps> = ({
 
           {/* Quick Actions */}
           <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 self-stretch lg:self-auto justify-end">
+            {/* Delete Project Button: Enabled ONLY when 0 manuals */}
+            {onDeleteProject && (
+              manualsInProject.length === 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setIsDeleteProjectConfirmOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-rose-700 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 border border-rose-200 hover:border-rose-300 rounded-xl shadow-2xs transition-all cursor-pointer"
+                  title="Eliminar este proyecto (disponible porque no tiene manuales asignados)"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                  <span>Borrar Proyecto</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-400 bg-slate-50 border border-slate-200 rounded-xl cursor-not-allowed opacity-60"
+                  title={`No se puede borrar: el proyecto contiene ${manualsInProject.length} manual(es). Elimina o desvincula sus manuales primero.`}
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Borrar Proyecto</span>
+                </button>
+              )
+            )}
+
             <button
               onClick={() => onOpenExportProject(project)}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-slate-700 hover:text-indigo-700 bg-white hover:bg-slate-50 border border-slate-200 hover:border-indigo-300 rounded-xl shadow-2xs transition-all cursor-pointer"
@@ -380,19 +445,32 @@ const ProjectWorkspaceComponent: React.FC<ProjectWorkspaceProps> = ({
               <p className="text-xs text-slate-500 mt-1 mb-6">
                 Crea el primer manual paso a paso para {project.clientName} subiendo capturas de pantalla o grabando un video de tu pantalla.
               </p>
-              <div className="flex items-center justify-center gap-3">
+              <div className="flex flex-wrap items-center justify-center gap-3">
                 <button
+                  type="button"
                   onClick={() => onOpenCreateManualForProject(project.id)}
-                  className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow"
+                  className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow cursor-pointer transition-colors"
                 >
                   Crear Primer Manual
                 </button>
                 {availableManualsToLink.length > 0 && (
                   <button
+                    type="button"
                     onClick={() => setIsLinkModalOpen(true)}
-                    className="px-4 py-2.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-semibold text-xs rounded-xl shadow-xs"
+                    className="px-4 py-2.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-semibold text-xs rounded-xl shadow-xs cursor-pointer transition-colors"
                   >
                     Vincular Manual Existente
+                  </button>
+                )}
+                {onDeleteProject && (
+                  <button
+                    type="button"
+                    onClick={() => setIsDeleteProjectConfirmOpen(true)}
+                    className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-semibold text-xs rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer transition-colors"
+                    title="Eliminar este proyecto ya que no contiene manuales"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                    <span>Borrar Proyecto Vacío</span>
                   </button>
                 )}
               </div>
@@ -895,6 +973,70 @@ const ProjectWorkspaceComponent: React.FC<ProjectWorkspaceProps> = ({
                 className="w-full py-2 px-4 text-slate-500 hover:text-slate-800 text-xs font-semibold rounded-xl transition-colors text-center mt-1"
               >
                 Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Project Confirmation Modal */}
+      {isDeleteProjectConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 p-6 space-y-4">
+            <div className="flex items-start justify-between">
+              <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-200">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsDeleteProjectConfirmOpen(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div>
+              <h3 className="text-base font-bold text-slate-900">
+                ¿Eliminar proyecto "{project.name}"?
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Cliente: <span className="font-semibold text-slate-700">{project.clientName}</span>
+                {project.code ? ` · Código: ${project.code}` : ''}
+              </p>
+            </div>
+
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-start gap-2.5 text-xs text-emerald-800">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
+              <p>
+                Este proyecto <strong>no contiene manuales</strong> (0 manuales), por lo que puede eliminarse de manera segura sin afectar ninguna documentación existente.
+              </p>
+            </div>
+
+            <p className="text-xs text-slate-600">
+              Esta acción eliminará el proyecto y su configuración permanentemente de la base de datos.
+            </p>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsDeleteProjectConfirmOpen(false)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onDeleteProject) {
+                    onDeleteProject(project.id);
+                  }
+                  setIsDeleteProjectConfirmOpen(false);
+                }}
+                className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 active:bg-rose-800 rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Sí, Eliminar Proyecto</span>
               </button>
             </div>
           </div>

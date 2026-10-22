@@ -288,9 +288,30 @@ class ManualStorageService {
     }
   }
 
+  public isManualDeleted(manualId: string): boolean {
+    if (this.inMemoryDeletedIds.has(manualId)) {
+      return true;
+    }
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        const deletedRaw = localStorage.getItem(DELETED_MANUALS_KEY);
+        if (deletedRaw) {
+          const arr: string[] = JSON.parse(deletedRaw);
+          if (Array.isArray(arr) && arr.includes(manualId)) {
+            this.inMemoryDeletedIds.add(manualId);
+            return true;
+          }
+        }
+      } catch {
+        // Safe fallback
+      }
+    }
+    return false;
+  }
+
   public loadManuals(defaultManuals: UserManual[]): UserManual[] {
     if (this.inMemoryManualsFallback) {
-      return this.inMemoryManualsFallback;
+      return this.inMemoryManualsFallback.filter((m) => !this.isManualDeleted(m.id));
     }
 
     try {
@@ -299,15 +320,21 @@ class ManualStorageService {
         if (saved) {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed)) {
-            const filteredSaved = parsed.filter((m: UserManual) => !this.inMemoryDeletedIds.has(m.id));
+            const filteredSaved = parsed.filter((m: UserManual) => !this.isManualDeleted(m.id));
             const existingIds = new Set(filteredSaved.map((m: UserManual) => m.id));
-            const missingDefaults = defaultManuals.filter(
-              (m) => !existingIds.has(m.id) && !this.inMemoryDeletedIds.has(m.id)
-            );
 
+            // Only inject missing defaults if manuals have NEVER been seeded before
+            const hasSeededBefore = localStorage.getItem('manualcraft_manuals_seeded_v1') === 'true';
             let result = filteredSaved;
-            if (missingDefaults.length > 0) {
-              result = [...missingDefaults, ...filteredSaved];
+
+            if (!hasSeededBefore) {
+              const missingDefaults = defaultManuals.filter(
+                (m) => !existingIds.has(m.id) && !this.isManualDeleted(m.id)
+              );
+              if (missingDefaults.length > 0) {
+                result = [...missingDefaults, ...filteredSaved];
+              }
+              localStorage.setItem('manualcraft_manuals_seeded_v1', 'true');
             }
 
             result = result.map((m: UserManual) => {
@@ -326,7 +353,16 @@ class ManualStorageService {
       console.warn('[ManualStorageService] Failed to read manuals from localStorage:', err);
     }
 
-    const initial = defaultManuals.filter((m) => !this.inMemoryDeletedIds.has(m.id));
+    const hasSeededBefore = typeof window !== 'undefined' && localStorage.getItem('manualcraft_manuals_seeded_v1') === 'true';
+    if (hasSeededBefore) {
+      this.inMemoryManualsFallback = [];
+      return [];
+    }
+
+    const initial = defaultManuals.filter((m) => !this.isManualDeleted(m.id));
+    if (typeof window !== 'undefined' && window.localStorage) {
+      localStorage.setItem('manualcraft_manuals_seeded_v1', 'true');
+    }
     this.inMemoryManualsFallback = initial;
     return initial;
   }
@@ -338,14 +374,16 @@ class ManualStorageService {
     }
 
     this.inMemoryDeletedIds.add(manualId);
-    this.inMemoryManualsFallback = updatedList;
+    const sanitized = updatedList.filter((m) => m.id !== manualId && !this.inMemoryDeletedIds.has(m.id));
+    this.inMemoryManualsFallback = sanitized;
 
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
         localStorage.setItem(DELETED_MANUALS_KEY, JSON.stringify(Array.from(this.inMemoryDeletedIds)));
-        localStorage.setItem(MANUALS_STORAGE_KEY, JSON.stringify(updatedList));
+        localStorage.setItem(MANUALS_STORAGE_KEY, JSON.stringify(sanitized));
+        localStorage.setItem('manualcraft_manuals_seeded_v1', 'true');
       }
-      idb.set(MANUALS_STORAGE_KEY, updatedList).catch(() => {});
+      idb.set(MANUALS_STORAGE_KEY, sanitized).catch(() => {});
       idb.set(DELETED_MANUALS_KEY, Array.from(this.inMemoryDeletedIds)).catch(() => {});
     } catch (err) {
       console.warn('[ManualStorageService] Failed to delete manual from localStorage:', err);

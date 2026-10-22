@@ -1814,6 +1814,7 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
                 onClick={() => {
                   onDeleteManual?.(manual.id);
                   setShowDeleteModal(false);
+                  onBackToProject?.();
                 }}
                 className="w-full py-2.5 px-4 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white font-bold text-xs rounded-xl shadow-xs transition-colors flex items-center justify-center gap-2"
               >

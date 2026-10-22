@@ -111,14 +111,25 @@ export function useManualDataSync(): UseManualDataSyncReturn {
 
     // Real-time subscription to shared manuals collection
     const unsubManuals = subscribeToSharedManuals((remoteManuals) => {
+      const nonDeleted = (remoteManuals || []).filter((m) => !manualStorage.isManualDeleted(m.id));
+
       if (remoteManuals && remoteManuals.length > 0) {
-        setManuals(remoteManuals);
-      } else if (!hasAttemptedManualSeed) {
-        hasAttemptedManualSeed = true;
-        const local = manualStorage.loadManuals(SAMPLE_MANUALS);
-        local.forEach((m) => {
-          saveManualToDatabase(m).catch(() => {});
-        });
+        setManuals(nonDeleted);
+      } else {
+        const hasSeededBefore = typeof window !== 'undefined' && localStorage.getItem('manualcraft_manuals_seeded_v1') === 'true';
+        if (!hasAttemptedManualSeed && !hasSeededBefore) {
+          hasAttemptedManualSeed = true;
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('manualcraft_manuals_seeded_v1', 'true');
+          }
+          const local = manualStorage.loadManuals(SAMPLE_MANUALS);
+          local.forEach((m) => {
+            saveManualToDatabase(m).catch(() => {});
+          });
+        } else {
+          // Manuals collection is empty (e.g. all manuals deleted) -> reflect empty state immediately
+          setManuals([]);
+        }
       }
     });
 
@@ -184,6 +195,9 @@ export function useManualDataSync(): UseManualDataSyncReturn {
 
   // Manual CRUD
   const handleUpdateManual = useCallback((updatedManual: UserManual) => {
+    if (manualStorage.isManualDeleted(updatedManual.id)) {
+      return;
+    }
     setManuals((prev) => {
       const exists = prev.some((m) => m.id === updatedManual.id);
       if (exists) {
@@ -195,12 +209,15 @@ export function useManualDataSync(): UseManualDataSyncReturn {
   }, []);
 
   const handleDeleteManual = useCallback((manualId: string) => {
+    manualStorage.isManualDeleted(manualId);
     setManuals((prev) => {
       const updated = prev.filter((m) => m.id !== manualId);
       manualStorage.deleteManual(manualId, updated);
       return updated;
     });
-    deleteManualFromDatabase(manualId);
+    deleteManualFromDatabase(manualId).catch((err) => {
+      console.warn('[Firebase] deleteManualFromDatabase caught:', err);
+    });
   }, []);
 
   const handleLinkManualToProject = useCallback(

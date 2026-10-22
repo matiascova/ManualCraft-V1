@@ -14,6 +14,7 @@ import {
   Shield,
   Users,
   Settings2,
+  Trash2,
 } from 'lucide-react';
 import {
   SAINT_GOBAIN_WEBER_LOGO,
@@ -28,6 +29,8 @@ interface ProjectModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSaveProject: (project: Project) => void;
+  onDeleteProject?: (projectId: string) => void;
+  manualsCount?: number;
   existingProject?: Project | null;
   clients?: Client[];
   activeClientId?: string;
@@ -39,6 +42,8 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
   isOpen,
   onClose,
   onSaveProject,
+  onDeleteProject,
+  manualsCount = 0,
   existingProject = null,
   clients = [],
   activeClientId = '',
@@ -811,22 +816,56 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
           </div>
 
           {/* Footer Controls */}
-          <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
-            <div className="text-xs text-slate-500">
-              <span className="font-semibold text-slate-700">{clientName || 'Cliente'}</span>
-              {name ? ` · ${name}` : ''}
+          <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              {isEditing && existingProject && onDeleteProject && (
+                manualsCount === 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          `¿Estás seguro de que deseas eliminar permanentemente el proyecto "${name || existingProject.name}"? Esta acción no se puede deshacer.`
+                        )
+                      ) {
+                        onDeleteProject(existingProject.id);
+                        onClose();
+                      }
+                    }}
+                    className="px-3 py-1.5 text-xs font-bold text-rose-700 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                    title="Eliminar este proyecto (disponible al no tener manuales asociados)"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                    <span>Borrar Proyecto</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled
+                    className="px-3 py-1.5 text-xs font-semibold text-slate-400 bg-slate-100 border border-slate-200 rounded-xl cursor-not-allowed opacity-60 flex items-center gap-1.5"
+                    title={`No se puede eliminar: el proyecto contiene ${manualsCount} manual(es). Elimina o desvincula sus manuales primero.`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Borrar Proyecto</span>
+                  </button>
+                )
+              )}
+              <div className="text-xs text-slate-500">
+                <span className="font-semibold text-slate-700">{clientName || 'Cliente'}</span>
+                {name ? ` · ${name}` : ''}
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-200/60 rounded-xl transition-colors"
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-200/60 rounded-xl transition-colors cursor-pointer"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
-                className="px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md shadow-indigo-100 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                className="px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md shadow-indigo-100 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
               >
                 {isEditing ? 'Guardar Cambios' : 'Crear Proyecto'}
               </button>
