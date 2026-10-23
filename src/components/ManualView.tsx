@@ -55,7 +55,9 @@ import { getEffectiveInstructorContent } from '../utils/instructorUtils';
 import { DictationButton } from './DictationButton';
 import { ImageCropModal } from './ImageCropModal';
 import { AnnotationOverlay } from './AnnotationOverlay';
-import { cropTaskbarFromDataUrl, blurTaskbarOnDataUrl } from '../utils/motionDetector';
+import { ManualHeader } from './manual/ManualHeader';
+import { SapProcessMatrixTable } from './manual/SapProcessMatrixTable';
+import { cropTaskbar as cropTaskbarFromDataUrl, blurTaskbar as blurTaskbarOnDataUrl } from '../utils/imageProcessing';
 import {
   isSapManual,
   detectSapTransactionCode,
@@ -443,173 +445,23 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
 
   return (
     <div className="w-[98%] max-w-[98vw] mx-auto px-2 sm:px-4 py-6">
-      {/* Project Context & Breadcrumb Bar */}
-      {project && (
-        <div className="mb-4 bg-white border border-slate-200 rounded-xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-xs">
-          <div className="flex items-center gap-2.5">
-            {onBackToProject && (
-              <button
-                onClick={onBackToProject}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
-                title="Volver a la vista del proyecto"
-              >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Volver al Proyecto</span>
-              </button>
-            )}
-            <div className="h-4 w-px bg-slate-200 hidden sm:block" />
-            <div className="flex flex-wrap items-center gap-2.5 text-xs text-slate-600">
-              {/* Nuestro Logo */}
-              <div
-                onClick={onOpenOurLogoModal}
-                className="flex items-center gap-1.5 cursor-pointer hover:opacity-80 transition-opacity"
-                title="Definir o cambiar Nuestro Logo"
-              >
-                {(project.organizationLogo || branding?.logo) && (
-                  <div className="w-6 h-6 rounded bg-slate-50 border border-slate-200 p-0.5 flex items-center justify-center overflow-hidden flex-shrink-0">
-                    <img
-                      src={project.organizationLogo || branding?.logo}
-                      alt="Nuestro Logo"
-                      className="max-w-full max-h-full object-contain"
-                    />
-                  </div>
-                )}
-                <span className="font-bold text-slate-800">
-                  {project.organizationName || branding?.companyName || 'Saint-Gobain Weber'}
-                </span>
-              </div>
-
-              <span className="text-slate-300">/</span>
-
-              {/* Cliente */}
-              <div className="flex items-center gap-1.5">
-                {project.clientLogo && (
-                  <div className="w-6 h-6 rounded bg-slate-50 border border-slate-200 p-0.5 flex items-center justify-center overflow-hidden flex-shrink-0">
-                    <img
-                      src={project.clientLogo}
-                      alt={project.clientName}
-                      className="max-w-full max-h-full object-contain"
-                    />
-                  </div>
-                )}
-                <span className="font-semibold text-slate-400">Cliente:</span>
-                <span className="font-bold text-slate-900">{project.clientName}</span>
-                <span className="text-slate-300">/</span>
-                <span className="font-semibold text-indigo-700">{project.name}</span>
-              </div>
-            </div>
-          </div>
-          <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
-            Manual del Proyecto
-          </span>
-        </div>
-      )}
-
-      {/* Top Action Header Bar */}
-      <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-6 border-b border-slate-200">
-        <div>
-          <div className="flex items-center gap-2 text-xs text-slate-500 mb-1 flex-wrap">
-            <span>Manual de Usuario</span>
-            <span>·</span>
-            <span>Versión {manual.version || '1.0'}</span>
-            <span>·</span>
-            <span>Actualizado {new Date(manual.updatedAt).toLocaleDateString()}</span>
-            {manual.isDraft && (
-              <>
-                <span>·</span>
-                <span className="bg-amber-100 text-amber-900 border border-amber-300 font-bold px-2 py-0.5 rounded-full text-[11px] inline-flex items-center gap-1">
-                  <Save className="w-3 h-3 text-amber-700" /> Borrador en progreso
-                </span>
-              </>
-            )}
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-            {manual.title}
-          </h1>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2.5">
-          {((manual.instructorTranscript && manual.instructorTranscript.length > 0) || manual.fullTranscriptionText) && (
-            <button
-              onClick={() => setShowTranscriptModal(true)}
-              className="inline-flex items-center gap-2 py-2.5 px-4 bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-800 font-semibold text-xs rounded-xl shadow-xs transition-colors"
-            >
-              <Mic className="w-4 h-4 text-purple-600" />
-              <span>Transcripción de Sesión ({manual.instructorTranscript?.length || 'Audio'})</span>
-            </button>
-          )}
-
-          <button
-            onClick={() => onStartInteractivePlayer(0)}
-            className="inline-flex items-center gap-2 py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded-xl shadow-md transition-all hover:scale-[1.02] active:scale-[0.98]"
-          >
-            <Play className="w-4 h-4 fill-current" />
-            <span>Iniciar Modo Interactivo</span>
-          </button>
-
-          <button
-            onClick={onOpenExportModal}
-            className="inline-flex items-center gap-2 py-2.5 px-4 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-semibold text-xs rounded-xl shadow-xs transition-colors"
-          >
-            <Download className="w-4 h-4 text-indigo-600" />
-            <span>Exportar (PDF / Word)</span>
-          </button>
-
-          {/* Botones para Optimizar Capturas en PDF (Quitar o Difuminar Barra) */}
-          <div className="flex items-center gap-1.5 bg-slate-100/90 p-1 rounded-xl border border-slate-200">
-            <button
-              type="button"
-              onClick={handleBatchCropTaskbarInManual}
-              disabled={isBatchOptimizing}
-              className="inline-flex items-center gap-1.5 py-1.5 px-2.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-semibold text-xs rounded-lg shadow-2xs transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50"
-              title="Recorta automáticamente la barra de tareas (~5% inferior) en todos los pasos del manual para usar menos espacio en el PDF"
-            >
-              <Scissors className="w-3.5 h-3.5 text-amber-600" />
-              <span>{isBatchOptimizing ? 'Procesando...' : 'Quitar barra (Todos)'}</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleBatchBlurTaskbarInManual}
-              disabled={isBatchOptimizing}
-              className="inline-flex items-center gap-1.5 py-1.5 px-2.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-semibold text-xs rounded-lg shadow-2xs transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50"
-              title="Aplica un efecto borroso sobre la barra de tareas en todos los pasos para ocultar los iconos de aplicaciones abiertas"
-            >
-              <EyeOff className="w-3.5 h-3.5 text-slate-600" />
-              <span>Difuminar barra</span>
-            </button>
-          </div>
-
-          {onRegenerateRecording && (
-            <button
-              onClick={() => onRegenerateRecording(manual)}
-              className="inline-flex items-center gap-2 py-2.5 px-4 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 font-semibold text-xs rounded-xl shadow-xs transition-colors hover:scale-[1.02] active:scale-[0.98]"
-              title="Volver a grabar pantalla y audio para este manual sin perder los datos llenados por primera vez"
-            >
-              <RotateCcw className="w-4 h-4 text-amber-700" />
-              <span>Regenerar Grabación</span>
-            </button>
-          )}
-
-          <button
-            onClick={onAddNewStep}
-            className="inline-flex items-center gap-1.5 py-2.5 px-3 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-semibold text-xs rounded-xl shadow-xs transition-colors"
-          >
-            <Plus className="w-4 h-4 text-slate-600" />
-            <span>Añadir Paso</span>
-          </button>
-
-          {onDeleteManual && (
-            <button
-              onClick={() => setShowDeleteModal(true)}
-              className="inline-flex items-center gap-1.5 py-2.5 px-3 bg-white hover:bg-red-50 border border-slate-300 hover:border-red-300 text-slate-600 hover:text-red-700 font-semibold text-xs rounded-xl shadow-xs transition-colors"
-              title="Eliminar este manual de forma definitiva"
-            >
-              <Trash2 className="w-4 h-4 text-red-500" />
-              <span className="hidden sm:inline">Eliminar</span>
-            </button>
-          )}
-        </div>
-      </div>
+      {/* Isolated Manual Header & Action Toolbar */}
+      <ManualHeader
+        manual={manual}
+        project={project}
+        branding={branding}
+        onBackToProject={onBackToProject}
+        onOpenOurLogoModal={onOpenOurLogoModal}
+        onStartInteractivePlayer={onStartInteractivePlayer}
+        onOpenExportModal={onOpenExportModal}
+        onRegenerateRecording={onRegenerateRecording}
+        onAddNewStep={onAddNewStep}
+        onRequestDelete={onDeleteManual ? () => setShowDeleteModal(true) : undefined}
+        onOpenTranscriptModal={() => setShowTranscriptModal(true)}
+        onBatchCropTaskbar={handleBatchCropTaskbarInManual}
+        onBatchBlurTaskbar={handleBatchBlurTaskbarInManual}
+        isBatchOptimizing={isBatchOptimizing}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         {/* Left Sticky Table of Contents (Desktop) */}
@@ -895,231 +747,14 @@ const ManualViewComponent: React.FC<ManualViewProps> = ({
           </section>
 
           {/* SECTION 2: MATRIZ DE FLUJO DEL PROCESO Y TRANSACCIONES SAP */}
-          <section
-            id="matriz-flujo-proceso"
-            className="bg-white rounded-2xl border-2 border-slate-200 overflow-hidden shadow-sm"
-          >
-            {/* Header matching Official Corporate Template */}
-            <div className="bg-[#183B6C] text-white p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <Table className="w-4 h-4 text-indigo-300" />
-                  <span className="text-[10px] uppercase font-bold tracking-widest text-indigo-200">
-                    SECCIÓN 2 · MATRIZ OFICIAL DEL FLUJO DE PROCESO
-                  </span>
-                </div>
-                <h3 className="text-base sm:text-lg font-black text-white tracking-tight">
-                  Matriz de Secuencia Operativa &amp; {isSap ? 'Transacciones SAP' : 'Acciones'}
-                </h3>
-                <p className="text-xs text-slate-200 mt-0.5">
-                  {isSap
-                    ? isZ20
-                      ? 'Secuencia completa del proceso y transacción operativa (Transacción ZMMT0020 - Columna de Módulo no requerida).'
-                      : 'Secuencia completa del proceso, módulo SAP (primera columna) y transacción operativa a utilizar en cada paso.'
-                    : 'Secuencia cronológica de pasos, acciones y resultados esperados en el sistema.'}
-                </p>
-              </div>
-
-              {/* Status Pill on Column Rules */}
-              <div className="flex items-center gap-2 flex-wrap">
-                {isSap && !isZ20 && (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-500/30 border border-blue-300/40 text-blue-100 text-[11px] font-bold rounded-lg backdrop-blur-xs">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    <span>Módulo SAP: 1ª Columna</span>
-                  </span>
-                )}
-                {isSap && isZ20 && (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500/30 border border-amber-300/40 text-amber-100 text-[11px] font-bold rounded-lg backdrop-blur-xs">
-                    <span>Transacción ZMMT0020 (Módulo oculto)</span>
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Informative Rule Notice Banner */}
-            {isSap && (
-              <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5 flex items-center justify-between text-xs text-slate-600 gap-3">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-semibold text-slate-800">
-                    {isZ20
-                      ? 'Transacción ZMMT0020 activa:'
-                      : 'Transacción SAP activa:'}
-                  </span>
-                  <span className="font-mono bg-white px-2 py-0.5 border border-slate-300 rounded font-bold text-[#183B6C]">
-                    {detectSapTransactionCode(manual)}
-                  </span>
-                  {!isZ20 && (
-                    <span className="font-mono bg-blue-50 text-blue-700 px-2 py-0.5 border border-blue-200 rounded font-bold">
-                      Módulo {detectSapModuleCode(manual)}
-                    </span>
-                  )}
-                  <span className="text-[11px] text-slate-500 hidden sm:inline">
-                    {isZ20
-                      ? 'Norma aplicada: En la transacción ZMMT0020, no es necesario mostrar la columna de módulo.'
-                      : 'Norma aplicada: El módulo de SAP se presenta como primera columna de la matriz.'}
-                  </span>
-                </div>
-                <div className="text-[11px] text-slate-400 font-mono shrink-0">
-                  {manual.steps.length} pasos indexados
-                </div>
-              </div>
-            )}
-
-            {/* Table Container */}
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="bg-[#183B6C] text-white uppercase text-[10.5px] font-bold tracking-wider">
-                    {isSap && !isZ20 && (
-                      <th className="py-3 px-3.5 border-r border-[#264b82] text-center w-24">
-                        Módulo
-                      </th>
-                    )}
-                    <th className="py-3 px-3 border-r border-[#264b82] text-center w-12">
-                      #
-                    </th>
-                    <th className="py-3 px-4 border-r border-[#264b82]">
-                      Paso Operativo
-                    </th>
-                    <th className="py-3 px-3.5 border-r border-[#264b82] w-36">
-                      {isSap ? 'Transacción' : 'Tipo de Acción'}
-                    </th>
-                    <th className="py-3 px-3.5 border-r border-[#264b82] w-48">
-                      {isSap ? 'Acción / Campo Clave' : 'Elemento de Interfaz'}
-                    </th>
-                    <th className="py-3 px-4 border-r border-[#264b82]">
-                      {isSap ? 'Observación / Resultado' : 'Resultado Esperado'}
-                    </th>
-                    <th className="py-3 px-3 text-center w-20">
-                      Acción
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200">
-                  {manual.steps.map((st, sIdx) => {
-                    const isEven = sIdx % 2 === 0;
-                    const txCode = isSap ? detectSapTransactionCode(manual, st) : '';
-                    const modCode = isSap ? detectSapModuleCode(manual, st, txCode) : '';
-
-                    return (
-                      <tr
-                        key={st.id}
-                        className={`transition-colors hover:bg-indigo-50/40 ${
-                          isEven ? 'bg-slate-50/50' : 'bg-white'
-                        }`}
-                      >
-                        {/* 1st Column: Módulo SAP (only if SAP and NOT ZMMT0020) */}
-                        {isSap && !isZ20 && (
-                          <td className="py-2.5 px-3 text-center font-bold border-r border-slate-200/80">
-                            <span className="inline-block px-2.5 py-1 rounded bg-blue-100 text-blue-800 text-[10.5px] font-black border border-blue-200 shadow-2xs tracking-wide">
-                              {modCode}
-                            </span>
-                          </td>
-                        )}
-
-                        {/* Step Number Badge */}
-                        <td className="py-2.5 px-3 text-center border-r border-slate-200/80">
-                          <span className="inline-flex items-center justify-center w-6 h-6 rounded-md bg-[#183B6C] text-white font-bold text-[11px] shadow-2xs">
-                            {sIdx + 1}
-                          </span>
-                        </td>
-
-                        {/* Step Title aligned to correlatives */}
-                        <td className="py-2.5 px-4 font-bold text-slate-900 border-r border-slate-200/80">
-                          <a
-                            href={`#step-${st.id}`}
-                            className="hover:text-indigo-600 transition-colors block"
-                            title="Ir al paso en el manual"
-                          >
-                            {formatStepOperativeTitle(st.title, sIdx + 1)}
-                          </a>
-                        </td>
-
-                        {/* Transaction Code or Action Type */}
-                        <td className="py-2.5 px-3.5 border-r border-slate-200/80 font-mono text-[11px] font-bold text-[#183B6C]">
-                          {isSap ? (
-                            <span className="inline-block px-2 py-0.5 rounded bg-indigo-50 border border-indigo-200">
-                              {txCode}
-                            </span>
-                          ) : (
-                            <span className="inline-block px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
-                              {getActionTypeSpanish(st.actionType)}
-                            </span>
-                          )}
-                        </td>
-
-                        {/* Action / Target Element */}
-                        <td className="py-2.5 px-3.5 border-r border-slate-200/80 text-slate-700">
-                          <span className="font-semibold text-slate-800">
-                            {getActionTypeSpanish(st.actionType)}
-                          </span>
-                          {st.targetElement && (
-                            <span className="text-slate-500 font-mono text-[11px] block truncate">
-                              · {st.targetElement}
-                            </span>
-                          )}
-                        </td>
-
-                        {/* Observación / Resultado */}
-                        <td className="py-2.5 px-4 text-slate-600 leading-snug border-r border-slate-200/80">
-                          {st.expectedResult || st.description}
-                        </td>
-
-                        {/* Actions: View step, edit or delete */}
-                        <td className="py-2.5 px-3 text-center">
-                          <div className="flex items-center justify-center gap-1">
-                            <a
-                              href={`#step-${st.id}`}
-                              className="inline-flex items-center justify-center p-1.5 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition-colors"
-                              title="Ver detalle del paso"
-                            >
-                              <ExternalLink className="w-3.5 h-3.5" />
-                            </a>
-                            <button
-                              type="button"
-                              onClick={() => onEditStep(st)}
-                              className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
-                              title="Editar contenido y captura del paso"
-                            >
-                              <Edit3 className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => deleteStep(st.id)}
-                              disabled={manual.steps.length <= 1}
-                              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 rounded-lg transition-colors"
-                              title="Eliminar esta pantalla/paso (reajusta correlativos automáticamente iniciando en 1)"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Table Footer */}
-            <div className="p-3 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between text-xs text-slate-500 gap-2">
-              <span className="text-[11px]">
-                {isSap
-                  ? isZ20
-                    ? 'Regla de negocio: En transacción ZMMT0020 la primera columna es el número de paso (#) y se prescinde de la columna Módulo SAP.'
-                    : 'Regla de negocio: Módulo de SAP activo como primera columna de la matriz oficial del flujo.'
-                  : 'Tabla sinóptica sincronizada con la exportación oficial a PDF y Word.'}
-              </span>
-              <button
-                type="button"
-                onClick={onOpenExportModal}
-                className="inline-flex items-center gap-1.5 text-indigo-600 hover:text-indigo-800 font-semibold text-xs self-start sm:self-auto"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Exportar Matriz Oficial a PDF / Word</span>
-              </button>
-            </div>
-          </section>
+          <SapProcessMatrixTable
+            manual={manual}
+            isSap={isSap}
+            isZ20={isZ20}
+            onEditStep={onEditStep}
+            onDeleteStep={deleteStep}
+            onOpenExportModal={onOpenExportModal}
+          />
 
           {/* Steps List */}
           <div className="flex flex-col gap-6">

@@ -41,6 +41,8 @@ import {
   Camera,
   RotateCcw,
 } from 'lucide-react';
+import { LiveClock } from './LiveClock';
+import { ProjectMetrics } from './workspace/ProjectMetrics';
 
 interface ProjectWorkspaceProps {
   project: Project;
@@ -581,29 +583,6 @@ const ProjectWorkspaceComponent: React.FC<ProjectWorkspaceProps> = ({
     });
   }, [project, onUpdateProject]);
 
-  // Live 24-hour clock (hora, minuto y segundo en formato 24H: HH:mm:ss)
-  const [currentClockTime, setCurrentClockTime] = useState<string>(() => {
-    const now = new Date();
-    const h = String(now.getHours()).padStart(2, '0');
-    const m = String(now.getMinutes()).padStart(2, '0');
-    const s = String(now.getSeconds()).padStart(2, '0');
-    return `${h}:${m}:${s}`;
-  });
-
-  useEffect(() => {
-    const updateTime = () => {
-      const now = new Date();
-      const h = String(now.getHours()).padStart(2, '0');
-      const m = String(now.getMinutes()).padStart(2, '0');
-      const s = String(now.getSeconds()).padStart(2, '0');
-      setCurrentClockTime(`${h}:${m}:${s}`);
-    };
-
-    updateTime();
-    const timer = setInterval(updateTime, 1000);
-    return () => clearInterval(timer);
-  }, []);
-
   return (
     <div className="w-[98%] max-w-[98vw] mx-auto px-1 sm:px-3 py-3 space-y-4">
       {/* Project Hero Banner - Compact Widescreen High Density */}
@@ -614,19 +593,8 @@ const ProjectWorkspaceComponent: React.FC<ProjectWorkspaceProps> = ({
           style={{ backgroundColor: project.colorTheme || '#0f3a60' }}
         />
 
-        {/* 24-Hour Live Real-Time Clock */}
-        <div
-          className="absolute top-3 right-4 z-10 flex items-center gap-1.5 px-2.5 py-1 bg-slate-50/95 hover:bg-slate-100 border border-slate-200/90 rounded-xl shadow-2xs backdrop-blur-xs transition-colors select-none"
-          title="Reloj en tiempo real (formato 24 horas: HH:mm:ss)"
-        >
-          <Clock className="w-3.5 h-3.5 text-indigo-600 animate-pulse" />
-          <span className="font-mono text-xs sm:text-sm font-black text-slate-800 tracking-wider tabular-nums">
-            {currentClockTime}
-          </span>
-          <span className="text-[9px] font-bold text-slate-500 bg-slate-200/80 px-1 py-0.5 rounded font-mono uppercase tracking-wide">
-            24H
-          </span>
-        </div>
+        {/* 24-Hour Live Real-Time Clock (Isolated Component) */}
+        <LiveClock className="absolute top-3 right-4 z-10" />
 
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 pt-2 sm:pt-0">
           {/* Dual Branding & Project Title */}
@@ -794,59 +762,13 @@ const ProjectWorkspaceComponent: React.FC<ProjectWorkspaceProps> = ({
           </div>
         </div>
 
-        {/* Project KPI Stats bar (Single continuous horizontal widescreen bar) */}
-        <div className="mt-4 pt-3 border-t border-slate-100 grid grid-cols-2 lg:grid-cols-4 gap-3 text-left">
-          <div className="px-2 py-1 bg-slate-50/80 rounded-lg border border-slate-200/60 flex items-center justify-between">
-            <div>
-              <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
-                Manuales del Proyecto
-              </div>
-              <div className="text-base font-black text-slate-800 tabular-nums flex items-center gap-1">
-                <span>{manualsInProject.length}</span>
-                <span className="text-xs font-normal text-slate-500">manual(es)</span>
-              </div>
-            </div>
-            <BookOpen className="w-4 h-4 text-indigo-600" />
-          </div>
-
-          <div className="px-2 py-1 bg-slate-50/80 rounded-lg border border-slate-200/60 flex items-center justify-between">
-            <div>
-              <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
-                Pasos Procedimentales
-              </div>
-              <div className="text-base font-black text-slate-800 tabular-nums flex items-center gap-1">
-                <span>{totalSteps}</span>
-                <span className="text-xs font-normal text-slate-500">pasos</span>
-              </div>
-            </div>
-            <Layers className="w-4 h-4 text-indigo-600" />
-          </div>
-
-          <div className="px-2 py-1 bg-slate-50/80 rounded-lg border border-slate-200/60 flex items-center justify-between">
-            <div>
-              <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
-                Tiempo Total Estimado
-              </div>
-              <div className="text-base font-black text-slate-800 tabular-nums flex items-center gap-1">
-                <span>~{totalMinutes} min</span>
-              </div>
-            </div>
-            <Clock className="w-4 h-4 text-indigo-600" />
-          </div>
-
-          <div className="px-2 py-1 bg-slate-50/80 rounded-lg border border-slate-200/60 flex items-center justify-between">
-            <div>
-              <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
-                Características del Doc.
-              </div>
-              <div className="text-base font-black text-slate-800 tabular-nums flex items-center gap-1">
-                <span>{activeFeaturesCount} / 12</span>
-                <span className="text-xs font-normal text-slate-500">activas</span>
-              </div>
-            </div>
-            <Sliders className="w-4 h-4 text-emerald-600" />
-          </div>
-        </div>
+        {/* Project KPI Stats bar (Isolated Component) */}
+        <ProjectMetrics
+          manualsCount={manualsInProject.length}
+          totalSteps={totalSteps}
+          totalMinutes={totalMinutes}
+          activeFeaturesCount={activeFeaturesCount}
+        />
       </div>
 
       {/* Tabs */}

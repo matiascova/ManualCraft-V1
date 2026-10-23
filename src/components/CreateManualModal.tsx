@@ -51,15 +51,17 @@ import {
 import { Project } from '../types/project';
 import { extractFramesFromVideo, parseTranscriptWithTimestamps } from '../utils/videoExtractor';
 import { screenRecorder } from '../utils/screenRecorder';
+import { screenActionDetector, AutoCapturedSnapshot } from '../utils/motionDetector';
 import {
-  screenActionDetector,
-  AutoCapturedSnapshot,
-  cropTaskbarFromDataUrl,
-  blurTaskbarOnDataUrl,
-} from '../utils/motionDetector';
+  compressImageFile,
+  compressImageForAi,
+  cropTaskbar as cropTaskbarFromDataUrl,
+  blurTaskbar as blurTaskbarOnDataUrl,
+} from '../utils/imageProcessing';
 import { speechTranscriptionService, TranscriptionStatus } from '../utils/speechTranscription';
 import { DictationButton } from './DictationButton';
 import { ImageCropModal } from './ImageCropModal';
+import { FullscreenFrameViewer } from './common/FullscreenFrameViewer';
 
 const DRAFT_STORAGE_KEY = 'manualcraft_create_manual_draft_v1';
 
@@ -73,42 +75,6 @@ export interface CreateManualModalProps {
   initialTab?: 'screenshots' | 'video' | 'record';
   projects?: Project[];
   activeProjectId?: string;
-}
-
-// Ultra-fast lightweight canvas compressor for AI payload
-async function compressImageForAi(dataUrl: string, maxDimension = 1280, quality = 0.75): Promise<string> {
-  return new Promise((resolve) => {
-    if (!dataUrl || !dataUrl.startsWith('data:image')) {
-      return resolve(dataUrl);
-    }
-    const img = new Image();
-    img.onload = () => {
-      let { width, height } = img;
-      if (width <= maxDimension && height <= maxDimension && dataUrl.length < 350000) {
-        return resolve(dataUrl);
-      }
-      if (width > height) {
-        if (width > maxDimension) {
-          height = Math.round((height * maxDimension) / width);
-          width = maxDimension;
-        }
-      } else {
-        if (height > maxDimension) {
-          width = Math.round((width * maxDimension) / height);
-          height = maxDimension;
-        }
-      }
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return resolve(dataUrl);
-      ctx.drawImage(img, 0, 0, width, height);
-      resolve(canvas.toDataURL('image/jpeg', quality));
-    };
-    img.onerror = () => resolve(dataUrl);
-    img.src = dataUrl;
-  });
 }
 
 export const CreateManualModal: React.FC<CreateManualModalProps> = ({
@@ -291,30 +257,6 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
     return extractedFrames.filter((f) => f.selected).length;
   }, [activeTab, screenshots.length, autoSnapshots.length, extractedFrames]);
 
-  // Keyboard navigation for Fullscreen Viewer
-  useEffect(() => {
-    if (!fullscreenViewer.isOpen) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setFullscreenViewer((prev) => ({ ...prev, isOpen: false }));
-      } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-        setFullscreenViewer((prev) => ({
-          ...prev,
-          currentIndex: (prev.currentIndex + 1) % (currentViewerItems.length || 1),
-        }));
-      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-        setFullscreenViewer((prev) => ({
-          ...prev,
-          currentIndex:
-            (prev.currentIndex - 1 + (currentViewerItems.length || 1)) % (currentViewerItems.length || 1),
-        }));
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [fullscreenViewer.isOpen, currentViewerItems.length]);
 
   const handleDeleteViewerItem = (id: string) => {
     if (fullscreenViewer.source === 'snapshots') {
@@ -567,49 +509,7 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
     }
   };
 
-  /**
-   * High-performance image normalizer: downsamples oversized 4K/retina screenshots
-   * to a crisp 1280px JPEG (~90KB), reducing memory consumption by up to 95%.
-   */
-  const compressImageFile = (fileOrBlob: Blob, maxWidth = 1280, quality = 0.85): Promise<string> => {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const dataUrl = e.target?.result as string;
-        if (!dataUrl) {
-          resolve('');
-          return;
-        }
-        const img = new Image();
-        img.onload = () => {
-          const origW = img.naturalWidth || img.width;
-          const origH = img.naturalHeight || img.height;
-          if (origW <= maxWidth && fileOrBlob.size < 250000 && !fileOrBlob.type.includes('png')) {
-            resolve(dataUrl);
-            return;
-          }
-          const w = Math.min(maxWidth, origW);
-          const h = Math.round(w * (origH / origW));
-          const canvas = document.createElement('canvas');
-          canvas.width = w;
-          canvas.height = h;
-          const ctx = canvas.getContext('2d');
-          if (!ctx) {
-            resolve(dataUrl);
-            return;
-          }
-          ctx.drawImage(img, 0, 0, w, h);
-          const compressed = canvas.toDataURL('image/jpeg', quality);
-          canvas.width = 0;
-          canvas.height = 0;
-          resolve(compressed);
-        };
-        img.onerror = () => resolve(dataUrl);
-        img.src = dataUrl;
-      };
-      reader.readAsDataURL(fileOrBlob);
-    });
-  };
+
 
   // Handle Clipboard Paste (Ctrl+V) for instant screenshot pasting
   useEffect(() => {
@@ -2838,192 +2738,24 @@ export const CreateManualModal: React.FC<CreateManualModalProps> = ({
       </div>
 
       {/* FULLSCREEN FRAME VIEWER LIGHTBOX */}
-      {fullscreenViewer.isOpen && currentViewerItem && (
-        <div
-          className="fixed inset-0 z-[70] bg-slate-950/95 backdrop-blur-md flex flex-col justify-between p-3 sm:p-5 select-none animate-in fade-in duration-200"
-          onClick={() => setFullscreenViewer((prev) => ({ ...prev, isOpen: false }))}
-        >
-          {/* Top Control Bar */}
-          <div
-            className="flex items-center justify-between gap-3 text-white shrink-0 z-10 pb-2 border-b border-slate-800/80"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center gap-3">
-              <span className="px-3 py-1 bg-indigo-600 text-white font-mono font-bold text-xs rounded-full shadow-xs">
-                Fotograma {fullscreenViewer.currentIndex + 1} de {currentViewerItems.length}
-              </span>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold text-slate-200 truncate max-w-sm sm:max-w-md">
-                  {currentViewerItem.label}
-                </span>
-                {currentViewerItem.timestamp !== undefined && (
-                  <span className="text-xs text-indigo-400 font-mono bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
-                    ⏱️ {speechTranscriptionService.formatTime(currentViewerItem.timestamp)}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Middle shortcut hints */}
-            <div className="hidden lg:flex items-center gap-2 text-xs text-slate-400 bg-slate-900/80 px-3 py-1 rounded-full border border-slate-800">
-              <span className="flex items-center gap-1">
-                <kbd className="px-1.5 py-0.5 bg-slate-800 text-slate-300 rounded border border-slate-700 font-mono text-[10px]">←</kbd>
-                <kbd className="px-1.5 py-0.5 bg-slate-800 text-slate-300 rounded border border-slate-700 font-mono text-[10px]">→</kbd>
-                <span>Navegar</span>
-              </span>
-              <span>·</span>
-              <span className="flex items-center gap-1">
-                <kbd className="px-1.5 py-0.5 bg-slate-800 text-slate-300 rounded border border-slate-700 font-mono text-[10px]">ESC</kbd>
-                <span>Cerrar</span>
-              </span>
-            </div>
-
-            {/* Right action buttons */}
-            <div className="flex items-center gap-2">
-              {/* Botón Recortar / Editar Tamaño */}
-              <button
-                type="button"
-                onClick={() =>
-                  setCropModal({
-                    isOpen: true,
-                    imageSrc: currentViewerItem.dataUrl,
-                    imageTitle: currentViewerItem.label,
-                    targetId: currentViewerItem.id,
-                    source: fullscreenViewer.source,
-                  })
-                }
-                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center gap-1.5 text-xs font-bold"
-                title="Editar tamaño y recortar esta captura para el manual y PDF"
-              >
-                <Crop className="w-3.5 h-3.5" />
-                <span>Recortar</span>
-              </button>
-
-              {/* Botón 1-clic Quitar Barra de Tareas */}
-              <button
-                type="button"
-                onClick={async () => {
-                  const cropped = await cropTaskbarFromDataUrl(currentViewerItem.dataUrl);
-                  handleApplyCrop(cropped);
-                }}
-                className="px-2.5 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
-                title="Elimina automáticamente los iconos de la barra de tareas de Windows (~5% inferior)"
-              >
-                <Scissors className="w-3.5 h-3.5" />
-                <span className="hidden md:inline">Quitar Barra</span>
-              </button>
-
-              {/* Botón 1-clic Difuminar Barra */}
-              <button
-                type="button"
-                onClick={async () => {
-                  const blurred = await blurTaskbarOnDataUrl(currentViewerItem.dataUrl);
-                  handleApplyCrop(blurred);
-                }}
-                className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
-                title="Difumina la barra de tareas de Windows para que no se vean los iconos de aplicaciones abiertas"
-              >
-                <EyeOff className="w-3.5 h-3.5" />
-                <span className="hidden md:inline">Difuminar Barra</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleDeleteViewerItem(currentViewerItem.id)}
-                className="px-2.5 py-1.5 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-semibold"
-                title="Descartar este fotograma de la secuencia"
-              >
-                <Trash2 className="w-4 h-4" />
-                <span className="hidden sm:inline">Descartar</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setFullscreenViewer((prev) => ({ ...prev, isOpen: false }))}
-                className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
-                title="Cerrar visor a pantalla completa (ESC)"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-          </div>
-
-          {/* Main Stage with Large High-Res Image & Floating Chevrons */}
-          <div
-            className="flex-1 flex items-center justify-between gap-3 p-2 min-h-0 relative my-2"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Left Chevron Button */}
-            <button
-              type="button"
-              onClick={() =>
-                setFullscreenViewer((prev) => ({
-                  ...prev,
-                  currentIndex:
-                    (prev.currentIndex - 1 + currentViewerItems.length) % currentViewerItems.length,
-                }))
-              }
-              className="p-3 sm:p-4 rounded-full bg-slate-900/80 hover:bg-indigo-600 text-white shadow-2xl border border-slate-700 transition-all hover:scale-110 active:scale-95 shrink-0 z-20 group"
-              title="Fotograma anterior (←)"
-            >
-              <ChevronLeft className="w-6 h-6 sm:w-8 sm:h-8 group-hover:-translate-x-0.5 transition-transform" />
-            </button>
-
-            {/* High-Resolution Frame Display */}
-            <div className="flex-1 h-full flex items-center justify-center p-1 sm:p-2 min-h-0 overflow-hidden">
-              <img
-                src={currentViewerItem.dataUrl}
-                alt={currentViewerItem.label}
-                className="max-h-[72vh] max-w-[88vw] w-auto h-auto object-contain rounded-xl shadow-2xl border border-slate-800/90 bg-slate-900"
-              />
-            </div>
-
-            {/* Right Chevron Button */}
-            <button
-              type="button"
-              onClick={() =>
-                setFullscreenViewer((prev) => ({
-                  ...prev,
-                  currentIndex: (prev.currentIndex + 1) % currentViewerItems.length,
-                }))
-              }
-              className="p-3 sm:p-4 rounded-full bg-slate-900/80 hover:bg-indigo-600 text-white shadow-2xl border border-slate-700 transition-all hover:scale-110 active:scale-95 shrink-0 z-20 group"
-              title="Siguiente fotograma (→)"
-            >
-              <ChevronRight className="w-6 h-6 sm:w-8 sm:h-8 group-hover:translate-x-0.5 transition-transform" />
-            </button>
-          </div>
-
-          {/* Bottom Filmstrip Carousel */}
-          <div
-            className="h-18 pt-2 border-t border-slate-800/80 flex items-center justify-center gap-2 overflow-x-auto scrollbar-thin px-2 shrink-0 z-10"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {currentViewerItems.map((item, idx) => {
-              const isActive = idx === fullscreenViewer.currentIndex;
-              return (
-                <button
-                  key={item.id || idx}
-                  type="button"
-                  onClick={() => setFullscreenViewer((prev) => ({ ...prev, currentIndex: idx }))}
-                  className={`relative rounded-md overflow-hidden transition-all shrink-0 border ${
-                    isActive
-                      ? 'ring-2 ring-indigo-500 border-indigo-400 scale-105 shadow-lg opacity-100'
-                      : 'border-slate-700/80 opacity-45 hover:opacity-90 hover:border-slate-500'
-                  }`}
-                  style={{ width: '76px', height: '46px' }}
-                  title={`Fotograma #${idx + 1}`}
-                >
-                  <img src={item.dataUrl} alt={`Thumbnail ${idx + 1}`} className="w-full h-full object-cover" />
-                  <span className="absolute bottom-0.5 right-0.5 bg-black/80 text-white text-[9px] font-mono px-1 rounded">
-                    #{idx + 1}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      <FullscreenFrameViewer
+        isOpen={fullscreenViewer.isOpen}
+        currentIndex={fullscreenViewer.currentIndex}
+        items={currentViewerItems}
+        onClose={() => setFullscreenViewer((prev) => ({ ...prev, isOpen: false }))}
+        onNavigate={(idx) => setFullscreenViewer((prev) => ({ ...prev, currentIndex: idx }))}
+        onOpenCrop={(item) =>
+          setCropModal({
+            isOpen: true,
+            imageSrc: item.dataUrl,
+            imageTitle: item.label,
+            targetId: item.id,
+            source: fullscreenViewer.source,
+          })
+        }
+        onApplyCrop={handleApplyCrop}
+        onDeleteItem={handleDeleteViewerItem}
+      />
 
       {/* Modal: Importar Transcripción con Tiempos [mm:ss] */}
       {showImportTranscriptModal && (
